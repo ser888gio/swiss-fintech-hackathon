@@ -1,3 +1,4 @@
+import httpx
 from fastapi import APIRouter, HTTPException
 
 from .. import store
@@ -11,7 +12,15 @@ router = APIRouter(prefix="/payments")
 
 @router.post("", response_model=Payment)
 async def create_payment(intent: PaymentIntent) -> Payment:
-    return await orchestrator.process_payment(intent)
+    try:
+        return await orchestrator.process_payment(intent)
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"FX quote provider rejected {intent.currency}->{get_settings().token_currency}",
+        ) from exc
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="FX quote unavailable") from exc
 
 
 @router.get("", response_model=list[Payment])

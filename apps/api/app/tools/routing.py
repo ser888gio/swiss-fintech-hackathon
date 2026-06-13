@@ -34,11 +34,13 @@ async def get_fx_path(intent: PaymentIntent, settle_currency: str) -> RouteQuote
 
 
 async def _fetch_fx_rate(base: str, quote: str) -> float:
+    base = base.upper()
+    quote = quote.upper()
     if base == quote:
         return 1.0
     settings = get_settings()
     url = f"{settings.frankfurter_base_url}/latest"
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
         response = await client.get(url, params={"from": base, "to": quote})
         response.raise_for_status()
         data = response.json()
