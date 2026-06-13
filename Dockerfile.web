@@ -12,8 +12,9 @@ COPY apps/web apps/web
 RUN npm run build --workspace apps/web
 
 FROM node:20-slim AS serve
-WORKDIR /app
-RUN npm install -g serve@14
+WORKDIR /repo/apps/web
+COPY --from=build /repo/node_modules /repo/node_modules
 COPY --from=build /repo/apps/web/dist ./dist
-EXPOSE 3000
-CMD ["sh", "-c", "serve -s dist -l ${PORT:-3000}"]
+COPY --from=build /repo/apps/web/package.json ./package.json
+EXPOSE 4173
+CMD ["sh", "-c", "npx vite preview --host 0.0.0.0 --port ${PORT:-4173}"]
