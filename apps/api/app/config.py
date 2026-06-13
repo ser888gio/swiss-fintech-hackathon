@@ -1,0 +1,38 @@
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Runtime configuration, loaded from environment / root .env."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/treasury"
+
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o"
+
+    xrpl_endpoint: str = "wss://s.altnet.rippletest.net:51233"
+    treasury_wallet_seed: str = ""
+    release_wallet_seed: str = ""
+    token_issuer_address: str = ""
+    token_currency: str = "USD"
+
+    policy_threshold_usd: float = 10_000.0
+    policy_compliance_flag_score: int = 60
+
+    frankfurter_base_url: str = "https://api.frankfurter.app"
+
+    # Hex secp256k1 public key the Firefly device signs with; release is refused
+    # unless the approval signature verifies against this key.
+    firefly_public_key: str = ""
+
+    # When true, XRPL submission is mocked with deterministic fake tx hashes so
+    # the full flow runs offline (demo fallback / local dev without a wallet).
+    use_mock_xrpl: bool = True
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

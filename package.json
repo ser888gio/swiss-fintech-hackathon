@@ -1,0 +1,21 @@
+{
+  "name": "swisshacks-treasury-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Autonomous Treasury Agent with Firefly hardware veto on XRPL — SwissHacks 2026",
+  "workspaces": [
+    "apps/web",
+    "apps/firefly-bridge",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace apps/web",
+    "dev:bridge": "npm run dev --workspace apps/firefly-bridge",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev:api": "echo 'Run the Python API from apps/api — see apps/api/README.md'"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

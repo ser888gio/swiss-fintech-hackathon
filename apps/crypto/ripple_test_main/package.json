@@ -1,0 +1,14 @@
+{
+  "name": "ripple_tests",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "fund": "node fund-wallet.js",
+    "send": "node send-payment.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "xrpl": "^4.2.5"
+  }
+}

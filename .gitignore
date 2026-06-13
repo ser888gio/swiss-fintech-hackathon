@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment & secrets — NEVER commit wallet seeds or API keys
+.env
+.env.local
+.env.*.local
+*.seed
+secrets/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Python
+*.pyc
+.python-version
+
+# Railway / deploy
+.railway/
