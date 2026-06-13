@@ -70,14 +70,20 @@ export function App() {
       setApprovingId(payment.id);
       setError(null);
       try {
-        // WYSIWYS: send the actual payment fields to the bridge so it can
-        // display and sign them, not a server-derived hash.
+        // Fetch the challenge to get network + owner (treasury wallet address)
+        // without hardcoding them in the client. The bridge re-derives the
+        // digest from the human-readable fields — WYSIWYS.
+        const challenge = await api.challenge(payment.id);
         const signed = await signOnFirefly({
           paymentId: payment.id,
           amount: payment.intent.amount,
           currency: payment.intent.currency,
           dest: payment.intent.to,
           reference: payment.intent.reference,
+          network: challenge.network,
+          owner: challenge.owner,
+          escrowSequence: payment.escrowSequence!,
+          escrowCreateTxHash: payment.escrowCreateTxHash!,
         });
         await api.release(payment.id, signed.signature);
         await refresh();

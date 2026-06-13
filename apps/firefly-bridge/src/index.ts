@@ -2,19 +2,37 @@ import cors from "cors";
 import express from "express";
 import type { BridgeSignRequest, BridgeSignResponse } from "@treasury/shared";
 
-import { MockFireflyDevice } from "./device.js";
+import { MockFireflyDevice, SerialFireflyDevice } from "./device.js";
+import type { FireflyDevice } from "./device.js";
 
 const PORT = Number(process.env.BRIDGE_PORT ?? 4747);
 const MOCK_KEY = process.env.FIREFLY_MOCK_PRIVATE_KEY;
+const DEVICE_PATH = process.env.FIREFLY_DEVICE_PATH;
+const DEVICE_PUBLIC_KEY = process.env.FIREFLY_PUBLIC_KEY;
 
-if (!MOCK_KEY) {
-  throw new Error(
-    "FIREFLY_MOCK_PRIVATE_KEY is not set. Run `npm run keygen --workspace apps/firefly-bridge` " +
-      "and put the private key here and the public key in the API's FIREFLY_PUBLIC_KEY.",
-  );
+let device: FireflyDevice;
+
+if (DEVICE_PATH) {
+  if (!DEVICE_PUBLIC_KEY) {
+    throw new Error(
+      "FIREFLY_DEVICE_PATH is set but FIREFLY_PUBLIC_KEY is missing. " +
+      "Run the provisioning command on the Pixie to read its public key."
+    );
+  }
+  device = new SerialFireflyDevice(DEVICE_PATH, DEVICE_PUBLIC_KEY);
+  console.log(`[firefly] Using real Firefly Pixie at ${DEVICE_PATH}`);
+} else {
+  if (!MOCK_KEY) {
+    throw new Error(
+      "Neither FIREFLY_DEVICE_PATH nor FIREFLY_MOCK_PRIVATE_KEY is set. " +
+      "Run `npm run keygen --workspace apps/firefly-bridge` and put the keys in .env, " +
+      "or set FIREFLY_DEVICE_PATH to use the real Pixie."
+    );
+  }
+  device = new MockFireflyDevice(MOCK_KEY);
+  console.log(`[firefly] Using mock device (FIREFLY_MOCK_PRIVATE_KEY)`);
 }
 
-const device = new MockFireflyDevice(MOCK_KEY);
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -25,20 +43,29 @@ app.get("/health", (_req, res) => {
 
 app.post("/sign", async (req, res) => {
   const body = req.body as BridgeSignRequest;
-  if (!body?.paymentId || !body?.amount || !body?.currency || !body?.dest) {
-    res.status(400).json({ error: "paymentId, amount, currency, and dest are required" });
+  if (
+    !body?.paymentId || body?.amount == null || !body?.currency ||
+    !body?.dest || !body?.network || !body?.owner ||
+    body?.escrowSequence == null || !body?.escrowCreateTxHash
+  ) {
+    res.status(400).json({
+      error: "paymentId, amount, currency, dest, network, owner, escrowSequence, and escrowCreateTxHash are required",
+    });
     return;
   }
-  // Print what the device is being asked to approve — stand-in for the hardware screen.
-  console.log(
-    `[firefly] ┌─ APPROVE REQUEST ─────────────────────────────────┐`,
-  );
-  console.log(`[firefly] │  Amount:    ${body.amount.toFixed(2)} ${body.currency}`);
-  console.log(`[firefly] │  To:        ${body.dest}`);
-  console.log(`[firefly] │  Reference: ${body.reference ?? "(none)"}`);
-  console.log(`[firefly] │  Payment:   ${body.paymentId}`);
+
+  console.log(`[firefly] ┌─ APPROVE REQUEST ─────────────────────────────────┐`);
+  console.log(`[firefly] │  Network:    ${body.network}`);
+  console.log(`[firefly] │  Amount:     ${body.amount.toFixed(2)} ${body.currency}`);
+  console.log(`[firefly] │  To:         ${body.dest}`);
+  console.log(`[firefly] │  Owner:      ${body.owner}`);
+  console.log(`[firefly] │  Escrow seq: ${body.escrowSequence}`);
+  console.log(`[firefly] │  Escrow tx:  ${body.escrowCreateTxHash.slice(0, 16)}…`);
+  console.log(`[firefly] │  Reference:  ${body.reference ?? "(none)"}`);
+  console.log(`[firefly] │  Payment:    ${body.paymentId}`);
   console.log(`[firefly] └───────────────────────────────────────────────────┘`);
   console.log(`[firefly] Awaiting button press…`);
+
   try {
     const signed = await device.sign(body);
     const response: BridgeSignResponse = {
@@ -50,7 +77,7 @@ app.post("/sign", async (req, res) => {
     res.json(response);
   } catch (cause) {
     console.error(`[firefly] signing failed: ${String(cause)}`);
-    res.status(500).json({ error: "signing failed" });
+    res.status(500).json({ error: String(cause) });
   }
 });
 

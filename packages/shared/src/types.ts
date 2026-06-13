@@ -73,6 +73,8 @@ export interface PolicyDecision {
 export interface ApprovalChallenge {
   paymentId: string;
   digest: string; // hex digest the Firefly signs
+  network: string; // e.g. "xrpl:testnet"
+  owner: string;   // treasury wallet XRPL address
 }
 
 export interface Receipt {
@@ -83,6 +85,7 @@ export interface Receipt {
   policyDecision: PolicyDecision | null;
   status: PaymentStatus;
   escrowSequence: number | null;
+  escrowCreateTxHash: string | null;
   approvalSignature: string | null;
   txHash: string | null;
   explorerUrl: string | null;
@@ -99,6 +102,7 @@ export interface Payment {
   policyDecision: PolicyDecision | null;
   status: PaymentStatus;
   escrowSequence: number | null;
+  escrowCreateTxHash: string | null;
   approvalSignature: string | null;
   txHash: string | null;
   explorerUrl: string | null;
@@ -116,12 +120,18 @@ export interface AgentLogEntry {
 
 // Firefly bridge contract (browser <-> localhost bridge).
 // The bridge derives the digest locally from these fields — WYSIWYS.
+// All fields must exactly match what apps/api/app/tools/firefly.py::canonical_payload uses.
 export interface BridgeSignRequest {
   paymentId: string;
   amount: number;
   currency: string;
   dest: string;
   reference: string;
+  // XRPL escrow binding — pins approval to one specific on-chain escrow.
+  network: string;          // e.g. "xrpl:testnet"
+  owner: string;            // treasury wallet XRPL address
+  escrowSequence: number;
+  escrowCreateTxHash: string;
 }
 
 export interface BridgeSignResponse {

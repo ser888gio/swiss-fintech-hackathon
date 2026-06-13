@@ -1,0 +1,12 @@
+[submodule "components/firefly-hollows"]
+	path = components/firefly-hollows
+	url = https://github.com/firefly/component-hollows.git
+[submodule "components/firefly-scene"]
+	path = components/firefly-scene
+	url = https://github.com/firefly/component-scene.git
+[submodule "components/firefly-display"]
+	path = components/firefly-display
+	url = https://github.com/firefly/component-display.git
+[submodule "components/firefly-ethers"]
+	path = components/firefly-ethers
+	url = https://github.com/ethers-io/ethers.c.git

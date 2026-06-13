@@ -91,6 +91,8 @@ class PolicyDecision(CamelModel):
 class ApprovalChallenge(CamelModel):
     payment_id: str
     digest: str
+    network: str
+    owner: str
 
 
 class ReleaseRequest(BaseModel):
@@ -117,6 +119,7 @@ class Receipt(CamelModel):
     policy_decision: PolicyDecision | None
     status: PaymentStatus
     escrow_sequence: int | None
+    escrow_create_tx_hash: str | None
     approval_signature: str | None
     tx_hash: str | None
     explorer_url: str | None
@@ -133,6 +136,7 @@ class Payment(CamelModel):
     policy_decision: PolicyDecision | None = None
     status: PaymentStatus
     escrow_sequence: int | None = None
+    escrow_create_tx_hash: str | None = None
     approval_signature: str | None = None
     tx_hash: str | None = None
     explorer_url: str | None = None

@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     # unless the approval signature verifies against this key.
     firefly_public_key: str = ""
 
+    # XRPL network identifier included in the approval payload to prevent
+    # testnet signatures from being replayed on mainnet.
+    xrpl_network: str = "xrpl:testnet"
+
+    # XRPL address of the treasury wallet that owns the escrows. Included in
+    # the approval payload so the device commits to the exact escrow owner.
+    # In mock mode an empty string falls back to "r_TREASURY_MOCK".
+    treasury_wallet_address: str = ""
+
     # When true, XRPL submission is mocked with deterministic fake tx hashes so
     # the full flow runs offline (demo fallback / local dev without a wallet).
     use_mock_xrpl: bool = True

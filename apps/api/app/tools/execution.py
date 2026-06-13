@@ -23,6 +23,7 @@ class EscrowResult:
     escrow_sequence: int
     tx_hash: str
     explorer_url: str | None
+    escrow_create_tx_hash: str = ""  # same as tx_hash for EscrowCreate; stored separately so release doesn't overwrite it
 
 
 async def execute_payment(payment_id: str, intent: PaymentIntent, route: RouteQuote) -> ExecutionResult:
@@ -45,6 +46,7 @@ async def lock_payment(payment_id: str, intent: PaymentIntent, route: RouteQuote
             escrow_sequence=_mock_sequence(payment_id),
             tx_hash=tx_hash,
             explorer_url=None,
+            escrow_create_tx_hash=tx_hash,
         )
     raise NotImplementedError("Real XRPL EscrowCreate — wire up at hackathon")
 

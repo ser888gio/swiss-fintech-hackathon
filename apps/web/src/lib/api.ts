@@ -1,5 +1,6 @@
 import type {
   AgentLogEntry,
+  ApprovalChallenge,
   Payment,
   PaymentIntent,
   QuoteRequest,
@@ -51,6 +52,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ signature }),
     }),
+  challenge: (id: string) =>
+    request<ApprovalChallenge>(`/payments/${id}/challenge`),
   releaseTampered: (id: string, signature: string) =>
     request<never>(`/payments/${id}/release-tampered`, {
       method: "POST",

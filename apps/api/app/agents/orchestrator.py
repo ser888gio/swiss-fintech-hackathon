@@ -80,6 +80,7 @@ async def _escalate(payment: Payment, route, intent: PaymentIntent) -> None:
     escrow = await execution.lock_payment(payment.id, intent, route)
     payment.status = PaymentStatus.pending_approval
     payment.escrow_sequence = escrow.escrow_sequence
+    payment.escrow_create_tx_hash = escrow.escrow_create_tx_hash
     payment.tx_hash = escrow.tx_hash
     payment.explorer_url = escrow.explorer_url
     reason = "; ".join(payment.policy_decision.reasons) if payment.policy_decision else ""
@@ -125,6 +126,8 @@ async def release_tampered(payment_id: str, signature: str) -> None:
     payment = store.get(payment_id)
     if payment is None:
         raise PaymentNotFound(payment_id)
+    if payment.status is not PaymentStatus.pending_approval:
+        raise InvalidApprovalState(payment.status)
 
     tampered = payment.model_copy(deep=True)
     tampered.intent.amount *= 1000
