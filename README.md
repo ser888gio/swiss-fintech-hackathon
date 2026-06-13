@@ -16,6 +16,24 @@ for the brief, [`docs/architecture.md`](docs/architecture.md) for the design, an
 [`AGENTS.md`](AGENTS.md) for the tool/agent spec. [`CLAUDE.md`](CLAUDE.md) holds
 the conventions — including the one rule: the LLM never decides policy or signs.
 
+## System Overview
+
+### Architecture
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./diagrams/architecture-simplified-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./diagrams/architecture-simplified-light.svg">
+  <img alt="Architecture Overview" src="./diagrams/architecture-simplified-light.svg">
+</picture>
+
+### Infrastructure
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./diagrams/infrastructure-simplified-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./diagrams/infrastructure-simplified-light.svg">
+  <img alt="Infrastructure Overview" src="./diagrams/infrastructure-simplified-light.svg">
+</picture>
+
+[More diagrams →](./diagrams/README.md)
+
 ## Repository layout
 
 ```

@@ -33,3 +33,6 @@ npm-debug.log*
 
 # Railway / deploy
 .railway/
+
+# Diagram plugin ephemeral state
+.diagram/

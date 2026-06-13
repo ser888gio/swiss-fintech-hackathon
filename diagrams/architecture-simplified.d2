@@ -1,0 +1,35 @@
+direction: down
+
+dashboard: Dashboard (React/Vite) {
+  class: nodejs
+  icon: https://icons.terrastruct.com/dev%2Freact.svg
+}
+
+orchestrator: Orchestrator (FastAPI) {
+  class: python
+  icon: https://icons.terrastruct.com/dev%2Fpython.svg
+}
+
+policy: Policy Engine (deterministic) {
+  class: server
+  icon: https://icons.terrastruct.com/tech%2F022-server.svg
+}
+
+compliance: Compliance + Routing {
+  class: server
+  icon: https://icons.terrastruct.com/tech%2F022-server.svg
+}
+
+audit: Audit Narrator (OpenAI) {class: cloud}
+
+execution: Execution (XRPL testnet) {class: cloud}
+
+firefly: Firefly Hardware Approval {class: server}
+
+dashboard -> orchestrator: "intent / release"
+orchestrator -> policy: "decide (deterministic)"
+orchestrator -> compliance: "screen + quote"
+orchestrator -> audit: "explain (LLM)"
+orchestrator -> execution: "settle / escrow / finish"
+dashboard -> firefly: "sign (button press)"
+firefly -> orchestrator: "verified signature"

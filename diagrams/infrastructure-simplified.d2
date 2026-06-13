@@ -1,0 +1,39 @@
+direction: down
+
+browser: Operator Browser {
+  class: users
+  icon: https://icons.terrastruct.com/essentials%2F359-users.svg
+}
+
+railway: Railway Cloud {
+  web: Web Dashboard (React/Vite) {
+    class: nodejs
+    icon: https://icons.terrastruct.com/dev%2Freact.svg
+  }
+  api: Treasury API (FastAPI) {
+    class: python
+    icon: https://icons.terrastruct.com/dev%2Fpython.svg
+  }
+  db: Database (PostgreSQL) {
+    class: postgresql
+    icon: https://icons.terrastruct.com/dev%2Fpostgresql.svg
+  }
+}
+
+local: Operator Local Machine {
+  bridge: Firefly Bridge (Node :4747) {
+    class: nodejs
+    icon: https://icons.terrastruct.com/dev%2Fnodejs.svg
+  }
+  device: Firefly Device (USB) {class: server}
+}
+
+external: External APIs (XRPL, OpenAI, Frankfurter, CoinGecko, OpenSanctions) {class: cloud}
+
+browser -> railway.web: "load dashboard (HTTPS)"
+browser -> railway.api: "intents / release (HTTPS)"
+browser -> local.bridge: "POST /sign (localhost)"
+railway.api -> railway.db: "persist trail"
+railway.api -> external: "rates / screen / settle / narrate"
+local.bridge -> local.device: "USB serial"
+local.device -> local.bridge: "signature" {style.stroke-dash: 5}
