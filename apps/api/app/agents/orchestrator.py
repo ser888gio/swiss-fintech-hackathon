@@ -94,9 +94,7 @@ async def release_payment(payment_id: str, signature: str) -> Payment:
     if payment.status is not PaymentStatus.pending_approval:
         raise InvalidApprovalState(payment.status)
 
-    challenge = firefly.build_approval_challenge(
-        payment_id, payment.intent.amount, payment.intent.currency, payment.intent.to
-    )
+    challenge = firefly.challenge_for_payment(payment)
     if not firefly.verify_signature(challenge.digest, signature):
         raise SignatureRejected(payment_id)
 
@@ -125,9 +123,7 @@ async def release_tampered(payment_id: str, signature: str) -> None:
     tampered = payment.model_copy(deep=True)
     tampered.intent.amount *= 1000
 
-    challenge = firefly.build_approval_challenge(
-        payment_id, tampered.intent.amount, tampered.intent.currency, tampered.intent.to
-    )
+    challenge = firefly.challenge_for_payment(tampered)
     if not firefly.verify_signature(challenge.digest, signature):
         raise SignatureRejected(payment_id)
 
@@ -141,9 +137,7 @@ def challenge_for(payment_id: str):
         raise PaymentNotFound(payment_id)
     if payment.status is not PaymentStatus.pending_approval:
         raise InvalidApprovalState(payment.status)
-    return firefly.build_approval_challenge(
-        payment_id, payment.intent.amount, payment.intent.currency, payment.intent.to
-    )
+    return firefly.challenge_for_payment(payment)
 
 
 class PaymentNotFound(Exception):

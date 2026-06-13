@@ -15,7 +15,7 @@ from eth_keys import keys
 from eth_keys.exceptions import BadSignature, ValidationError
 
 from ..config import get_settings
-from ..schemas import ApprovalChallenge
+from ..schemas import ApprovalChallenge, Payment
 
 
 def canonical_payload(payment_id: str, amount: float, currency: str, dest: str) -> str:
@@ -33,11 +33,17 @@ def challenge_digest(payment_id: str, amount: float, currency: str, dest: str) -
     return hashlib.sha256(canonical_payload(payment_id, amount, currency, dest).encode()).hexdigest()
 
 
-def build_approval_challenge(
+def challenge_for_payment(payment: Payment) -> ApprovalChallenge:
+    """Derive the approval challenge for a payment. The signed field set is named once here;
+    pass a mutated copy to get the challenge for a tampered payment."""
+    return _build_approval_challenge(
+        payment.id, payment.intent.amount, payment.intent.currency, payment.intent.to
+    )
+
+
+def _build_approval_challenge(
     payment_id: str, amount: float, currency: str, dest: str
 ) -> ApprovalChallenge:
-    """Derive the digest the device signs. Binding payment id + amount + currency + dest
-    means a captured signature cannot be replayed against a different payment."""
     return ApprovalChallenge(payment_id=payment_id, digest=challenge_digest(payment_id, amount, currency, dest))
 
 

@@ -6,8 +6,10 @@ firefly.py you MUST update the bridge's deriveDigest and regenerate these values
 """
 
 import hashlib
+from datetime import datetime, timezone
 
-from app.tools.firefly import canonical_payload, challenge_digest
+from app.schemas import Payment, PaymentIntent, PaymentStatus
+from app.tools.firefly import canonical_payload, challenge_digest, challenge_for_payment
 
 
 # Ground-truth fixture: a known payment, pinned hex.
@@ -45,6 +47,29 @@ def test_amount_formatting_rounds_half_even():
     # Python :.2f rounds 5000.005 to 5000.00 (float imprecision: 5000.005 is
     # actually 5000.00499... in IEEE 754). Document this so the bridge knows.
     assert result.startswith("pay-test-001|5000.0")
+
+
+def _fixture_payment() -> Payment:
+    now = datetime.now(timezone.utc)
+    return Payment(
+        id=_FIXTURE_ID,
+        intent=PaymentIntent(**{
+            "from": "rSender",
+            "to": _FIXTURE_DEST,
+            "amount": _FIXTURE_AMOUNT,
+            "currency": _FIXTURE_CURRENCY,
+            "reference": "test",
+        }),
+        status=PaymentStatus.pending_approval,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def test_challenge_for_payment_matches_fixture():
+    challenge = challenge_for_payment(_fixture_payment())
+    assert challenge.payment_id == _FIXTURE_ID
+    assert challenge.digest == _FIXTURE_DIGEST
 
 
 def test_different_payments_produce_different_digests():
