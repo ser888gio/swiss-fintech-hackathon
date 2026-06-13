@@ -55,7 +55,9 @@ export function PaymentCard({
         </strong>
         <span className="badge">{STATUS_LABEL[status]}</span>
       </header>
-      <p className="muted">{intent.reference} → {intent.to.slice(0, 10)}…</p>
+      <p className="muted">
+        {intent.reference} to {intent.to.slice(0, 10)}...
+      </p>
       {compliance && <p className="muted">{compliance.explanation}</p>}
       {policyDecision?.blocked && policyDecision.blockReason && (
         <p className="block-reason">Refused: {policyDecision.blockReason}</p>
@@ -64,27 +66,21 @@ export function PaymentCard({
 
       {status === "pending_approval" && (
         <button className="approve" disabled={approving} onClick={() => onApprove(payment)}>
-          {approving ? "Waiting for Firefly…" : "Approve on Firefly"}
+          {approving ? "Waiting for Firefly..." : "Approve on Firefly"}
         </button>
       )}
 
       {status === "released" && payment.approvalSignature && (
-        <button
-          className="tamper-demo"
-          disabled={tampering}
-          onClick={() => onTamperRetry(payment)}
-        >
-          {tampering ? "Testing…" : "Tamper & retry (DEMO)"}
+        <button className="tamper-demo" disabled={tampering} onClick={() => onTamperRetry(payment)}>
+          {tampering ? "Testing..." : "Tamper & retry (DEMO)"}
         </button>
       )}
 
-      {tamperError && (
-        <p className="tamper-error">{tamperError}</p>
-      )}
+      {tamperError && <p className="tamper-error">{tamperError}</p>}
 
       {explorerUrl && (
         <a href={explorerUrl} target="_blank" rel="noreferrer">
-          View on testnet explorer ↗
+          View on testnet explorer
         </a>
       )}
 
@@ -95,7 +91,7 @@ export function PaymentCard({
           </button>
           {payment.receiptHash && (
             <code className="receipt-hash" title="SHA-256 of the canonical decision trail">
-              {payment.receiptHash.slice(0, 16)}…
+              {payment.receiptHash.slice(0, 16)}...
             </code>
           )}
         </div>
