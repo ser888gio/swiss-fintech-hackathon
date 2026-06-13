@@ -86,7 +86,7 @@ export function DashboardPage({ payments, approvingId, onApprove, onNavigate }: 
               <article className="beat-card">
                 <span>01</span>
                 <strong>Clean auto-settle</strong>
-                <p>Low-risk invoice routes, clears compliance, and lands on XRPL with an explorer link.</p>
+                <p>Low-risk invoice routes, clears compliance, and shows explorer proof when real XRPL submission is enabled.</p>
               </article>
               <article className="beat-card">
                 <span>02</span>

@@ -75,7 +75,7 @@ class ReleaseRequest(BaseModel):
 
 class ExecutionResult(CamelModel):
     tx_hash: str
-    explorer_url: str
+    explorer_url: str | None
     status: PaymentStatus
 
 

@@ -16,14 +16,13 @@ from dataclasses import dataclass
 
 from ..config import get_settings
 from ..schemas import ExecutionResult, PaymentIntent, PaymentStatus, RouteQuote
-from ..xrpl_client import explorer_tx_url
 
 
 @dataclass
 class EscrowResult:
     escrow_sequence: int
     tx_hash: str
-    explorer_url: str
+    explorer_url: str | None
 
 
 async def execute_payment(payment_id: str, intent: PaymentIntent, route: RouteQuote) -> ExecutionResult:
@@ -32,7 +31,7 @@ async def execute_payment(payment_id: str, intent: PaymentIntent, route: RouteQu
         tx_hash = _mock_hash("pay", payment_id)
         return ExecutionResult(
             tx_hash=tx_hash,
-            explorer_url=explorer_tx_url(tx_hash),
+            explorer_url=None,
             status=PaymentStatus.settled,
         )
     raise NotImplementedError("Real XRPL Payment submission — wire up at hackathon")
@@ -45,7 +44,7 @@ async def lock_payment(payment_id: str, intent: PaymentIntent, route: RouteQuote
         return EscrowResult(
             escrow_sequence=_mock_sequence(payment_id),
             tx_hash=tx_hash,
-            explorer_url=explorer_tx_url(tx_hash),
+            explorer_url=None,
         )
     raise NotImplementedError("Real XRPL EscrowCreate — wire up at hackathon")
 
@@ -57,7 +56,7 @@ async def finish_escrow(payment_id: str, escrow_sequence: int) -> ExecutionResul
         tx_hash = _mock_hash("finish", payment_id)
         return ExecutionResult(
             tx_hash=tx_hash,
-            explorer_url=explorer_tx_url(tx_hash),
+            explorer_url=None,
             status=PaymentStatus.released,
         )
     raise NotImplementedError("Real XRPL EscrowFinish — wire up at hackathon")

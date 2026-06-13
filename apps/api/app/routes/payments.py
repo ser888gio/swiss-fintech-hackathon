@@ -13,7 +13,7 @@ router = APIRouter(prefix="/payments")
 @router.post("", response_model=Payment)
 async def create_payment(intent: PaymentIntent) -> Payment:
     try:
-        return await orchestrator.process_payment(intent)
+        return _public_payment(await orchestrator.process_payment(intent))
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=502,
@@ -25,7 +25,7 @@ async def create_payment(intent: PaymentIntent) -> Payment:
 
 @router.get("", response_model=list[Payment])
 async def list_payments() -> list[Payment]:
-    return store.list_payments()
+    return [_public_payment(payment) for payment in store.list_payments()]
 
 
 @router.get("/{payment_id}", response_model=Payment)
@@ -33,7 +33,7 @@ async def get_payment(payment_id: str) -> Payment:
     payment = store.get(payment_id)
     if payment is None:
         raise HTTPException(status_code=404, detail="payment not found")
-    return payment
+    return _public_payment(payment)
 
 
 @router.get("/{payment_id}/logs", response_model=list[AgentLogEntry])
@@ -54,7 +54,7 @@ async def get_challenge(payment_id: str) -> ApprovalChallenge:
 @router.post("/{payment_id}/release", response_model=Payment)
 async def release_payment(payment_id: str, body: ReleaseRequest) -> Payment:
     try:
-        return await orchestrator.release_payment(payment_id, body.signature)
+        return _public_payment(await orchestrator.release_payment(payment_id, body.signature))
     except orchestrator.PaymentNotFound as exc:
         raise HTTPException(status_code=404, detail="payment not found") from exc
     except orchestrator.InvalidApprovalState as exc:
@@ -91,3 +91,10 @@ async def get_receipt(payment_id: str) -> dict:
         raise HTTPException(status_code=409, detail="receipt only available for terminal payments")
     r = receipt_tool.build_receipt(payment)
     return {"receipt": r.model_dump(by_alias=True), "receiptHash": payment.receipt_hash}
+
+
+def _public_payment(payment: Payment) -> Payment:
+    """Hide stale fake explorer links from older mock-mode payment rows."""
+    if not get_settings().use_mock_xrpl or payment.explorer_url is None:
+        return payment
+    return payment.model_copy(update={"explorer_url": None})
