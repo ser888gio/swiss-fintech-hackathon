@@ -45,7 +45,11 @@ class Settings(BaseSettings):
 
     # Railway preview/prod service hosts. Keep explicit origins above for the
     # main demo URL; this catches regenerated Railway domains during rehearsals.
-    cors_origin_regex: str = r"https://.*\.up\.railway\.app"
+    cors_origin_regex: str = r"https://.*\.(up\.railway\.app|railway\.app)"
+
+    # Injected by Railway. When the web service URL changes, include it without
+    # requiring a manual CORS_ORIGINS update during rehearsal.
+    railway_service_web_url: str = ""
 
 
 @lru_cache

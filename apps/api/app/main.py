@@ -11,6 +11,12 @@ cors_origins = [
     for origin in settings.cors_origins.split(",")
     if origin.strip()
 ]
+if settings.railway_service_web_url:
+    web_origin = settings.railway_service_web_url.strip()
+    if not web_origin.startswith(("http://", "https://")):
+        web_origin = f"https://{web_origin}"
+    if web_origin not in cors_origins:
+        cors_origins.append(web_origin)
 
 # The dashboard calls this API directly from local dev and Railway.
 app.add_middleware(
