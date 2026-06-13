@@ -57,6 +57,7 @@ apps/
   api/            Python FastAPI backend (Railway service)
   web/            React/Vite dashboard (Railway service)
   firefly-bridge/ Local-only Node bridge to the Firefly device
+  crypto/         Local XRPL testnet spike (Node scripts: fund wallet, send payment)
 packages/
   shared/         Shared TypeScript types
 docs/             Plan, architecture, demo script, judging map

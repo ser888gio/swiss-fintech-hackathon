@@ -61,6 +61,21 @@ browser → API, and the API verifies it before releasing funds.
 > "hardware veto" is theatre. It must be a real secp256k1 verify against a key
 > registered before the demo.
 
+## Request flow — sanctioned counterparty (refused in code)
+
+1. Same intent posting and tool calls.
+2. Compliance returns `sanctioned = true`. The policy engine **short-circuits to
+   `blocked` before any approval logic** — hardware cannot override a sanctions
+   hit.
+3. No XRPL transaction is submitted. The payment ends in the terminal `blocked`
+   status with a `block_reason`, and a receipt hash is computed.
+4. Web shows a refused card. Crucially, the payment does **not** enter the
+   approval queue: there is no signature that releases it.
+
+> This is the third terminal outcome alongside `settled` and `released`. It exists
+> to prove the boundary cuts both ways — code can refuse a payment the operator
+> (or the agent) might otherwise wave through.
+
 ## Firefly device specifics
 
 - Hardware: open-source ESP32-C3 device, github.com/firefly.
@@ -85,17 +100,31 @@ Each payment accumulates a complete, queryable decision trail. Minimum columns:
 | `intent` | request | from, to, amount, currency, reference |
 | `route_quote` | routing tool | rate, path summary, fee, dest amount |
 | `compliance` | compliance tool | aml_score, sanctioned, flags, explanation |
-| `policy_decision` | policy engine | requires_approval, rule_fired, reasons |
-| `status` | workflow | `routing` → `settled` / `pending_approval` → `released` |
+| `policy_decision` | policy engine | requires_approval, blocked, rule_fired, reasons |
+| `status` | workflow | `routing` → `settled` / `pending_approval` → `released`, or terminal `blocked` |
+| `block_reason` | policy engine | set when refused (e.g. sanctions hit) |
 | `escrow_sequence` | execution | set when locked |
 | `approval_signature` | firefly | hex secp256k1 signature (when released) |
 | `tx_hash` | execution | settle or finish tx |
 | `explorer_url` | execution | testnet explorer link |
 | `audit_explanation` | audit tool | LLM-written plain-language summary |
+| `receipt_hash` | receipt tool | sha256 of the canonical-JSON receipt; set at every terminal state |
 | `created_at` / `updated_at` | API | timestamps |
 
 See `apps/api/app/schemas.py` (Pydantic) and `packages/shared/src/types.ts`
 (TypeScript) — keep them mirrored by hand.
+
+## Audit receipt & demo-only endpoints
+
+- `GET /payments/{id}/receipt` — returns the canonical-JSON receipt plus its
+  `receiptHash` for any payment in a terminal state (`settled`, `released`,
+  `blocked`). An auditor recomputes the hash to verify nothing was altered.
+- `POST /payments/{id}/release-tampered` — **DEMO ONLY**, gated by `DEMO_MODE`.
+  Rebuilds the approval digest from a tampered copy of the payment (amount ×1000)
+  and verifies the *real* signature against it. Always returns `403` — proving the
+  signature is bound to the exact payment. It never writes the tampered copy.
+- `DEMO_MODE` (config flag) also controls whether the web shows the Tamper button.
+  Leave it off outside the demo.
 
 ## Network
 
