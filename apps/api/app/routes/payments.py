@@ -4,8 +4,9 @@ from fastapi import APIRouter, HTTPException
 from .. import store
 from ..agents import orchestrator
 from ..config import get_settings
-from ..schemas import AgentLogEntry, ApprovalChallenge, Payment, PaymentIntent, Receipt, ReleaseRequest
+from ..schemas import AgentLogEntry, ApprovalChallenge, Payment, PaymentIntent, QuoteRequest, Receipt, ReleaseRequest, RouteQuote
 from ..tools import receipt as receipt_tool
+from ..tools import routing
 
 router = APIRouter(prefix="/payments")
 
@@ -21,6 +22,19 @@ async def create_payment(intent: PaymentIntent) -> Payment:
         ) from exc
     except (httpx.HTTPError, KeyError, ValueError) as exc:
         raise HTTPException(status_code=502, detail="FX quote unavailable") from exc
+
+
+@router.post("/quote", response_model=RouteQuote)
+async def quote_payment(request: QuoteRequest) -> RouteQuote:
+    try:
+        return await routing.quote_amount(request.amount, request.currency, get_settings().token_currency)
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Quote provider rejected {request.currency}->{get_settings().token_currency}",
+        ) from exc
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="Quote unavailable") from exc
 
 
 @router.get("", response_model=list[Payment])

@@ -41,6 +41,11 @@ class PaymentIntent(CamelModel):
     reference: str
 
 
+class QuoteRequest(CamelModel):
+    amount: float
+    currency: str
+
+
 class RouteQuote(CamelModel):
     source_amount: float
     dest_amount: float

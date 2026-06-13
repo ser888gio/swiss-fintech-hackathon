@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react";
-import type { Payment, PaymentIntent } from "@treasury/shared";
+import { useEffect, useMemo, useState } from "react";
+import type { Payment, PaymentIntent, RouteQuote } from "@treasury/shared";
+
+import { api } from "../lib/api.js";
 
 interface Props {
   onSubmit: (intent: PaymentIntent) => Promise<Payment | null>;
@@ -7,6 +9,7 @@ interface Props {
 }
 
 const TREASURY = "rTREASURY00000000000000000000000000";
+const QUOTE_REFRESH_MS = 15000;
 
 const SENDERS = [
   { label: "Main Treasury", owner: "John Doe", country: "CH", account: TREASURY, balance: 184250 },
@@ -20,8 +23,15 @@ const RECIPIENTS = [
 ];
 
 const NUMPAD = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "backspace"];
+const CURRENCIES = ["USD", "EUR", "XRP"];
 
 function money(amount: number, currency: string) {
+  if (currency === "XRP") {
+    return `${new Intl.NumberFormat("en-US", {
+      maximumFractionDigits: amount % 1 === 0 ? 0 : 6,
+    }).format(amount)} XRP`;
+  }
+
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
@@ -43,42 +53,102 @@ function appendDigit(current: string, digit: string) {
   if (current === "0" && digit !== ".") return digit;
 
   const next = `${current}${digit}`;
-  const [, cents] = next.split(".");
-  if (cents && cents.length > 2) return current;
+  const [, decimals] = next.split(".");
+  if (decimals && decimals.length > 6) return current;
   return next;
+}
+
+function formatRate(route: RouteQuote | null, currency: string) {
+  if (!route) return "Fetching live rate...";
+  return `1 ${currency} = ${money(route.rate, "USD")}`;
+}
+
+function quoteAge(updatedAt: Date | null) {
+  if (!updatedAt) return "Waiting for first update";
+  return `Updated ${updatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
 }
 
 export function NewPaymentForm({ onSubmit, disabled }: Props) {
   const [step, setStep] = useState<"input" | "review" | "verification" | "success" | "failure">("input");
   const [senderIndex, setSenderIndex] = useState(0);
   const [recipientIndex, setRecipientIndex] = useState(0);
+  const [recipientName, setRecipientName] = useState(RECIPIENTS[0].label);
+  const [recipientWallet, setRecipientWallet] = useState(RECIPIENTS[0].account);
+  const [recipientCountry, setRecipientCountry] = useState(RECIPIENTS[0].country);
+  const [recipientEntityType, setRecipientEntityType] = useState<"company" | "individual">(RECIPIENTS[0].entityType);
   const [amountInput, setAmountInput] = useState("0");
   const [currency, setCurrency] = useState("USD");
   const [purpose, setPurpose] = useState("supplier_payment");
   const [reference, setReference] = useState("Invoice #1042");
+  const [routeQuote, setRouteQuote] = useState<RouteQuote | null>(null);
+  const [quoteUpdatedAt, setQuoteUpdatedAt] = useState<Date | null>(null);
+  const [quoteError, setQuoteError] = useState("");
   const [lastPayment, setLastPayment] = useState<Payment | null>(null);
   const [failureReason, setFailureReason] = useState("");
 
   const amount = amountFromInput(amountInput);
   const sender = SENDERS[senderIndex];
-  const recipient = RECIPIENTS[recipientIndex];
-  const canReview = amount > 0 && reference.trim().length > 0 && !disabled;
+  const networkFee = Math.max((routeQuote?.destAmount ?? amount) * 0.001, currency === "XRP" ? 0.000012 : 1.21);
+  const receiveAmount = routeQuote?.destAmount ?? amount;
+  const recipientSummary = `${recipientCountry} - ${recipientEntityType} - ${recipientWallet.slice(0, 14)}...`;
+  const canReview = amount > 0 && reference.trim().length > 0 && recipientName.trim().length > 0 && recipientWallet.trim().length > 0 && !disabled;
+
+  useEffect(() => {
+    const selected = RECIPIENTS[recipientIndex];
+    setRecipientName(selected.label);
+    setRecipientWallet(selected.account);
+    setRecipientCountry(selected.country);
+    setRecipientEntityType(selected.entityType);
+  }, [recipientIndex]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshQuote() {
+      if (amount <= 0) {
+        setRouteQuote(null);
+        setQuoteUpdatedAt(null);
+        setQuoteError("");
+        return;
+      }
+
+      try {
+        const quote = await api.quotePayment({ amount, currency });
+        if (cancelled) return;
+        setRouteQuote(quote);
+        setQuoteUpdatedAt(new Date());
+        setQuoteError("");
+      } catch (cause) {
+        if (cancelled) return;
+        setRouteQuote(null);
+        setQuoteUpdatedAt(null);
+        setQuoteError(cause instanceof Error ? cause.message : String(cause));
+      }
+    }
+
+    void refreshQuote();
+    const timer = window.setInterval(() => void refreshQuote(), QUOTE_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [amount, currency]);
 
   const intent = useMemo<PaymentIntent>(
     () => ({
       from: sender.account,
-      to: recipient.account,
+      to: recipientWallet.trim(),
       senderName: sender.owner,
       senderCountry: sender.country,
-      receiverName: recipient.label,
-      receiverCountry: recipient.country,
-      receiverEntityType: recipient.entityType,
+      receiverName: recipientName.trim(),
+      receiverCountry: recipientCountry.trim().toUpperCase(),
+      receiverEntityType: recipientEntityType,
       purpose,
       amount,
       currency,
       reference: reference.trim(),
     }),
-    [amount, currency, purpose, recipient.account, recipient.country, recipient.entityType, recipient.label, reference, sender.account, sender.country, sender.owner],
+    [amount, currency, purpose, recipientCountry, recipientEntityType, recipientName, recipientWallet, reference, sender.account, sender.country, sender.owner],
   );
 
   async function sendPayment() {
@@ -131,7 +201,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
           <span className="eyebrow">Send payment</span>
           <h1>Move funds</h1>
         </div>
-        <span className="policy-pill">Code-enforced policy</span>
+        <span className="policy-pill">Live XRPL quote</span>
       </div>
 
       <div className="account-row">
@@ -146,7 +216,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
           </select>
         </label>
         <label>
-          <span>To</span>
+          <span>Saved recipient</span>
           <select value={recipientIndex} onChange={(event) => setRecipientIndex(Number(event.target.value))} disabled={disabled}>
             {RECIPIENTS.map((option, index) => (
               <option key={option.account} value={index}>
@@ -163,7 +233,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
           {money(amount, currency)}
         </div>
         <div className="currency-switch" aria-label="Currency">
-          {["USD", "EUR"].map((option) => (
+          {CURRENCIES.map((option) => (
             <button
               key={option}
               type="button"
@@ -171,11 +241,39 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
               onClick={() => setCurrency(option)}
               disabled={disabled}
             >
-              {option}
+              {option === "XRP" ? "Ripple" : option}
             </button>
           ))}
         </div>
       </div>
+
+      <section className="recipient-panel" aria-label="Recipient details">
+        <div className="section-heading">
+          <span className="eyebrow">Receive method</span>
+          <strong>Wallet destination</strong>
+        </div>
+        <label>
+          <span>Recipient name</span>
+          <input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} disabled={disabled} />
+        </label>
+        <label>
+          <span>Wallet address</span>
+          <input value={recipientWallet} onChange={(event) => setRecipientWallet(event.target.value)} disabled={disabled} spellCheck={false} />
+        </label>
+        <div className="recipient-meta">
+          <label>
+            <span>Country</span>
+            <input value={recipientCountry} onChange={(event) => setRecipientCountry(event.target.value)} disabled={disabled} maxLength={2} />
+          </label>
+          <label>
+            <span>Type</span>
+            <select value={recipientEntityType} onChange={(event) => setRecipientEntityType(event.target.value as "company" | "individual")} disabled={disabled}>
+              <option value="company">Company</option>
+              <option value="individual">Individual</option>
+            </select>
+          </label>
+        </div>
+      </section>
 
       <label className="reference-field">
         <span>Reference</span>
@@ -191,6 +289,32 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
           <option value="payroll">Payroll</option>
         </select>
       </label>
+
+      <section className="transaction-summary" aria-label="Transaction summary">
+        <div className="section-heading">
+          <span className="eyebrow">Transaction summary</span>
+          <strong>{quoteAge(quoteUpdatedAt)}</strong>
+        </div>
+        <div className="summary-list">
+          <div>
+            <span>Exchange rate</span>
+            <strong>{formatRate(routeQuote, currency)}</strong>
+          </div>
+          <div>
+            <span>Estimated network fee</span>
+            <strong>{money(networkFee, "USD")}</strong>
+          </div>
+          <div>
+            <span>Recipient gets after routing</span>
+            <strong>{money(receiveAmount, "USD")}</strong>
+          </div>
+          <div>
+            <span>Wallet</span>
+            <strong>{recipientWallet ? recipientWallet.slice(0, 18) : "Missing"}...</strong>
+          </div>
+        </div>
+        {quoteError && <p className="quote-error">Live rate unavailable. The payment will retry the quote on submit.</p>}
+      </section>
 
       <button className="primary-action" type="button" disabled={!canReview} onClick={() => setStep("review")}>
         Review
@@ -230,29 +354,27 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
                 <div className="confirmation-row">
                   <span>Recipient</span>
                   <div>
-                    <strong>{recipient.label.toUpperCase()}</strong>
-                    <p>
-                      {recipient.country} - {recipient.entityType} - {recipient.account.slice(0, 14)}...
-                    </p>
+                    <strong>{recipientName.toUpperCase()}</strong>
+                    <p>{recipientSummary}</p>
                   </div>
                 </div>
 
                 <div className="fee-card">
                   <div>
-                    <span>Sender's fee</span>
-                    <strong>{money(Math.max(amount * 0.001, 1.21), currency)}</strong>
-                  </div>
-                  <div>
-                    <span>Recipient's fee</span>
-                    <strong>{money(0, currency)}</strong>
-                  </div>
-                  <div>
-                    <span>Recipient will get</span>
+                    <span>You pay</span>
                     <strong>{money(amount, currency)}</strong>
                   </div>
+                  <div>
+                    <span>Exchange rate</span>
+                    <strong>{formatRate(routeQuote, currency)}</strong>
+                  </div>
+                  <div>
+                    <span>Routing fee</span>
+                    <strong>{money(networkFee, "USD")}</strong>
+                  </div>
                   <div className="total-row">
-                    <span>Total to pay</span>
-                    <strong>{money(amount + Math.max(amount * 0.001, 1.21), currency)}</strong>
+                    <span>Recipient receives estimate</span>
+                    <strong>{money(receiveAmount, "USD")}</strong>
                   </div>
                 </div>
               </section>
@@ -295,7 +417,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
           <div className="outcome-mark">OK</div>
           <h2>Sent successfully</h2>
           <p>
-            You sent {money(lastPayment.intent.amount, lastPayment.intent.currency)} to {recipient.label}.
+            You sent {money(lastPayment.intent.amount, lastPayment.intent.currency)} to {lastPayment.intent.receiverName}.
           </p>
           <button className="primary-action" type="button" onClick={resetFlow}>
             Done

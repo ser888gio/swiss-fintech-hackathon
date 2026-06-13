@@ -2,7 +2,9 @@ import type {
   AgentLogEntry,
   Payment,
   PaymentIntent,
+  QuoteRequest,
   Receipt,
+  RouteQuote,
 } from "@treasury/shared";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
@@ -40,6 +42,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   createPayment: (intent: PaymentIntent) =>
     request<Payment>("/payments", { method: "POST", body: JSON.stringify(intent) }),
+  quotePayment: (quote: QuoteRequest) =>
+    request<RouteQuote>("/payments/quote", { method: "POST", body: JSON.stringify(quote) }),
   listPayments: () => request<Payment[]>("/payments"),
   getLogs: (id: string) => request<AgentLogEntry[]>(`/payments/${id}/logs`),
   release: (id: string, signature: string) =>

@@ -555,6 +555,54 @@ input:focus {
   margin: 2px 0 14px;
 }
 
+.recipient-panel,
+.transaction-summary {
+  width: min(100%, 600px);
+  margin: 2px 0 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: rgba(1, 0, 0, 0.3);
+  backdrop-filter: blur(8px);
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.section-heading strong {
+  color: var(--paper);
+  font-size: 0.86rem;
+  font-weight: 760;
+  text-align: right;
+}
+
+.recipient-panel label + label,
+.recipient-meta {
+  margin-top: 12px;
+}
+
+.recipient-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 0.42fr) minmax(0, 0.58fr);
+  gap: 12px;
+}
+
+.transaction-summary .summary-list {
+  margin: 0;
+}
+
+.quote-error {
+  margin: 12px 0 0;
+  color: var(--orange);
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+
 .primary-action,
 .secondary-action {
   width: min(100%, 600px);
@@ -1070,14 +1118,16 @@ a {
   .send-topbar,
   .account-row,
   .amount-stage,
+  .recipient-panel,
   .reference-field,
+  .transaction-summary,
   .primary-action {
     grid-column: 1;
   }
 
   .numpad {
     grid-column: 2;
-    grid-row: 2 / span 4;
+    grid-row: 2 / span 6;
     align-self: end;
     width: 100%;
     padding: 14px;
@@ -1158,6 +1208,10 @@ a {
   .account-row {
     grid-template-columns: 1fr;
     margin-top: 28px;
+  }
+
+  .recipient-meta {
+    grid-template-columns: 1fr;
   }
 
   .policy-pill {

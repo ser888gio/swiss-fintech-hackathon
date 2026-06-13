@@ -23,6 +23,11 @@ export interface PaymentIntent {
   reference: string;
 }
 
+export interface QuoteRequest {
+  amount: number;
+  currency: string;
+}
+
 export interface RouteQuote {
   sourceAmount: number;
   destAmount: number;
