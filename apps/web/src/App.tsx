@@ -3,10 +3,17 @@ import type { Payment, PaymentIntent } from "@treasury/shared";
 
 import { api } from "./lib/api.js";
 import { signOnFirefly } from "./lib/firefly.js";
-import { NewPaymentForm } from "./components/NewPaymentForm.js";
-import { PaymentCard } from "./components/PaymentCard.js";
+import { DashboardPage } from "./pages/DashboardPage.js";
+import { TransferPage } from "./pages/TransferPage.js";
+
+type Route = "/" | "/transfer";
+
+function currentRoute(): Route {
+  return window.location.pathname === "/transfer" ? "/transfer" : "/";
+}
 
 export function App() {
+  const [route, setRoute] = useState<Route>(currentRoute);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [busy, setBusy] = useState(false);
   const [approvingId, setApprovingId] = useState<string | null>(null);
@@ -25,6 +32,20 @@ export function App() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const onPopState = () => setRoute(currentRoute());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const navigate = useCallback((path: string) => {
+    const nextRoute: Route = path === "/transfer" ? "/transfer" : "/";
+    if (window.location.pathname !== nextRoute) {
+      window.history.pushState({}, "", nextRoute);
+    }
+    setRoute(nextRoute);
+  }, []);
 
   const submit = useCallback(
     async (intent: PaymentIntent) => {
@@ -88,10 +109,36 @@ export function App() {
 
   return (
     <main>
+      <nav className="app-nav" aria-label="Primary">
+        <button className="brand-mark" type="button" onClick={() => navigate("/")}>
+          Treasury Agent
+        </button>
+        <div>
+          <button className={route === "/" ? "active" : ""} type="button" onClick={() => navigate("/")}>
+            Dashboard
+          </button>
+          <button className={route === "/transfer" ? "active" : ""} type="button" onClick={() => navigate("/transfer")}>
+            Transfer
+          </button>
+        </div>
+      </nav>
       <p className="tagline">Autonomous treasury on XRPL. The AI explains; deterministic code decides.</p>
       {error && <p className="error">{error}</p>}
 
-      <NewPaymentForm onSubmit={submit} disabled={busy} />
+      {route === "/" ? (
+        <DashboardPage payments={payments} approvingId={approvingId} onApprove={approve} onNavigate={navigate} />
+      ) : (
+        <TransferPage
+          payments={payments}
+          busy={busy}
+          approvingId={approvingId}
+          tamperedId={tamperedId}
+          tamperError={tamperError}
+          onSubmit={submit}
+          onApprove={approve}
+          onTamperRetry={tamperAndRetry}
+        />
+      )}
 
       {approvingId && (
         <div className="firefly-overlay" role="status" aria-live="polite">
@@ -104,22 +151,6 @@ export function App() {
           </div>
         </div>
       )}
-
-      <section className="queue">
-        <h2>Payments</h2>
-        {payments.length === 0 && <p className="muted">No payments yet.</p>}
-        {payments.map((payment) => (
-          <PaymentCard
-            key={payment.id}
-            payment={payment}
-            onApprove={approve}
-            approving={approvingId === payment.id}
-            onTamperRetry={tamperAndRetry}
-            tampering={tamperedId === payment.id}
-            tamperError={tamperError[payment.id]}
-          />
-        ))}
-      </section>
     </main>
   );
 }
