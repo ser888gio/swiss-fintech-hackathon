@@ -11,7 +11,7 @@ COPY packages/shared packages/shared
 COPY apps/web apps/web
 # Vite inlines env vars at build time. Railway passes service variables as build
 # args, so declare the ones the web build needs and promote them to ENV before
-# `npm run build` — otherwise api.ts falls back to http://localhost:8000.
+# `npm run build`. api.ts still has safe local/Railway defaults if this is unset.
 ARG VITE_API_BASE_URL
 ARG VITE_BRIDGE_BASE_URL
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL

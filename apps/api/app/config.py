@@ -36,6 +36,17 @@ class Settings(BaseSettings):
     # in production — it exists solely to prove signature binding on stage.
     demo_mode: bool = False
 
+    # Comma-separated browser origins allowed to call the API.
+    cors_origins: str = (
+        "http://localhost:5173,"
+        "http://localhost:4173,"
+        "https://web-production-cba3.up.railway.app"
+    )
+
+    # Railway preview/prod service hosts. Keep explicit origins above for the
+    # main demo URL; this catches regenerated Railway domains during rehearsals.
+    cors_origin_regex: str = r"https://.*\.up\.railway\.app"
+
 
 @lru_cache
 def get_settings() -> Settings:

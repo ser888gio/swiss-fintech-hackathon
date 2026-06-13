@@ -5,7 +5,25 @@ import type {
   Receipt,
 } from "@treasury/shared";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const DEFAULT_API_BASE_URL = "http://localhost:8000";
+const RAILWAY_API_BASE_URL = "https://api-production-c47fd.up.railway.app";
+
+function getApiBaseUrl(): string {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+
+  if (
+    typeof window !== "undefined" &&
+    window.location.hostname === "web-production-cba3.up.railway.app"
+  ) {
+    return RAILWAY_API_BASE_URL;
+  }
+
+  return DEFAULT_API_BASE_URL;
+}
+
+const BASE_URL = getApiBaseUrl();
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
