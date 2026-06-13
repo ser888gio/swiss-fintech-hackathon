@@ -12,6 +12,12 @@ export type PaymentStatus =
 export interface PaymentIntent {
   from: string;
   to: string;
+  senderName: string;
+  senderCountry: string;
+  receiverName: string;
+  receiverCountry: string;
+  receiverEntityType: "company" | "individual";
+  purpose: string;
   amount: number;
   currency: string;
   reference: string;

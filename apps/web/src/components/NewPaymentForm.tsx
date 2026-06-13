@@ -9,14 +9,14 @@ interface Props {
 const TREASURY = "rTREASURY00000000000000000000000000";
 
 const SENDERS = [
-  { label: "Main Treasury", owner: "John Doe", account: TREASURY, balance: 184250 },
-  { label: "Operating USD", owner: "Acme AG", account: "rOPERATING000000000000000000000000", balance: 52800 },
+  { label: "Main Treasury", owner: "John Doe", country: "CH", account: TREASURY, balance: 184250 },
+  { label: "Operating USD", owner: "Acme AG", country: "CH", account: "rOPERATING000000000000000000000000", balance: 52800 },
 ];
 
 const RECIPIENTS = [
-  { label: "Vendor Alpha", account: "rVENDOR0000000000000000000000000000" },
-  { label: "Supplier Zurich", account: "rSUPPLIER000000000000000000000000000" },
-  { label: "Custom recipient", account: "rCUSTOM0000000000000000000000000000" },
+  { label: "Vendor Alpha", country: "US", entityType: "company" as const, account: "rVENDOR0000000000000000000000000000" },
+  { label: "Supplier Zurich", country: "CH", entityType: "company" as const, account: "rSUPPLIER000000000000000000000000000" },
+  { label: "Custom recipient", country: "GB", entityType: "company" as const, account: "rCUSTOM0000000000000000000000000000" },
 ];
 
 const NUMPAD = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "backspace"];
@@ -54,6 +54,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
   const [recipientIndex, setRecipientIndex] = useState(0);
   const [amountInput, setAmountInput] = useState("0");
   const [currency, setCurrency] = useState("USD");
+  const [purpose, setPurpose] = useState("supplier_payment");
   const [reference, setReference] = useState("Invoice #1042");
   const [lastPayment, setLastPayment] = useState<Payment | null>(null);
   const [failureReason, setFailureReason] = useState("");
@@ -67,11 +68,17 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
     () => ({
       from: sender.account,
       to: recipient.account,
+      senderName: sender.owner,
+      senderCountry: sender.country,
+      receiverName: recipient.label,
+      receiverCountry: recipient.country,
+      receiverEntityType: recipient.entityType,
+      purpose,
       amount,
       currency,
       reference: reference.trim(),
     }),
-    [amount, currency, recipient.account, reference, sender.account],
+    [amount, currency, purpose, recipient.account, recipient.country, recipient.entityType, recipient.label, reference, sender.account, sender.country, sender.owner],
   );
 
   async function sendPayment() {
@@ -175,6 +182,16 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
         <input value={reference} onChange={(event) => setReference(event.target.value)} disabled={disabled} />
       </label>
 
+      <label className="reference-field">
+        <span>Purpose</span>
+        <select value={purpose} onChange={(event) => setPurpose(event.target.value)} disabled={disabled}>
+          <option value="supplier_payment">Supplier payment</option>
+          <option value="vendor_invoice">Vendor invoice</option>
+          <option value="treasury_transfer">Treasury transfer</option>
+          <option value="payroll">Payroll</option>
+        </select>
+      </label>
+
       <button className="primary-action" type="button" disabled={!canReview} onClick={() => setStep("review")}>
         Review
       </button>
@@ -199,11 +216,19 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
               </div>
               <div>
                 <span>From</span>
-                <strong>{sender.label}</strong>
+                <strong>
+                  {sender.owner}, {sender.country}
+                </strong>
               </div>
               <div>
                 <span>To</span>
-                <strong>{recipient.label}</strong>
+                <strong>
+                  {recipient.label}, {recipient.country}
+                </strong>
+              </div>
+              <div>
+                <span>Purpose</span>
+                <strong>{purpose.replaceAll("_", " ")}</strong>
               </div>
               <div>
                 <span>Estimated fee</span>

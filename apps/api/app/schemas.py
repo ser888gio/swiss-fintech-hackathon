@@ -22,9 +22,20 @@ class PaymentStatus(str, Enum):
     failed = "failed"
 
 
+class ReceiverEntityType(str, Enum):
+    company = "company"
+    individual = "individual"
+
+
 class PaymentIntent(CamelModel):
     from_account: str = Field(alias="from")
     to: str
+    sender_name: str
+    sender_country: str
+    receiver_name: str
+    receiver_country: str
+    receiver_entity_type: ReceiverEntityType
+    purpose: str
     amount: float
     currency: str
     reference: str

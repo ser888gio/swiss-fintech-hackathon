@@ -45,6 +45,12 @@ def _canonical_json(payment: Payment) -> str:
         "intent": {
             "from": payment.intent.from_account,
             "to": payment.intent.to,
+            "senderName": payment.intent.sender_name,
+            "senderCountry": payment.intent.sender_country,
+            "receiverName": payment.intent.receiver_name,
+            "receiverCountry": payment.intent.receiver_country,
+            "receiverEntityType": payment.intent.receiver_entity_type.value,
+            "purpose": payment.intent.purpose,
             "amount": f"{payment.intent.amount:.2f}",
             "currency": payment.intent.currency,
             "reference": payment.intent.reference,

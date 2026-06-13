@@ -11,17 +11,25 @@ from ..schemas import ComplianceResult, PaymentIntent
 
 # Demo sanctions list. Replace with a real screening provider for production.
 SANCTIONED_ACCOUNTS = {"rSANCTIONED000000000000000000000000", "ACME-SHELL-CO"}
+SANCTIONED_NAMES = {"acme shell co", "blocked industries ltd"}
+HIGH_RISK_COUNTRIES = {"IR", "KP", "RU", "SY"}
 HIGH_RISK_KEYWORDS = ("crypto-mixer", "shell", "unverified")
 
 
 def check_compliance(intent: PaymentIntent) -> ComplianceResult:
     flags: list[str] = []
 
-    sanctioned = intent.to in SANCTIONED_ACCOUNTS
+    sanctioned = (
+        intent.to in SANCTIONED_ACCOUNTS
+        or intent.receiver_name.strip().lower() in SANCTIONED_NAMES
+    )
     if sanctioned:
         flags.append("counterparty on sanctions list")
 
-    reference = intent.reference.lower()
+    if intent.receiver_country.upper() in HIGH_RISK_COUNTRIES:
+        flags.append(f"receiver country is high risk ({intent.receiver_country.upper()})")
+
+    reference = f"{intent.reference} {intent.purpose}".lower()
     for keyword in HIGH_RISK_KEYWORDS:
         if keyword in reference:
             flags.append(f"reference mentions '{keyword}'")

@@ -36,7 +36,13 @@ async def process_payment(intent: PaymentIntent) -> Payment:
         updated_at=now,
     )
     store.save(payment)
-    _log(payment_id, f"Received {intent.amount} {intent.currency} to {intent.to}.")
+    _log(
+        payment_id,
+        (
+            f"Received {intent.amount} {intent.currency} from {intent.sender_name} "
+            f"({intent.sender_country}) to {intent.receiver_name} ({intent.receiver_country})."
+        ),
+    )
 
     route = await routing.get_fx_path(intent, settings.token_currency)
     payment.route_quote = route

@@ -56,7 +56,10 @@ export function PaymentCard({
         <span className="badge">{STATUS_LABEL[status]}</span>
       </header>
       <p className="muted">
-        {intent.reference} to {intent.to.slice(0, 10)}...
+        {intent.reference} to {intent.receiverName}, {intent.receiverCountry}
+      </p>
+      <p className="muted">
+        {intent.senderName}, {intent.senderCountry} to {intent.receiverEntityType} payout
       </p>
       {compliance && <p className="muted">{compliance.explanation}</p>}
       {policyDecision?.blocked && policyDecision.blockReason && (

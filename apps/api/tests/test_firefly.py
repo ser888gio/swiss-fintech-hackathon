@@ -56,6 +56,12 @@ def _fixture_payment() -> Payment:
         intent=PaymentIntent(**{
             "from": "rSender",
             "to": _FIXTURE_DEST,
+            "senderName": "Test Sender",
+            "senderCountry": "CH",
+            "receiverName": "Test Receiver",
+            "receiverCountry": "US",
+            "receiverEntityType": "company",
+            "purpose": "supplier_payment",
             "amount": _FIXTURE_AMOUNT,
             "currency": _FIXTURE_CURRENCY,
             "reference": "test",
