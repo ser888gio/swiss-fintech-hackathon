@@ -8,7 +8,11 @@ app = FastAPI(title="Treasury Agent API", version="0.1.0")
 # The dashboard (Vite dev server) and any local origin call this API directly.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:4173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:4173",
+        "https://web-production-cba3.up.railway.app",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
