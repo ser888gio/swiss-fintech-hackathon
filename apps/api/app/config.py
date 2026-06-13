@@ -24,6 +24,12 @@ class Settings(BaseSettings):
 
     frankfurter_base_url: str = "https://api.frankfurter.dev/v1"
 
+    opensanctions_api_key: str = ""
+    opensanctions_base_url: str = "https://api.opensanctions.org"
+    opensanctions_dataset: str = "sanctions"
+    opensanctions_match_threshold: float = 0.85
+    public_intel_enabled: bool = False
+
     # Hex secp256k1 public key the Firefly device signs with; release is refused
     # unless the approval signature verifies against this key.
     firefly_public_key: str = ""

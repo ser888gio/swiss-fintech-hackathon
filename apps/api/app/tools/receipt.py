@@ -90,7 +90,32 @@ def _compliance(payment: Payment) -> dict | None:
         "amlScore": c.aml_score,
         "explanation": c.explanation,
         "flags": c.flags,
+        "publicIntel": _public_intel(c),
         "sanctioned": c.sanctioned,
+        "sanctionsMatches": [
+            {
+                "caption": match.caption,
+                "datasets": match.datasets,
+                "id": match.id,
+                "schema": match.schema_,
+                "score": f"{match.score:.6f}",
+                "url": match.url,
+            }
+            for match in c.sanctions_matches
+        ],
+    }
+
+
+def _public_intel(compliance) -> dict | None:
+    if compliance.public_intel is None:
+        return None
+    intel = compliance.public_intel
+    return {
+        "confidence": intel.confidence,
+        "flags": intel.flags,
+        "score": intel.score,
+        "sources": intel.sources,
+        "summary": intel.summary,
     }
 
 

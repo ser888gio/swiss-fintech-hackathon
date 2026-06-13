@@ -36,11 +36,30 @@ export interface RouteQuote {
   estimatedFee: number;
 }
 
+export interface SanctionsMatch {
+  id: string;
+  caption: string;
+  schema: string;
+  score: number;
+  datasets: string[];
+  url: string | null;
+}
+
+export interface PublicIntelResult {
+  score: number; // 0-100; advisory risk signal, never a block by itself.
+  confidence: string;
+  flags: string[];
+  sources: string[];
+  summary: string;
+}
+
 export interface ComplianceResult {
   amlScore: number; // 0–100
   sanctioned: boolean;
   flags: string[];
   explanation: string;
+  sanctionsMatches: SanctionsMatch[];
+  publicIntel: PublicIntelResult | null;
 }
 
 export interface PolicyDecision {

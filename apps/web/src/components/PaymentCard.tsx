@@ -46,6 +46,8 @@ export function PaymentCard({
 }: Props) {
   const { intent, compliance, policyDecision, status, explorerUrl } = payment;
   const isTerminal = TERMINAL.has(status);
+  const topSanctionsMatch = compliance?.sanctionsMatches[0];
+  const publicIntel = compliance?.publicIntel;
 
   return (
     <article className={`payment status-${status}`}>
@@ -62,6 +64,16 @@ export function PaymentCard({
         {intent.senderName}, {intent.senderCountry} to {intent.receiverEntityType} payout
       </p>
       {compliance && <p className="muted">{compliance.explanation}</p>}
+      {topSanctionsMatch && (
+        <p className="muted">
+          OpenSanctions: {topSanctionsMatch.caption} ({Math.round(topSanctionsMatch.score * 100)}% match)
+        </p>
+      )}
+      {publicIntel && (
+        <p className="muted">
+          Public intelligence: {publicIntel.score}/100 - {publicIntel.summary}
+        </p>
+      )}
       {policyDecision?.blocked && policyDecision.blockReason && (
         <p className="block-reason">Refused: {policyDecision.blockReason}</p>
       )}

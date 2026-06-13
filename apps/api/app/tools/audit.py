@@ -32,6 +32,7 @@ async def write_audit(
     facts = (
         f"Route: {route.path_summary}, settling {route.dest_amount}. "
         f"Compliance: {compliance.explanation}. "
+        f"Sanctions matches: {len(compliance.sanctions_matches)}. "
         f"Policy: requires_approval={decision.requires_approval}, "
         f"rule_fired={decision.rule_fired}."
     )

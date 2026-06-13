@@ -54,11 +54,30 @@ class RouteQuote(CamelModel):
     estimated_fee: float
 
 
+class SanctionsMatch(CamelModel):
+    id: str
+    caption: str
+    schema_: str = Field(alias="schema")
+    score: float
+    datasets: list[str]
+    url: str | None = None
+
+
+class PublicIntelResult(CamelModel):
+    score: int
+    confidence: str
+    flags: list[str]
+    sources: list[str]
+    summary: str
+
+
 class ComplianceResult(CamelModel):
     aml_score: int  # 0–100
     sanctioned: bool
     flags: list[str]
     explanation: str
+    sanctions_matches: list[SanctionsMatch] = Field(default_factory=list)
+    public_intel: PublicIntelResult | None = None
 
 
 class PolicyDecision(CamelModel):

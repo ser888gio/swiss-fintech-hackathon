@@ -36,6 +36,7 @@ payment intent
 | **Treasury Orchestrator** | LLM loop | `app/agents/orchestrator.py` | Receives a payment intent, calls tools in order, narrates decisions. Holds **no** policy logic. |
 | **Routing tool** `get_fx_path` | Deterministic | `app/tools/routing.py` | Frankfurter FX quote + XRPL `ripple_path_find`; returns the cheapest path summary. |
 | **Compliance tool** `check_compliance` | Deterministic (mock OK) | `app/tools/compliance.py` | Sanctions/KYC screen + AML score 0–100 + plain-language reason. |
+| **Public intelligence tool** `assess_public_intel` | Deterministic facade, agent-ready | `app/tools/public_intel.py` | Returns an advisory OSINT risk result. Future AI agents may gather evidence, but code computes the score and policy effect. |
 | **Policy engine** | **Deterministic — code-enforced** | `app/policy/engine.py` | Threshold + risk-score decision: auto-settle vs. escalate. **Never the LLM's call.** |
 | **Execution tool** | Deterministic | `app/tools/execution.py` | Direct token Payment, or escrow/lock for large payments. |
 | **Firefly approval tool** | Deterministic | `app/tools/firefly.py` | Builds the approval challenge, verifies the Firefly signature, then triggers release. |
@@ -65,7 +66,10 @@ in `app/schemas.py` and mirror `packages/shared/src/types.ts`.
 - `get_fx_path(intent) -> RouteQuote` — `{ source_amount, dest_amount, rate,
   path_summary, estimated_fee }`.
 - `check_compliance(intent) -> ComplianceResult` — `{ aml_score, sanctioned:
-  bool, flags: string[], explanation }`.
+  bool, flags: string[], explanation, sanctions_matches[], public_intel }`.
+- `assess_public_intel(intent) -> PublicIntelResult` — `{ score,
+  confidence, flags[], sources[], summary }`. Advisory only; it can raise AML
+  risk but cannot block or approve a payment by itself.
 - `evaluate_policy(amount_usd, aml_score) -> PolicyDecision` — `{
   requires_approval, rule_fired, reasons[] }`. **Pure function, no I/O.**
 - `execute_payment(intent, route) -> ExecutionResult` — direct payment;
