@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     policy_threshold_usd: float = 10_000.0
     policy_compliance_flag_score: int = 60
 
-    frankfurter_base_url: str = "https://api.frankfurter.app"
+    frankfurter_base_url: str = "https://api.frankfurter.dev/v1"
 
     # Hex secp256k1 public key the Firefly device signs with; release is refused
     # unless the approval signature verifies against this key.
