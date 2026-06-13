@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@noble/curves": "^1.4.0",
+    "@noble/hashes": "^1.4.0",
     "@treasury/shared": "*",
     "cors": "^2.8.5",
     "express": "^4.19.2"

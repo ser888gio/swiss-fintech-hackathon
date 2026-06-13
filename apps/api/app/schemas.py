@@ -5,7 +5,12 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
+
+
+class CamelModel(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class PaymentStatus(str, Enum):
@@ -13,20 +18,19 @@ class PaymentStatus(str, Enum):
     settled = "settled"
     pending_approval = "pending_approval"
     released = "released"
+    blocked = "blocked"
     failed = "failed"
 
 
-class PaymentIntent(BaseModel):
+class PaymentIntent(CamelModel):
     from_account: str = Field(alias="from")
     to: str
     amount: float
     currency: str
     reference: str
 
-    model_config = {"populate_by_name": True}
 
-
-class RouteQuote(BaseModel):
+class RouteQuote(CamelModel):
     source_amount: float
     dest_amount: float
     rate: float
@@ -34,20 +38,22 @@ class RouteQuote(BaseModel):
     estimated_fee: float
 
 
-class ComplianceResult(BaseModel):
+class ComplianceResult(CamelModel):
     aml_score: int  # 0–100
     sanctioned: bool
     flags: list[str]
     explanation: str
 
 
-class PolicyDecision(BaseModel):
+class PolicyDecision(CamelModel):
     requires_approval: bool
     rule_fired: str | None
     reasons: list[str]
+    blocked: bool = False
+    block_reason: str | None = None
 
 
-class ApprovalChallenge(BaseModel):
+class ApprovalChallenge(CamelModel):
     payment_id: str
     digest: str
 
@@ -56,19 +62,35 @@ class ReleaseRequest(BaseModel):
     signature: str  # hex secp256k1 signature from the Firefly
 
 
-class ExecutionResult(BaseModel):
+class ExecutionResult(CamelModel):
     tx_hash: str
     explorer_url: str
     status: PaymentStatus
 
 
-class AgentLogEntry(BaseModel):
+class AgentLogEntry(CamelModel):
     payment_id: str
     timestamp: datetime
     message: str
 
 
-class Payment(BaseModel):
+class Receipt(CamelModel):
+    payment_id: str
+    intent: PaymentIntent
+    route_quote: RouteQuote | None
+    compliance: ComplianceResult | None
+    policy_decision: PolicyDecision | None
+    status: PaymentStatus
+    escrow_sequence: int | None
+    approval_signature: str | None
+    tx_hash: str | None
+    explorer_url: str | None
+    audit_explanation: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class Payment(CamelModel):
     id: str
     intent: PaymentIntent
     route_quote: RouteQuote | None = None
@@ -80,5 +102,6 @@ class Payment(BaseModel):
     tx_hash: str | None = None
     explorer_url: str | None = None
     audit_explanation: str | None = None
+    receipt_hash: str | None = None
     created_at: datetime
     updated_at: datetime

@@ -26,10 +26,20 @@ the feasibility argument.
 
 - *"What stops the agent from draining the treasury?"* → Policy is deterministic
   code with unit tests; large payments are escrow-locked and need a verified
-  hardware signature. Show `apps/api/app/policy/engine.py`.
+  hardware signature; sanctioned payments are **blocked in code — hardware cannot
+  override them**. Show `apps/api/app/policy/engine.py`. Better yet: demo the
+  sanctions refusal live (beat 3).
 - *"Is the approval real or a button in the UI?"* → It is a secp256k1 signature
   from the Firefly, verified server-side against a pre-registered public key
-  before EscrowFinish. Show the verify step.
+  before EscrowFinish. The bridge displays the *actual* payment (WYSIWYS) — not a
+  server-supplied hash. And we prove the binding live: hit the Tamper button →
+  same signature, altered amount → 403 rejected (beat 6).
+- *"Can a rogue LLM approve its own payments?"* → No. The `release_payment`
+  function in the orchestrator is synchronous deterministic code; it requires a
+  valid secp256k1 signature from the registered Firefly public key. The LLM has
+  no access to the private key and cannot produce that signature.
 - *"Why XRPL?"* → Native escrow (XLS-85), fast cheap settlement, RLUSD,
   pathfinding for FX — the primitives the use case needs, on-ledger.
-- *"Path to mainnet?"* → The 30-second answer above.
+- *"Path to mainnet?"* → The 30-second answer above. Architecture is unchanged;
+  swap testnet→mainnet, mock compliance→Chainalysis/Elliptic, self-issued
+  IOU→real RLUSD, local Firefly bridge→HSM/custody signer.

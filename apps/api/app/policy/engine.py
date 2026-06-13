@@ -16,14 +16,25 @@ COMPLIANCE_FLAG_SCORE = 60
 def evaluate(
     amount_usd: float,
     aml_score: int,
+    sanctioned: bool = False,
     threshold_usd: float = THRESHOLD_USD,
     flag_score: int = COMPLIANCE_FLAG_SCORE,
 ) -> PolicyDecision:
     """Decide whether a payment needs a human hardware approval.
 
-    Pure function, no I/O. Approval is required if the amount exceeds the
-    working threshold or the AML score exceeds the compliance flag score.
+    Pure function, no I/O. Sanctioned counterparties are blocked outright —
+    no hardware approval can override this. Otherwise approval is required if
+    the amount exceeds the threshold or the AML score exceeds the flag score.
     """
+    if sanctioned:
+        return PolicyDecision(
+            requires_approval=False,
+            rule_fired="sanctions_block",
+            reasons=["counterparty on sanctions list"],
+            blocked=True,
+            block_reason="counterparty on sanctions list",
+        )
+
     reasons: list[str] = []
     if amount_usd > threshold_usd:
         reasons.append(f"amount ${amount_usd:,.0f} exceeds threshold ${threshold_usd:,.0f}")

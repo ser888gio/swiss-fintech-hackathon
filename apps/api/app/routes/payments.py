@@ -2,7 +2,9 @@ from fastapi import APIRouter, HTTPException
 
 from .. import store
 from ..agents import orchestrator
-from ..schemas import AgentLogEntry, ApprovalChallenge, Payment, PaymentIntent, ReleaseRequest
+from ..config import get_settings
+from ..schemas import AgentLogEntry, ApprovalChallenge, Payment, PaymentIntent, Receipt, ReleaseRequest
+from ..tools import receipt as receipt_tool
 
 router = APIRouter(prefix="/payments")
 
@@ -36,6 +38,8 @@ async def get_challenge(payment_id: str) -> ApprovalChallenge:
         return orchestrator.challenge_for(payment_id)
     except orchestrator.PaymentNotFound as exc:
         raise HTTPException(status_code=404, detail="payment not found") from exc
+    except orchestrator.InvalidApprovalState as exc:
+        raise HTTPException(status_code=409, detail="payment is not pending approval") from exc
 
 
 @router.post("/{payment_id}/release", response_model=Payment)
@@ -48,3 +52,33 @@ async def release_payment(payment_id: str, body: ReleaseRequest) -> Payment:
         raise HTTPException(status_code=409, detail="payment is not pending approval") from exc
     except orchestrator.SignatureRejected as exc:
         raise HTTPException(status_code=403, detail="Firefly signature rejected") from exc
+
+
+@router.post("/{payment_id}/release-tampered", status_code=403)
+async def release_tampered(payment_id: str, body: ReleaseRequest) -> dict:
+    """DEMO ONLY. Proves signature binding by verifying against a tampered copy.
+
+    Always returns 403 — the point is to show the signature doesn't verify
+    when payment details are altered. Requires DEMO_MODE=true.
+    """
+    if not get_settings().demo_mode:
+        raise HTTPException(status_code=404, detail="not found")
+    try:
+        await orchestrator.release_tampered(payment_id, body.signature)
+    except orchestrator.PaymentNotFound as exc:
+        raise HTTPException(status_code=404, detail="payment not found") from exc
+    except orchestrator.SignatureRejected:
+        raise HTTPException(status_code=403, detail="Firefly signature rejected — payment details were altered")
+    # Should never reach here; release_tampered always raises SignatureRejected.
+    raise HTTPException(status_code=403, detail="Firefly signature rejected")
+
+
+@router.get("/{payment_id}/receipt")
+async def get_receipt(payment_id: str) -> dict:
+    payment = store.get(payment_id)
+    if payment is None:
+        raise HTTPException(status_code=404, detail="payment not found")
+    if payment.status not in orchestrator.TERMINAL_STATUSES:
+        raise HTTPException(status_code=409, detail="receipt only available for terminal payments")
+    r = receipt_tool.build_receipt(payment)
+    return {"receipt": r.model_dump(by_alias=True), "receiptHash": payment.receipt_hash}

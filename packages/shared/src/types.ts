@@ -6,6 +6,7 @@ export type PaymentStatus =
   | "settled"
   | "pending_approval"
   | "released"
+  | "blocked"
   | "failed";
 
 export interface PaymentIntent {
@@ -35,6 +36,8 @@ export interface PolicyDecision {
   requiresApproval: boolean;
   ruleFired: string | null;
   reasons: string[];
+  blocked: boolean;
+  blockReason: string | null;
 }
 
 export interface ApprovalChallenge {
@@ -42,8 +45,8 @@ export interface ApprovalChallenge {
   digest: string; // hex digest the Firefly signs
 }
 
-export interface Payment {
-  id: string;
+export interface Receipt {
+  paymentId: string;
   intent: PaymentIntent;
   routeQuote: RouteQuote | null;
   compliance: ComplianceResult | null;
@@ -58,6 +61,23 @@ export interface Payment {
   updatedAt: string;
 }
 
+export interface Payment {
+  id: string;
+  intent: PaymentIntent;
+  routeQuote: RouteQuote | null;
+  compliance: ComplianceResult | null;
+  policyDecision: PolicyDecision | null;
+  status: PaymentStatus;
+  escrowSequence: number | null;
+  approvalSignature: string | null;
+  txHash: string | null;
+  explorerUrl: string | null;
+  auditExplanation: string | null;
+  receiptHash: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AgentLogEntry {
   paymentId: string;
   timestamp: string;
@@ -65,9 +85,13 @@ export interface AgentLogEntry {
 }
 
 // Firefly bridge contract (browser <-> localhost bridge).
+// The bridge derives the digest locally from these fields — WYSIWYS.
 export interface BridgeSignRequest {
   paymentId: string;
-  digest: string;
+  amount: number;
+  currency: string;
+  dest: string;
+  reference: string;
 }
 
 export interface BridgeSignResponse {

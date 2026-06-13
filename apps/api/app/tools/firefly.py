@@ -18,12 +18,27 @@ from ..config import get_settings
 from ..schemas import ApprovalChallenge
 
 
-def build_approval_challenge(payment_id: str, amount: float, dest: str) -> ApprovalChallenge:
-    """Derive the digest the device signs. Binding payment id + amount + dest
+def canonical_payload(payment_id: str, amount: float, currency: str, dest: str) -> str:
+    """Canonical string the device signs. Format is pinned: amount always 2dp.
+
+    The TS bridge replicates this exactly:
+        `${paymentId}|${amount.toFixed(2)}|${currency}|${dest}`
+    Any change here MUST be mirrored in apps/firefly-bridge/src/device.ts.
+    """
+    return f"{payment_id}|{amount:.2f}|{currency}|{dest}"
+
+
+def challenge_digest(payment_id: str, amount: float, currency: str, dest: str) -> str:
+    """sha256 of the canonical payload, hex-encoded."""
+    return hashlib.sha256(canonical_payload(payment_id, amount, currency, dest).encode()).hexdigest()
+
+
+def build_approval_challenge(
+    payment_id: str, amount: float, currency: str, dest: str
+) -> ApprovalChallenge:
+    """Derive the digest the device signs. Binding payment id + amount + currency + dest
     means a captured signature cannot be replayed against a different payment."""
-    payload = f"{payment_id}|{amount}|{dest}".encode()
-    digest = hashlib.sha256(payload).hexdigest()
-    return ApprovalChallenge(payment_id=payment_id, digest=digest)
+    return ApprovalChallenge(payment_id=payment_id, digest=challenge_digest(payment_id, amount, currency, dest))
 
 
 def verify_signature(digest_hex: str, signature_hex: str) -> bool:

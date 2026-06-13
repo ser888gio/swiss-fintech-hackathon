@@ -10,6 +10,8 @@ export function App() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [busy, setBusy] = useState(false);
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [tamperedId, setTamperedId] = useState<string | null>(null);
+  const [tamperError, setTamperError] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -45,8 +47,15 @@ export function App() {
       setApprovingId(payment.id);
       setError(null);
       try {
-        const challenge = await api.getChallenge(payment.id);
-        const signed = await signOnFirefly({ paymentId: payment.id, digest: challenge.digest });
+        // WYSIWYS: send the actual payment fields to the bridge so it can
+        // display and sign them — not a server-derived hash.
+        const signed = await signOnFirefly({
+          paymentId: payment.id,
+          amount: payment.intent.amount,
+          currency: payment.intent.currency,
+          dest: payment.intent.to,
+          reference: payment.intent.reference,
+        });
         await api.release(payment.id, signed.signature);
         await refresh();
       } catch (cause) {
@@ -56,6 +65,26 @@ export function App() {
       }
     },
     [refresh],
+  );
+
+  const tamperAndRetry = useCallback(
+    async (payment: Payment) => {
+      if (!payment.approvalSignature) return;
+      setTamperedId(payment.id);
+      setTamperError((prev) => ({ ...prev, [payment.id]: "" }));
+      try {
+        await api.releaseTampered(payment.id, payment.approvalSignature);
+      } catch (cause) {
+        const msg = cause instanceof Error ? cause.message : String(cause);
+        setTamperError((prev) => ({
+          ...prev,
+          [payment.id]: msg.includes("403") ? "SIGNATURE REJECTED — payment details were altered" : msg,
+        }));
+      } finally {
+        setTamperedId(null);
+      }
+    },
+    [],
   );
 
   return (
@@ -75,6 +104,9 @@ export function App() {
             payment={payment}
             onApprove={approve}
             approving={approvingId === payment.id}
+            onTamperRetry={tamperAndRetry}
+            tampering={tamperedId === payment.id}
+            tamperError={tamperError[payment.id]}
           />
         ))}
       </section>

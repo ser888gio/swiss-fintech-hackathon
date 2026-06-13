@@ -25,19 +25,28 @@ app.get("/health", (_req, res) => {
 
 app.post("/sign", async (req, res) => {
   const body = req.body as BridgeSignRequest;
-  if (!body?.digest || !body?.paymentId) {
-    res.status(400).json({ error: "paymentId and digest are required" });
+  if (!body?.paymentId || !body?.amount || !body?.currency || !body?.dest) {
+    res.status(400).json({ error: "paymentId, amount, currency, and dest are required" });
     return;
   }
-  console.log(`[firefly] approval request for payment ${body.paymentId} — awaiting button press`);
+  // Print what the device is being asked to approve — stand-in for the hardware screen.
+  console.log(
+    `[firefly] ┌─ APPROVE REQUEST ─────────────────────────────────┐`,
+  );
+  console.log(`[firefly] │  Amount:    ${body.amount.toFixed(2)} ${body.currency}`);
+  console.log(`[firefly] │  To:        ${body.dest}`);
+  console.log(`[firefly] │  Reference: ${body.reference ?? "(none)"}`);
+  console.log(`[firefly] │  Payment:   ${body.paymentId}`);
+  console.log(`[firefly] └───────────────────────────────────────────────────┘`);
+  console.log(`[firefly] Awaiting button press…`);
   try {
-    const signed = await device.sign(body.digest);
+    const signed = await device.sign(body);
     const response: BridgeSignResponse = {
       paymentId: body.paymentId,
       signature: signed.signature,
       publicKey: signed.publicKey,
     };
-    console.log(`[firefly] payment ${body.paymentId} signed`);
+    console.log(`[firefly] ✓ Signed payment ${body.paymentId}`);
     res.json(response);
   } catch (cause) {
     console.error(`[firefly] signing failed: ${String(cause)}`);

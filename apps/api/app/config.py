@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # the full flow runs offline (demo fallback / local dev without a wallet).
     use_mock_xrpl: bool = True
 
+    # When true, the deliberate-tamper demo endpoint is available. Never enable
+    # in production — it exists solely to prove signature binding on stage.
+    demo_mode: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

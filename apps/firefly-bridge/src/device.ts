@@ -1,4 +1,6 @@
+import { sha256 } from "@noble/hashes/sha256";
 import { secp256k1 } from "@noble/curves/secp256k1";
+import type { BridgeSignRequest } from "@treasury/shared";
 
 // Signature/public-key byte formats are chosen to match the API's verifier
 // (eth_keys in apps/api/app/tools/firefly.py):
@@ -10,9 +12,21 @@ export interface SignedApproval {
 }
 
 export interface FireflyDevice {
-  /** Show the request on the device and sign once the button is pressed. */
-  sign(digestHex: string): Promise<SignedApproval>;
+  /** Display the payment and sign once the button is pressed. */
+  sign(req: BridgeSignRequest): Promise<SignedApproval>;
   publicKeyHex(): string;
+}
+
+/**
+ * Canonical payload format — MUST stay identical to Python firefly.py:
+ *   f"{payment_id}|{amount:.2f}|{currency}|{dest}"
+ *
+ * Any change here must be mirrored in apps/api/app/tools/firefly.py.
+ */
+export function deriveDigest(req: BridgeSignRequest): string {
+  const canonical = `${req.paymentId}|${req.amount.toFixed(2)}|${req.currency}|${req.dest}`;
+  const hash = sha256(new TextEncoder().encode(canonical));
+  return Buffer.from(hash).toString("hex");
 }
 
 function strip0x(value: string): string {
@@ -41,8 +55,9 @@ export class MockFireflyDevice implements FireflyDevice {
     return uncompressedNoPrefix(this.privateKey);
   }
 
-  async sign(digestHex: string): Promise<SignedApproval> {
-    const digest = Buffer.from(strip0x(digestHex), "hex");
+  async sign(req: BridgeSignRequest): Promise<SignedApproval> {
+    const digestHex = deriveDigest(req);
+    const digest = Buffer.from(digestHex, "hex");
     const sig = secp256k1.sign(digest, this.privateKey);
     const signature = Buffer.concat([
       sig.toCompactRawBytes(),

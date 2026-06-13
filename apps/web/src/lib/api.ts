@@ -1,8 +1,8 @@
 import type {
   AgentLogEntry,
-  ApprovalChallenge,
   Payment,
   PaymentIntent,
+  Receipt,
 } from "@treasury/shared";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -24,10 +24,16 @@ export const api = {
     request<Payment>("/payments", { method: "POST", body: JSON.stringify(intent) }),
   listPayments: () => request<Payment[]>("/payments"),
   getLogs: (id: string) => request<AgentLogEntry[]>(`/payments/${id}/logs`),
-  getChallenge: (id: string) => request<ApprovalChallenge>(`/payments/${id}/challenge`),
   release: (id: string, signature: string) =>
     request<Payment>(`/payments/${id}/release`, {
       method: "POST",
       body: JSON.stringify({ signature }),
     }),
+  releaseTampered: (id: string, signature: string) =>
+    request<never>(`/payments/${id}/release-tampered`, {
+      method: "POST",
+      body: JSON.stringify({ signature }),
+    }),
+  getReceipt: (id: string) =>
+    request<{ receipt: Receipt; receiptHash: string }>(`/payments/${id}/receipt`),
 };

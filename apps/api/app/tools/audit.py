@@ -46,7 +46,12 @@ async def write_audit(
 
 
 def _template(route: RouteQuote, compliance: ComplianceResult, decision: PolicyDecision) -> str:
-    outcome = "escalated for hardware approval" if decision.requires_approval else "auto-settled"
+    if decision.blocked:
+        outcome = f"refused — {decision.block_reason}"
+    elif decision.requires_approval:
+        outcome = "escalated for hardware approval"
+    else:
+        outcome = "auto-settled"
     return (
         f"Routed {route.path_summary}, settling {route.dest_amount}. "
         f"{compliance.explanation} Payment {outcome}."
