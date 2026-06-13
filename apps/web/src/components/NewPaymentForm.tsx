@@ -206,41 +206,68 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
 
       {step === "review" && (
         <div className="sheet-backdrop" role="presentation">
-          <div className="bottom-sheet" role="dialog" aria-modal="true" aria-label="Review payment">
-            <div className="sheet-handle" />
-            <h2>Review transfer</h2>
-            <div className="summary-list">
-              <div>
-                <span>Amount</span>
-                <strong>{money(amount, currency)}</strong>
-              </div>
-              <div>
-                <span>From</span>
-                <strong>
-                  {sender.owner}, {sender.country}
-                </strong>
-              </div>
-              <div>
-                <span>To</span>
-                <strong>
-                  {recipient.label}, {recipient.country}
-                </strong>
-              </div>
-              <div>
-                <span>Purpose</span>
-                <strong>{purpose.replaceAll("_", " ")}</strong>
-              </div>
-              <div>
-                <span>Estimated fee</span>
-                <strong>Calculated by routing</strong>
-              </div>
+          <div className="confirmation-panel" role="dialog" aria-modal="true" aria-label="Payment confirmation">
+            <header className="confirmation-header">
+              <button className="back-action" type="button" onClick={() => setStep("input")} disabled={disabled}>
+                Back
+              </button>
+              <h2>Confirmation</h2>
+              <span className="confirmation-status">Ready</span>
+            </header>
+
+            <div className="confirmation-grid">
+              <section className="confirmation-main">
+                <div className="confirmation-row">
+                  <span>From card</span>
+                  <div>
+                    <strong>Card for payments</strong>
+                    <p>
+                      {sender.owner} - {sender.country} - **** 1942
+                    </p>
+                  </div>
+                </div>
+
+                <div className="confirmation-row">
+                  <span>Recipient</span>
+                  <div>
+                    <strong>{recipient.label.toUpperCase()}</strong>
+                    <p>
+                      {recipient.country} - {recipient.entityType} - {recipient.account.slice(0, 14)}...
+                    </p>
+                  </div>
+                </div>
+
+                <div className="fee-card">
+                  <div>
+                    <span>Sender's fee</span>
+                    <strong>{money(Math.max(amount * 0.001, 1.21), currency)}</strong>
+                  </div>
+                  <div>
+                    <span>Recipient's fee</span>
+                    <strong>{money(0, currency)}</strong>
+                  </div>
+                  <div>
+                    <span>Recipient will get</span>
+                    <strong>{money(amount, currency)}</strong>
+                  </div>
+                  <div className="total-row">
+                    <span>Total to pay</span>
+                    <strong>{money(amount + Math.max(amount * 0.001, 1.21), currency)}</strong>
+                  </div>
+                </div>
+              </section>
+
+              <aside className="confirmation-aside">
+                <p className="eyebrow">Policy check</p>
+                <h3>Code decides whether Firefly approval is required.</h3>
+                <p className="muted">
+                  Purpose: {purpose.replaceAll("_", " ")}. Reference: {reference}.
+                </p>
+                <button className="send-money-action" type="button" disabled={disabled} onClick={() => void sendPayment()}>
+                  {disabled ? "Processing..." : "Send money"}
+                </button>
+              </aside>
             </div>
-            <button className="primary-action" type="button" disabled={disabled} onClick={() => void sendPayment()}>
-              {disabled ? "Processing..." : `Send ${money(amount, currency)}`}
-            </button>
-            <button className="secondary-action" type="button" onClick={() => setStep("input")} disabled={disabled}>
-              Back
-            </button>
           </div>
         </div>
       )}
