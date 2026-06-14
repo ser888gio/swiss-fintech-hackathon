@@ -190,7 +190,7 @@ static void serial_task(void *arg) {
                 compute_digest(&req, &digest);
                 if (ffx_ec_signDigest(&sig, &s_privkey, &digest)) {
                     char sig_hex[131];
-                    char reply[160];
+                    char reply[200];
                     bytes_to_hex(sig.data, sizeof(sig.data), sig_hex);
                     snprintf(reply, sizeof(reply),
                              "{\"status\":\"ok\",\"signature\":\"%s\"}", sig_hex);
@@ -209,8 +209,6 @@ static void serial_task(void *arg) {
 }
 
 // ── Hollows entry point ───────────────────────────────────────────────────────
-
-static void noBg(FfxScene s, void *a) { (void)s; (void)a; }
 
 static int initPanel(void *arg) {
     return pushPanelWait();
@@ -245,7 +243,10 @@ void app_main(void) {
     xTaskCreate(serial_task, "serial", SERIAL_TASK_STACK, NULL, 4, NULL);
 
     vTaskSetApplicationTaskTag(NULL, (void*)NULL);
-    ffx_init(FFX_VERSION(0, 0, 1), noBg, initPanel, NULL);
+    // Pass NULL for the background: the framework then installs a full-screen
+    // COLOR_BLACK fill that clears every fragment each frame. A non-NULL no-op
+    // would leave the reused fragment buffers holding stale pixels.
+    ffx_init(FFX_VERSION(0, 0, 1), NULL, initPanel, NULL);
 
     while (1) {
         ffx_dumpStats();

@@ -12,9 +12,11 @@
   "dependencies": {
     "@noble/curves": "^1.4.0",
     "@noble/hashes": "^1.4.0",
+    "@serialport/parser-readline": "^13.0.0",
     "@treasury/shared": "*",
     "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "serialport": "^13.0.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

@@ -4,7 +4,7 @@
 #include "firefly-hollows.h"
 #include "panel_approve.h"
 
-#define COLOR_APPROVE  0x22AA44FF
+// COLOR_APPROVE is provided by firefly-hollows.h (= COLOR_GREEN).
 #define COLOR_REJECT   0xCC2200FF
 
 // Panel state — holds a copy of the request so it remains valid after

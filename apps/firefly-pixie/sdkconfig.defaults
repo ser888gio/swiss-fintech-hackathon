@@ -1,0 +1,20 @@
+# Build config for the Firefly Pixie treasury firmware.
+# Checked in because the firmware requires these but upstream shipped no defaults.
+
+# BLE (NimBLE) — task-ble.c includes nimble/nimble_port.h unconditionally.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+
+# FreeRTOS task tags — panel.c / hollows.c / task-io.c use
+# vTaskSetApplicationTaskTag / xTaskGetApplicationTaskTag.
+CONFIG_FREERTOS_USE_APPLICATION_TASK_TAG=y
+
+# Trace facility — panel.c / task-ble.c call vTaskGetInfo(), which is
+# gated behind configUSE_TRACE_FACILITY.
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+
+# Console over USB-Serial-JTAG (the device's only USB endpoint).
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# Larger app partition: a BLE app does not fit the default factory size.
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
