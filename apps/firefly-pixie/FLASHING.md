@@ -172,6 +172,44 @@ with its own secp256k1 key stored in the `treasury` NVS namespace — so droppin
 the attestation requirement is safe for our use case. The
 `Missing nvs.attest` warnings still print on boot and are expected/harmless.
 
+### 5.4 `main/main.c` — uncleared background (tiled/garbled screen)
+
+**Symptom:** the screen drove pixels but showed **tiled garbage** — the same
+content repeated ~5× down the display, with text barely legible on top.
+
+**Root cause:** `app_main()` passed a no-op background function (`noBg`) to
+`ffx_init()`. The display uses two reused fragment buffers for the ten 24-px
+bands; if nothing repaints the background, each buffer keeps **stale pixels from
+two fragments earlier** (240 ÷ 48 = 5 repeats). The framework only installs its
+own full-screen `COLOR_BLACK` clear when the background function is **`NULL`** —
+a non-NULL no-op suppresses that.
+
+**Fix:** pass `NULL` instead of `noBg`:
+
+```c
+ffx_init(FFX_VERSION(0, 0, 1), NULL, initPanel, NULL);
+```
+
+### 5.5 `components/firefly-hollows/src/task-io.c` — screen rotation
+
+**Symptom:** after the background fix the screen was clean but rendered **rotated
+90°** (text running sideways, long values clipped off the edge).
+
+**Root cause:** `ffx_display_init()` was called with
+`FfxDisplayRotationRibbonBottom`. This unit mounts the button board / display
+ribbon on the **right**, so it needs the rotated mode.
+
+**Fix:** use `FfxDisplayRotationRibbonRight`:
+
+```c
+display = ffx_display_init(device.displayBus, device.displayDCPin,
+  device.displayResetPin, FfxDisplayRotationRibbonRight, renderScene, NULL);
+```
+
+> The firmware only implements two rotations (`RibbonBottom`, `RibbonRight`). If
+> a future unit needs a different orientation, the MADCTL operand and the 240×240
+> GRAM offset must be added in `components/firefly-display/src/display.c`.
+
 ---
 
 ## 6. Build & flash procedure (the steps you actually run)
@@ -248,17 +286,89 @@ If you change one, change all three, or signature verification will fail.
 
 ## 9. End-to-end test (display + confirm)
 
-1. Flash the firmware and confirm the screen comes up (Section 6).
-2. Set `FIREFLY_PUBLIC_KEY` (Section 7) and `FIREFLY_DEVICE_PATH=COM5` for the
-   bridge, then start the bridge (`npm run dev:bridge`, port 4747, local only).
-3. Run the test script:
-   ```
-   apps/firefly-bridge/test-sign.ps1
-   ```
-   It POSTs a sample payment to `localhost:4747/sign`.
-4. The payment details appear on the device screen. Press **APPROVE** within the
-   30-second window.
-5. The bridge receives `{"status":"ok","signature":"..."}`.
+This needs **two** PowerShell windows: one runs the bridge (and holds COM5 open),
+the other fires a test payment at it.
+
+> **COM5 is exclusive.** Only one thing can own the port at a time. To **flash**,
+> the bridge and `idf.py monitor` must be closed. To **run the bridge**, no
+> `idf.py monitor` may be running. Symptom of a conflict: the bridge fails to
+> open COM5, or flashing reports "access denied".
+
+### 9.1 Window A — start the bridge (leave it running)
+
+The bridge script is `dev` (run from inside the bridge package). The root-level
+alias `dev:bridge` only exists when you run it from the repo root — **inside
+`apps/firefly-bridge` the script is just `dev`.**
+
+```powershell
+cd C:\Users\nicas\Desktop\swiss-fintech-hackathon\apps\firefly-bridge
+$env:FIREFLY_DEVICE_PATH = "COM5"
+$env:FIREFLY_PUBLIC_KEY  = "dbfe499a8887919a267320a7544000e1cc962fd433073211a5bb319f330af7c2324e4fd72bb08fce5daea9e78e52064bf52714074abe718cfcb48e98ada5ce01"
+npm run dev
+```
+
+Wait for:
+
+```
+Firefly bridge listening on http://localhost:4747
+```
+
+The `$env:` vars apply only to the window they're set in, and they don't persist
+between sessions. (Alternatively, put them in `.env`.) From the repo root the
+equivalent is `npm run dev:bridge`, but you must still set the two vars in that
+same window first.
+
+### 9.2 Window B — send a test payment
+
+```powershell
+cd C:\Users\nicas\Desktop\swiss-fintech-hackathon\apps\firefly-bridge
+./test-sign.ps1
+```
+
+It POSTs a sample payment to `localhost:4747/sign`. If you see
+`Invoke-RestMethod : ... cannot connect to the remote server`, the bridge in
+Window A isn't running (or isn't listening yet).
+
+### 9.3 On the device
+
+The screen switches from **"Waiting for approval…"** to the **Treasury Veto**
+panel showing the full payment: Network, **Amount** (`125000.50 USD`), **To**
+(recipient), Owner, Escrow seq, Escrow tx, Ref — then **APPROVE** / **REJECT**
+buttons.
+
+**Approving (button mapping).** The four buttons map by index → key as:
+`{Cancel, OK, North(up), South(down)}`. In physical top-to-bottom order on this
+unit (SW1→SW4):
+
+| Button | Role |
+| ------ | ---- |
+| **SW1** (top) | Cancel |
+| **SW2** | **OK / confirm** |
+| **SW3** | Up |
+| **SW4** (bottom) | Down |
+
+When the panel opens **nothing is highlighted** (OK alone does nothing). So:
+
+1. Press **SW4 (Down)** → highlights **APPROVE** (the first button).
+2. Press **SW2 (OK)** → confirms.
+
+(If the highlight moves the opposite way — silk-screen order can vary by unit —
+use whichever of SW3/SW4 lands on APPROVE, then SW2.) You have **30 seconds**
+before the firmware times out and replies `approval timeout`.
+
+### 9.4 Expected result
+
+Window B (`test-sign.ps1`) prints the bridge's reply:
+
+```text
+status     signature
+------     ---------
+ok         <130 hex chars>
+```
+
+- **APPROVE** → `{"status":"ok","signature":"..."}`
+- **REJECT** → `{"status":"rejected"}`
+- no press within 30 s → `{"status":"error","message":"approval timeout"}`
 
 ---
 
@@ -272,5 +382,37 @@ If you change one, change all three, or signature verification will fail.
 | `undefined reference to vTaskGetInfo` | trace facility off | `CONFIG_FREERTOS_USE_TRACE_FACILITY=y`; `del sdkconfig` and rebuild. |
 | `snprintf output may be truncated` | reply buffer too small | `reply[200]` in `main.c`. |
 | `spi_bus_initialize: already initialized` + display assert | zeroed display config on a unit without `attest` NVS | The `device-info.c` fixes in Section 5.3. |
-| Flash "access denied" | COM port held by bridge/browser | Close the bridge and any Web Serial browser tabs. |
+| Tiled/garbled screen (content repeated ~5×) | background never cleared | Pass `NULL` (not a no-op) for the background in `ffx_init` — Section 5.4. |
+| Screen clean but rotated 90° / values clipped | wrong display rotation | Use `FfxDisplayRotationRibbonRight` in `task-io.c` — Section 5.5. |
+| `npm error Missing script: "dev:bridge"` | wrong script inside the bridge package | Run `npm run dev` from `apps/firefly-bridge` (`dev:bridge` is the repo-root alias). |
+| `Invoke-RestMethod: cannot connect to the remote server` | bridge not running | Start the bridge first (Section 9.1); leave it open before running the test. |
+| Flash "access denied" | COM port held by bridge/browser/monitor | Close the bridge, `idf.py monitor`, and any Web Serial browser tabs. |
 | Changed `sdkconfig.defaults`, no effect | defaults only apply when no `sdkconfig` | `del sdkconfig`, then `idf.py build`. |
+
+---
+
+## 11. Command quick reference
+
+**Build & flash** (from an activated **ESP-IDF 5.5** terminal):
+
+```bat
+cd C:\Users\nicas\Desktop\swiss-fintech-hackathon\apps\firefly-pixie
+idf.py build
+idf.py -p COM5 flash monitor
+```
+
+**Run the bridge** (separate, non-IDF PowerShell window — see Section 9.1):
+
+```powershell
+cd C:\Users\nicas\Desktop\swiss-fintech-hackathon\apps\firefly-bridge
+$env:FIREFLY_DEVICE_PATH = "COM5"
+$env:FIREFLY_PUBLIC_KEY  = "dbfe499a8887919a267320a7544000e1cc962fd433073211a5bb319f330af7c2324e4fd72bb08fce5daea9e78e52064bf52714074abe718cfcb48e98ada5ce01"
+npm run dev
+```
+
+**Send a test payment** (third window — see Section 9.2):
+
+```powershell
+cd C:\Users\nicas\Desktop\swiss-fintech-hackathon\apps\firefly-bridge
+./test-sign.ps1
+```
