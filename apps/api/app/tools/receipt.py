@@ -24,6 +24,7 @@ def build_receipt(payment: Payment) -> Receipt:
         policy_decision=payment.policy_decision,
         status=payment.status,
         escrow_sequence=payment.escrow_sequence,
+        escrow_create_tx_hash=payment.escrow_create_tx_hash,
         approval_signature=payment.approval_signature,
         tx_hash=payment.tx_hash,
         explorer_url=payment.explorer_url,
