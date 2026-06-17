@@ -1,5 +1,14 @@
+import json
+
 from app.schemas import PaymentIntent, RouteQuote
-from app.tools.execution import execute_payment, finish_escrow, lock_payment
+from app.tools.execution import (
+    COMPLIANCE_MEMO_TYPE,
+    ComplianceMemo,
+    build_memo_fields,
+    execute_payment,
+    finish_escrow,
+    lock_payment,
+)
 
 
 def _intent() -> PaymentIntent:
@@ -43,3 +52,27 @@ async def test_mock_escrow_paths_do_not_emit_dead_explorer_links():
     assert escrow.explorer_url is None
     assert len(released.tx_hash) == 64
     assert released.explorer_url is None
+
+
+def test_build_memo_fields_roundtrips_compliance_data():
+    memo = ComplianceMemo(aml_score=95, rule_fired="amount_threshold", receipt_hash="deadbeef")
+    fields = build_memo_fields(memo)
+
+    assert len(fields) == 1
+    field = fields[0]
+    # Memo type/data must be uppercase hex.
+    assert field["memo_type"] == COMPLIANCE_MEMO_TYPE.encode().hex().upper()
+    assert field["memo_data"].isupper() or field["memo_data"].isdigit()
+
+    decoded = json.loads(bytes.fromhex(field["memo_data"]).decode())
+    assert decoded == {
+        "aml_score": 95,
+        "rule_fired": "amount_threshold",
+        "receipt_hash": "deadbeef",
+    }
+
+
+def test_build_memo_fields_defaults_missing_rule_to_none_string():
+    fields = build_memo_fields(ComplianceMemo(aml_score=10, rule_fired=None, receipt_hash="abc"))
+    decoded = json.loads(bytes.fromhex(fields[0]["memo_data"]).decode())
+    assert decoded["rule_fired"] == "none"

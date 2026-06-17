@@ -39,6 +39,38 @@ def compute_receipt_hash(payment: Payment) -> str:
     return hashlib.sha256(_canonical_json(payment).encode()).hexdigest()
 
 
+def compute_decision_hash(payment: Payment) -> str:
+    """sha256 of the deterministic decision trail, known BEFORE submission.
+
+    Covers only the inputs that authorized the payment — intent, route,
+    compliance and policy — and deliberately excludes post-execution fields
+    (tx hash, status, timestamps). This makes it stable enough to anchor on the
+    ledger as a transaction Memo at submission time, then recompute and match
+    later against the persisted decision.
+    """
+    data = {
+        "paymentId": payment.id,
+        "intent": {
+            "from": payment.intent.from_account,
+            "to": payment.intent.to,
+            "senderName": payment.intent.sender_name,
+            "senderCountry": payment.intent.sender_country,
+            "receiverName": payment.intent.receiver_name,
+            "receiverCountry": payment.intent.receiver_country,
+            "receiverEntityType": payment.intent.receiver_entity_type.value,
+            "purpose": payment.intent.purpose,
+            "amount": f"{payment.intent.amount:.2f}",
+            "currency": payment.intent.currency,
+            "reference": payment.intent.reference,
+        },
+        "routeQuote": _route(payment),
+        "compliance": _compliance(payment),
+        "policyDecision": _policy(payment),
+    }
+    canonical = json.dumps(data, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
 def _canonical_json(payment: Payment) -> str:
     data = {
         "paymentId": payment.id,

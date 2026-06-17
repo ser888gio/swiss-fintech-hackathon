@@ -1105,6 +1105,72 @@ input:focus {
   color: var(--paper);
 }
 
+/* KYC credential gate (kept feature, restyled to fit the lean design) */
+.kyc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kyc-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--orange);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.kyc-badge.verified {
+  background: var(--orange);
+  color: var(--paper);
+}
+
+.kyc-badge.missing {
+  background: transparent;
+  color: var(--orange);
+}
+
+.kyc-resolve {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 10px;
+  border-radius: 999px;
+  font-weight: 800;
+  border: 1px solid var(--orange);
+  background: rgba(209, 103, 31, 0.12);
+  color: var(--paper);
+}
+
+.kyc-gate {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: left;
+}
+
+.kyc-gate p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* Credential agent list */
+.queue {
+  margin-top: 8px;
+}
+
+.queue h2 {
+  margin-bottom: 14px;
+  color: var(--paper);
+  font-size: 1rem;
+  text-transform: uppercase;
+}
+
 .receipt-row {
   margin-top: 10px;
   align-items: stretch;

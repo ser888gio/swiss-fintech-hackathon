@@ -73,3 +73,35 @@ def test_receipt_hash_includes_sanctions_and_public_intel_fields():
     )
 
     assert receipt.compute_receipt_hash(_payment(clean)) != receipt.compute_receipt_hash(_payment(flagged))
+
+
+def _clean_compliance() -> ComplianceResult:
+    return ComplianceResult(
+        aml_score=10,
+        sanctioned=False,
+        flags=[],
+        explanation="Clean screen.",
+        sanctions_matches=[],
+    )
+
+
+def test_decision_hash_is_stable_across_post_execution_mutations():
+    # The decision hash is anchored on-ledger BEFORE submission, so it must not
+    # change when tx hash / status / timestamps are filled in afterwards.
+    payment = _payment(_clean_compliance())
+    before = receipt.compute_decision_hash(payment)
+
+    settled = payment.model_copy(
+        update={
+            "status": PaymentStatus.settled,
+            "tx_hash": "A" * 64,
+            "explorer_url": "https://testnet.xrpl.org/transactions/" + "A" * 64,
+        }
+    )
+    assert receipt.compute_decision_hash(settled) == before
+
+
+def test_decision_hash_changes_with_compliance():
+    clean = _payment(_clean_compliance())
+    flagged = _payment(_clean_compliance().model_copy(update={"aml_score": 95}))
+    assert receipt.compute_decision_hash(clean) != receipt.compute_decision_hash(flagged)
