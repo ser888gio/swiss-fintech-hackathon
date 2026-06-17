@@ -12,7 +12,13 @@ from typing import Any
 import httpx
 
 from ..config import get_settings
-from ..schemas import ComplianceResult, PaymentIntent, ReceiverEntityType, SanctionsMatch
+from ..schemas import (
+    ComplianceResult,
+    CredentialStatus,
+    PaymentIntent,
+    ReceiverEntityType,
+    SanctionsMatch,
+)
 from . import public_intel
 
 # Demo sanctions list. Used for local demos and as a graceful provider fallback.
@@ -23,8 +29,16 @@ HIGH_RISK_KEYWORDS = ("crypto-mixer", "shell", "unverified")
 
 OPENSANCTIONS_ENTITY_URL = "https://www.opensanctions.org/entities/{id}/"
 
+# Floor applied when KYC credentials are required but the receiver lacks a valid
+# one. Set above the default policy flag score so an un-KYC'd counterparty is
+# escalated to hardware approval rather than auto-settled — the decision still
+# belongs to the policy engine, this only supplies the risk signal.
+KYC_MISSING_SCORE = 65
 
-def check_compliance(intent: PaymentIntent) -> ComplianceResult:
+
+def check_compliance(
+    intent: PaymentIntent, credential: CredentialStatus | None = None
+) -> ComplianceResult:
     settings = get_settings()
     flags: list[str] = []
 
@@ -55,7 +69,13 @@ def check_compliance(intent: PaymentIntent) -> ComplianceResult:
 
     flags.extend(public.flags)
 
+    kyc_missing = credential is not None and credential.checked and not credential.verified
+    if kyc_missing:
+        flags.append(f"no valid on-chain KYC credential ({credential.reason})")
+
     score = _score(sanctioned, len(flags), intent.amount, public.score)
+    if kyc_missing:
+        score = min(max(score, KYC_MISSING_SCORE), 95 if not sanctioned else 100)
     explanation = _explain(score, flags, matches, public.summary)
     return ComplianceResult(
         aml_score=score,
@@ -64,6 +84,7 @@ def check_compliance(intent: PaymentIntent) -> ComplianceResult:
         explanation=explanation,
         sanctions_matches=matches,
         public_intel=public,
+        credential=credential,
     )
 
 
@@ -124,10 +145,21 @@ def _has_blocking_match(matches: list[SanctionsMatch], threshold: float) -> bool
 
 
 def _fallback_sanctioned(intent: PaymentIntent) -> bool:
-    return (
-        intent.to in SANCTIONED_ACCOUNTS
-        or intent.receiver_name.strip().lower() in SANCTIONED_NAMES
-    )
+    return is_sanctioned(intent.to, intent.receiver_name)
+
+
+def is_sanctioned(address: str, name: str | None = None) -> bool:
+    """Deterministic sanctions check for a single counterparty (address + name).
+
+    Used by the credential-issuing agent to refuse issuing a KYC credential to a
+    sanctioned subject. Code decides — never the LLM. Uses the local demo list;
+    swap for the OpenSanctions screen when a key is configured.
+    """
+    if address in SANCTIONED_ACCOUNTS:
+        return True
+    if name and name.strip().lower() in SANCTIONED_NAMES:
+        return True
+    return False
 
 
 def _score(sanctioned: bool, flag_count: int, amount: float, public_intel_score: int) -> int:

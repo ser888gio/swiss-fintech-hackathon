@@ -34,6 +34,10 @@ export interface RouteQuote {
   rate: number;
   pathSummary: string;
   estimatedFee: number;
+  // XRPL pathfinding output (ripple_path_find). null falls back to the default path.
+  paths?: unknown[][] | null;
+  sendMax?: number | null; // Payment.SendMax cap on source spend
+  deliverMin?: number | null; // Payment.DeliverMin floor for partial payments
 }
 
 export interface SanctionsMatch {
@@ -53,6 +57,67 @@ export interface PublicIntelResult {
   summary: string;
 }
 
+// XRPL Credentials (XLS-70) KYC status for the receiver. `checked` is false when
+// the credential layer is disabled; `verified` is true only for an accepted,
+// non-expired credential from the trusted issuer.
+export interface CredentialStatus {
+  checked: boolean;
+  verified: boolean;
+  subject: string | null;
+  issuer: string | null;
+  credentialType: string | null;
+  expiration: string | null;
+  uri: string | null;
+  reason: string;
+}
+
+// Credential-issuing agent (XLS-70). Mirrors apps/api/app/schemas.py.
+export type CredentialRecordStatus =
+  | "issued"
+  | "accepted"
+  | "verified"
+  | "refused"
+  | "failed";
+
+export interface CredentialIssueRequest {
+  subject: string;
+  subjectName?: string | null;
+  credentialType?: string | null;
+  uri?: string | null;
+  expiration?: string | null;
+  note?: string | null;
+  // When true, the agent also runs the subject-side CredentialAccept so the
+  // credential is immediately usable (inline KYC gate).
+  autoAccept?: boolean;
+}
+
+export interface CredentialLogEntry {
+  recordId: string;
+  timestamp: string;
+  message: string;
+}
+
+export interface CredentialRecord {
+  id: string;
+  subject: string;
+  subjectName: string | null;
+  issuer: string | null;
+  credentialType: string | null;
+  uri: string | null;
+  expiration: string | null;
+  status: CredentialRecordStatus;
+  accepted: boolean;
+  verified: boolean;
+  refusedReason: string | null;
+  txHash: string | null;
+  explorerUrl: string | null;
+  acceptTxHash: string | null;
+  acceptExplorerUrl: string | null;
+  auditExplanation: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ComplianceResult {
   amlScore: number; // 0–100
   sanctioned: boolean;
@@ -60,6 +125,7 @@ export interface ComplianceResult {
   explanation: string;
   sanctionsMatches: SanctionsMatch[];
   publicIntel: PublicIntelResult | null;
+  credential: CredentialStatus | null;
 }
 
 export interface PolicyDecision {
@@ -106,6 +172,8 @@ export interface Payment {
   approvalSignature: string | null;
   txHash: string | null;
   explorerUrl: string | null;
+  // Second explorer (bithomp) link for cross-checking the same tx hash.
+  explorerUrlSecondary: string | null;
   auditExplanation: string | null;
   receiptHash: string | null;
   createdAt: string;
@@ -116,6 +184,103 @@ export interface AgentLogEntry {
   paymentId: string;
   timestamp: string;
   message: string;
+}
+
+// ── XLS-33 MPTokens — COMPLY compliance-attestation ─────────────────────────
+
+export interface MPTAttestationRecord {
+  id: string;
+  issuanceId: string;
+  recipient: string;
+  paymentId: string;
+  amountSettled: number;
+  txHash: string;
+  explorerUrl: string | null;
+  timestamp: string;
+}
+
+export interface MPTStatus {
+  issuanceId: string | null;
+  enabled: boolean;
+  network: string;        // "mock" | "testnet" | "devnet"
+  metadataHex: string;    // hex-encoded "COMPLY" metadata
+  totalMinted: number;
+  authorizedCount: number;
+  recentAttestations: MPTAttestationRecord[];
+}
+
+export interface MPTAuthorizeRequest {
+  holder: string;         // XRPL address to authorize
+}
+
+// ── XLS-65 Single Asset Vault ────────────────────────────────────────────────
+
+export interface VaultOpRecord {
+  id: string;
+  operation: "create" | "deposit" | "withdraw";
+  amount: number;
+  txHash: string;
+  explorerUrl: string | null;
+  timestamp: string;
+}
+
+export interface VaultStatus {
+  vaultId: string | null;
+  enabled: boolean;
+  network: string; // "mock" | "devnet" | "testnet"
+  deposited: number;
+  shares: number;
+  walletBalance: number;
+  assetCurrency: string;
+  assetIssuer: string | null;
+  sweepThresholdUsd: number;
+  recallThresholdUsd: number;
+  recentOperations: VaultOpRecord[];
+}
+
+// ── Autonomous Treasury Agent ─────────────────────────────────────────────────
+
+export interface TreasuryGoal {
+  id: string;
+  name: string;
+  enabled: boolean;
+  beneficiaryName: string;
+  beneficiaryAddress: string;
+  beneficiaryCountry: string;
+  receiverEntityType: "company" | "individual";
+  amount: number;
+  currency: string;
+  reference: string;
+  purpose: string;
+  triggerIntervalHours: number;
+  lastTriggeredAt: string | null;
+}
+
+export interface TreasuryGoalCreate {
+  name: string;
+  enabled?: boolean;
+  beneficiaryName: string;
+  beneficiaryAddress: string;
+  beneficiaryCountry: string;
+  receiverEntityType?: "company" | "individual";
+  amount: number;
+  currency: string;
+  reference: string;
+  purpose: string;
+  triggerIntervalHours?: number;
+}
+
+export interface TreasuryAgentRun {
+  id: string;
+  startedAt: string;
+  completedAt: string | null;
+  goalsEvaluated: number;
+  goalsTriggered: number;
+  paymentsInitiated: string[]; // payment IDs
+  paymentsSkipped: string[];   // goal IDs
+  triggerLog: string[];
+  narration: string | null;
+  status: string; // "completed" | "error"
 }
 
 // Firefly bridge contract (browser <-> localhost bridge).

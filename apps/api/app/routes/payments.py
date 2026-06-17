@@ -13,8 +13,11 @@ router = APIRouter(prefix="/payments")
 
 @router.post("", response_model=Payment)
 async def create_payment(intent: PaymentIntent) -> Payment:
+    _validate_destination(intent.to)
     try:
         return _public_payment(await orchestrator.process_payment(intent))
+    except HTTPException:
+        raise
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=502,
@@ -22,6 +25,8 @@ async def create_payment(intent: PaymentIntent) -> Payment:
         ) from exc
     except (httpx.HTTPError, KeyError, ValueError) as exc:
         raise HTTPException(status_code=502, detail="FX quote unavailable") from exc
+    except Exception as exc:  # never surface a raw 500 (no CORS header) to the browser
+        raise HTTPException(status_code=502, detail=f"Payment processing failed: {exc}") from exc
 
 
 @router.post("/quote", response_model=RouteQuote)
@@ -107,8 +112,31 @@ async def get_receipt(payment_id: str) -> dict:
     return {"receipt": r.model_dump(by_alias=True), "receiptHash": payment.receipt_hash}
 
 
+def _validate_destination(address: str) -> None:
+    """Reject an invalid XRPL destination up front (real mode only).
+
+    In real mode the orchestrator builds a Payment/EscrowCreate from this address;
+    an invalid one makes xrpl-py raise deep in serialization, which surfaces as a
+    500 with no CORS header (the browser then reports a misleading CORS error). A
+    422 here returns a clean, CORS-headed message instead. Mock mode keeps
+    accepting the placeholder addresses used by offline demos and tests.
+    """
+    if get_settings().use_mock_xrpl:
+        return
+    from xrpl.core.addresscodec import is_valid_classic_address, is_valid_xaddress
+
+    try:
+        valid = is_valid_classic_address(address) or is_valid_xaddress(address)
+    except Exception:
+        valid = False
+    if not valid:
+        raise HTTPException(
+            status_code=422, detail=f"Invalid destination XRPL address: {address!r}"
+        )
+
+
 def _public_payment(payment: Payment) -> Payment:
     """Hide stale fake explorer links from older mock-mode payment rows."""
     if not get_settings().use_mock_xrpl or payment.explorer_url is None:
         return payment
-    return payment.model_copy(update={"explorer_url": None})
+    return payment.model_copy(update={"explorer_url": None, "explorer_url_secondary": None})

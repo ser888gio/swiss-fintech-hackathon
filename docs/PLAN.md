@@ -77,7 +77,9 @@ architecture is unchanged.
    locking (escrow flag)?
 3. Judging priority among TokenEscrow / multisig / MPTokens / pathfinding?
 4. Preferred compliance metadata channel: memos, MPTokens, credentials, or
-   off-chain hash anchored on-chain?
+   off-chain hash anchored on-chain? **(Decided: XRPL Credentials / XLS-70 —
+   the receiver must hold an accepted KYC credential or the payment escalates.
+   See `app/tools/credentials.py`.)**
 5. Would judges value Firefly as physical approval even if it doesn't natively
    sign XRPL transactions?
 6. Is a small XLS-66 add-on (idle treasury → vault yield) worth the credit-track

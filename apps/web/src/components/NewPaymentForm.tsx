@@ -8,18 +8,24 @@ interface Props {
   disabled: boolean;
 }
 
-const TREASURY = "rTREASURY00000000000000000000000000";
+// Real funded Testnet wallets (from the repo-root .env). The treasury wallet is
+// the only on-ledger signer; the "from" account is informational. Recipients map
+// to the three demo counterparties so each policy branch is reachable:
+//   OK  → holds an accepted XLS-70 KYC credential → auto-settles
+//   NEW → no credential → escalates to a Firefly-locked escrow (inline KYC retry)
+//   sanctioned NAME → blocked outright by the deterministic screen
+const TREASURY = "rLJEyCHnzFqVyqRKKtb76NN1scRMWimtGM";
 const QUOTE_REFRESH_MS = 15000;
 
 const SENDERS = [
-  { label: "Main Treasury", owner: "John Doe", country: "CH", account: TREASURY, balance: 184250 },
-  { label: "Operating USD", owner: "Acme AG", country: "CH", account: "rOPERATING000000000000000000000000", balance: 52800 },
+  { label: "Main Treasury", owner: "Demo Corp Treasury", country: "CH", account: TREASURY, balance: 184250 },
+  { label: "Operating USD", owner: "Demo Corp Ops", country: "CH", account: TREASURY, balance: 52800 },
 ];
 
 const RECIPIENTS = [
-  { label: "Vendor Alpha", country: "US", entityType: "company" as const, account: "rVENDOR0000000000000000000000000000" },
-  { label: "Supplier Zurich", country: "CH", entityType: "company" as const, account: "rSUPPLIER000000000000000000000000000" },
-  { label: "Custom recipient", country: "GB", entityType: "company" as const, account: "rCUSTOM0000000000000000000000000000" },
+  { label: "Acme Supplies AG", country: "US", entityType: "company" as const, account: "rwjNyXSKQ5Rt6StJHHPzdHY5KA8UqYjBuC" },
+  { label: "Globex Trading Ltd", country: "GB", entityType: "company" as const, account: "rnt6pfdVx7cRsSrzm38783o7H4unfkpRqv" },
+  { label: "ACME Shell Co", country: "RU", entityType: "company" as const, account: "rDabdgRBdnms9zkbNtaLaVwqJuSbxjgroC" },
 ];
 
 const NUMPAD = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "backspace"];
@@ -85,8 +91,11 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
   const [quoteError, setQuoteError] = useState("");
   const [lastPayment, setLastPayment] = useState<Payment | null>(null);
   const [failureReason, setFailureReason] = useState("");
+  const [issuingCredential, setIssuingCredential] = useState(false);
 
   const amount = amountFromInput(amountInput);
+  const credential = lastPayment?.compliance?.credential;
+  const kycMissing = Boolean(credential?.checked && !credential.verified);
   const sender = SENDERS[senderIndex];
   const networkFee = Math.max((routeQuote?.destAmount ?? amount) * 0.001, currency === "XRP" ? 0.000012 : 1.21);
   const receiveAmount = routeQuote?.destAmount ?? amount;
@@ -186,6 +195,31 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
     }
   }
 
+  // Inline KYC gate: issue + accept an XLS-70 credential for the receiver, then
+  // resubmit. Code re-evaluates policy — issuing only clears the KYC risk flag.
+  async function issueCredentialAndRetry() {
+    setIssuingCredential(true);
+    setFailureReason("");
+    try {
+      const record = await api.issueCredential({
+        subject: intent.to,
+        subjectName: intent.receiverName,
+        autoAccept: true,
+      });
+      if (record.status === "refused" || record.status === "failed") {
+        setFailureReason(record.refusedReason ?? "Credential could not be issued.");
+        setStep("failure");
+        return;
+      }
+      await sendPayment();
+    } catch (cause) {
+      setFailureReason(cause instanceof Error ? cause.message : String(cause));
+      setStep("failure");
+    } finally {
+      setIssuingCredential(false);
+    }
+  }
+
   function resetFlow() {
     setStep("input");
     setAmountInput("0");
@@ -196,7 +230,6 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
 
   return (
     <section className="send-flow" aria-label="Send payment">
-      {/* LEFT COLUMN — form fields */}
       <div className="send-left">
         <div className="send-topbar">
           <div>
@@ -211,15 +244,17 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
             <span>From</span>
             <select value={senderIndex} onChange={(event) => setSenderIndex(Number(event.target.value))} disabled={disabled}>
               {SENDERS.map((option, index) => (
-                <option key={option.account} value={index}>
-                  {option.label} — {option.owner}
+                <option key={option.label} value={index}>
+                  {option.label} - {option.owner}
                 </option>
               ))}
             </select>
           </label>
-          <div className="send-arrow" aria-hidden="true">→</div>
+          <span className="send-arrow" aria-hidden="true">
+            &rarr;
+          </span>
           <label>
-            <span>Saved recipient</span>
+            <span>To</span>
             <select value={recipientIndex} onChange={(event) => setRecipientIndex(Number(event.target.value))} disabled={disabled}>
               {RECIPIENTS.map((option, index) => (
                 <option key={option.account} value={index}>
@@ -230,14 +265,34 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
           </label>
         </div>
 
+        <div className="amount-stage">
+          <p className="balance">Available balance {money(sender.balance, currency)}</p>
+          <div className="amount-display" aria-live="polite">
+            {money(amount, currency)}
+          </div>
+          <div className="currency-switch" aria-label="Currency">
+            {CURRENCIES.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={currency === option ? "active" : ""}
+                onClick={() => setCurrency(option)}
+                disabled={disabled}
+              >
+                {option === "XRP" ? "Ripple" : option}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <section className="recipient-panel" aria-label="Recipient details">
           <div className="section-heading">
-            <span className="eyebrow">Recipient</span>
+            <span className="eyebrow">Receive method</span>
             <strong>Wallet destination</strong>
           </div>
           <div className="recipient-fields">
             <label>
-              <span>Name</span>
+              <span>Recipient name</span>
               <input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} disabled={disabled} />
             </label>
             <label className="wallet-field">
@@ -261,11 +316,11 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
         </section>
 
         <div className="send-ref-purpose">
-          <label>
+          <label className="reference-field">
             <span>Reference</span>
             <input value={reference} onChange={(event) => setReference(event.target.value)} disabled={disabled} />
           </label>
-          <label>
+          <label className="reference-field">
             <span>Purpose</span>
             <select value={purpose} onChange={(event) => setPurpose(event.target.value)} disabled={disabled}>
               <option value="supplier_payment">Supplier payment</option>
@@ -276,9 +331,15 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
           </label>
         </div>
 
+        <button className="primary-action" type="button" disabled={!canReview} onClick={() => setStep("review")}>
+          Review
+        </button>
+      </div>
+
+      <div className="send-right">
         <section className="transaction-summary" aria-label="Transaction summary">
           <div className="section-heading">
-            <span className="eyebrow">Summary</span>
+            <span className="eyebrow">Transaction summary</span>
             <strong>{quoteAge(quoteUpdatedAt)}</strong>
           </div>
           <div className="summary-list">
@@ -287,43 +348,20 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
               <strong>{formatRate(routeQuote, currency)}</strong>
             </div>
             <div>
-              <span>Network fee</span>
+              <span>Estimated network fee</span>
               <strong>{money(networkFee, "USD")}</strong>
             </div>
             <div>
-              <span>Recipient receives</span>
+              <span>Recipient gets after routing</span>
               <strong>{money(receiveAmount, "USD")}</strong>
             </div>
+            <div>
+              <span>Wallet</span>
+              <strong>{recipientWallet ? recipientWallet.slice(0, 18) : "Missing"}...</strong>
+            </div>
           </div>
-          {quoteError && <p className="quote-error">Live rate unavailable — will retry on submit.</p>}
+          {quoteError && <p className="quote-error">Live rate unavailable. The payment will retry the quote on submit.</p>}
         </section>
-
-        <button className="primary-action" type="button" disabled={!canReview} onClick={() => setStep("review")}>
-          Review
-        </button>
-      </div>
-
-      {/* RIGHT COLUMN — amount + numpad */}
-      <div className="send-right">
-        <div className="amount-stage">
-          <p className="balance">Available — {money(sender.balance, currency)}</p>
-          <div className="amount-display" aria-live="polite">
-            {money(amount, currency)}
-          </div>
-          <div className="currency-switch" aria-label="Currency">
-            {CURRENCIES.map((option) => (
-              <button
-                key={option}
-                type="button"
-                className={currency === option ? "active" : ""}
-                onClick={() => setCurrency(option)}
-                disabled={disabled}
-              >
-                {option === "XRP" ? "Ripple" : option}
-              </button>
-            ))}
-          </div>
-        </div>
 
         <div className="numpad" aria-label="Amount keypad">
           {NUMPAD.map((key) => (
@@ -348,11 +386,11 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
             <div className="confirmation-grid">
               <section className="confirmation-main">
                 <div className="confirmation-row">
-                  <span>From</span>
+                  <span>From card</span>
                   <div>
-                    <strong>{sender.label}</strong>
+                    <strong>Card for payments</strong>
                     <p>
-                      {sender.owner} — {sender.country}
+                      {sender.owner} - {sender.country} - **** 1942
                     </p>
                   </div>
                 </div>
@@ -379,7 +417,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
                     <strong>{money(networkFee, "USD")}</strong>
                   </div>
                   <div className="total-row">
-                    <span>Recipient receives (estimate)</span>
+                    <span>Recipient receives estimate</span>
                     <strong>{money(receiveAmount, "USD")}</strong>
                   </div>
                 </div>
@@ -408,6 +446,22 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
             <p>Please confirm this transaction on your Firefly.app device. Funds are locked until the signed approval is verified.</p>
             <div className="progress-line" />
             <p className="muted">Waiting for Firefly.app confirmation in the payment queue...</p>
+            {kycMissing && (
+              <div className="kyc-gate" role="group" aria-label="KYC credential gate">
+                <p>
+                  Receiver has no accepted XLS-70 KYC credential ({credential?.reason}). Issue one
+                  inline to clear the credential flag, then code re-checks the policy.
+                </p>
+                <button
+                  className="kyc-resolve"
+                  type="button"
+                  disabled={issuingCredential}
+                  onClick={() => void issueCredentialAndRetry()}
+                >
+                  {issuingCredential ? "Issuing credential..." : "Issue KYC credential & retry"}
+                </button>
+              </div>
+            )}
             <button className="primary-action" type="button" onClick={() => setStep("input")}>
               View queue
             </button>

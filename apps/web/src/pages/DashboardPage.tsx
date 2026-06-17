@@ -3,7 +3,9 @@ import type { Payment } from "@treasury/shared";
 interface Props {
   payments: Payment[];
   approvingId: string | null;
+  resolvingKycId: string | null;
   onApprove: (payment: Payment) => void;
+  onResolveKyc: (payment: Payment) => void;
   onNavigate: (path: string) => void;
 }
 
@@ -32,7 +34,7 @@ function statusClass(status: Payment["status"]) {
   return `dashboard-status status-${status}`;
 }
 
-export function DashboardPage({ payments, approvingId, onApprove, onNavigate }: Props) {
+export function DashboardPage({ payments, approvingId, resolvingKycId, onApprove, onResolveKyc, onNavigate }: Props) {
   const settledCount = payments.filter((payment) => payment.status === "settled" || payment.status === "released").length;
   const pendingApprovals = payments.filter((payment) => payment.status === "pending_approval");
   const refusedCount = payments.filter((payment) => payment.status === "blocked").length;
@@ -167,6 +169,16 @@ export function DashboardPage({ payments, approvingId, onApprove, onNavigate }: 
                   </strong>
                   <p>{payment.policyDecision?.reasons.join("; ") || "Requires signed approval."}</p>
                   {payment.escrowSequence && <code>Escrow #{payment.escrowSequence}</code>}
+                  {payment.compliance?.credential?.checked && !payment.compliance.credential.verified && (
+                    <button
+                      className="kyc-resolve"
+                      type="button"
+                      disabled={resolvingKycId === payment.id}
+                      onClick={() => onResolveKyc(payment)}
+                    >
+                      {resolvingKycId === payment.id ? "Issuing credential..." : "Issue KYC credential & retry"}
+                    </button>
+                  )}
                   <button className="dashboard-primary" type="button" disabled={approvingId === payment.id} onClick={() => onApprove(payment)}>
                     {approvingId === payment.id ? "Waiting for Firefly..." : "Approve with Firefly"}
                   </button>
