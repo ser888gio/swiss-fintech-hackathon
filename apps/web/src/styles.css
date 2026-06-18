@@ -442,12 +442,14 @@ main {
   display: grid;
   gap: 14px;
   align-content: start;
+  min-width: 0;
 }
 
 .send-right {
   display: grid;
   gap: 16px;
   align-content: start;
+  min-width: 0;
 }
 
 .send-from-to {
@@ -572,6 +574,47 @@ input:focus {
   box-shadow: 0 0 0 4px rgba(209, 103, 31, 0.16);
 }
 
+.checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(23, 20, 19, 0.58);
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 2px 0 0;
+  padding: 0;
+  border-radius: 5px;
+  accent-color: var(--accent);
+}
+
+.checkbox-label > span {
+  min-width: 0;
+  margin: 0;
+  color: var(--paper);
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+}
+
+.checkbox-label .muted {
+  display: inline;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .amount-stage {
   display: flex;
   flex-direction: column;
@@ -635,6 +678,10 @@ input:focus {
   border-radius: 22px;
   background: rgba(1, 0, 0, 0.3);
   backdrop-filter: blur(8px);
+}
+
+.recipient-panel label {
+  min-width: 0;
 }
 
 .section-heading {
@@ -1295,6 +1342,11 @@ a {
   }
 
   .send-ref-purpose {
+    grid-template-columns: 1fr;
+  }
+
+  .recipient-meta,
+  .account-row {
     grid-template-columns: 1fr;
   }
 
