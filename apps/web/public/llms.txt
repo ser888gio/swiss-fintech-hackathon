@@ -1,0 +1,19 @@
+# Treasury Agent
+
+Autonomous cross-border treasury payment system built on XRPL for SwissHacks 2026.
+
+## What it does
+
+- Small, low-risk payments settle autonomously on XRPL in seconds via the AI orchestrator
+- Large or compliance-flagged payments are locked in on-chain escrow and require physical Firefly hardware approval before release
+- Every payment generates a full audit trail (intent, compliance score, policy decision, tx hash) stored in Postgres
+
+## Architecture
+
+- [Dashboard](https://web-production-4a5b2.up.railway.app/) — React/Vite SPA for initiating and monitoring payments
+- [API](https://api-production-4a5b2.up.railway.app/) — Python FastAPI backend: orchestrator, XRPL, policy engine, compliance, audit
+- Firefly bridge runs locally only; the AI never signs transactions
+
+## Key principle
+
+The LLM orchestrates and narrates. It never decides policy or signs transactions. Policy and signing are enforced by deterministic code only.
