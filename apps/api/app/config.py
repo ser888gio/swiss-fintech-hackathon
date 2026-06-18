@@ -7,7 +7,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # directory uvicorn is launched from (root or apps/api). A local ".env" is also
 # read for Docker/Railway where the app dir is the working directory; real
 # environment variables still take precedence over both.
-_ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"
+_CONFIG_PATH = Path(__file__).resolve()
+_ROOT_ENV = (
+    _CONFIG_PATH.parents[3] / ".env"
+    if len(_CONFIG_PATH.parents) > 3
+    else _CONFIG_PATH.parents[1] / ".env"
+)
 
 
 class Settings(BaseSettings):
