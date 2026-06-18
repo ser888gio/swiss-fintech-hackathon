@@ -25,16 +25,15 @@ const TERMINAL = new Set<Payment["status"]>(["settled", "released", "blocked"]);
 
 async function downloadReceipt(payment: Payment) {
   try {
-    const data = await api.getReceipt(payment.id);
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const blob = await api.getReceiptPdf(payment.id);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `receipt-${payment.id.slice(0, 8)}.json`;
+    a.download = `audit-report-${payment.id.slice(0, 8)}.pdf`;
     a.click();
     URL.revokeObjectURL(url);
   } catch {
-    alert("Receipt not yet available.");
+    alert("Audit report not yet available.");
   }
 }
 
@@ -144,7 +143,7 @@ export function PaymentCard({
       {isTerminal && (
         <div className="receipt-row">
           <button className="receipt-btn" onClick={() => void downloadReceipt(payment)}>
-            Download audit receipt
+            Download audit report (PDF)
           </button>
           {payment.receiptHash && (
             <code className="receipt-hash" title="SHA-256 of the canonical decision trail">

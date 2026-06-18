@@ -11,7 +11,6 @@ import type {
   Payment,
   PaymentIntent,
   QuoteRequest,
-  Receipt,
   RouteQuote,
   TreasuryAgentRun,
   TreasuryGoal,
@@ -76,8 +75,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ signature }),
     }),
-  getReceipt: (id: string) =>
-    request<{ receipt: Receipt; receiptHash: string }>(`/payments/${id}/receipt`),
+  getReceiptPdf: async (id: string): Promise<Blob> => {
+    const res = await fetch(`${BASE_URL}/payments/${id}/receipt.pdf`);
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    return res.blob();
+  },
 
   // Credential-issuing agent.
   issueCredential: (req: CredentialIssueRequest) =>

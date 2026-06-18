@@ -10,6 +10,7 @@ xrpl-py==4.5.0
 websockets>=13
 openai==1.35.7
 eth-keys==0.7.0
+reportlab==4.2.2
 python-dotenv==1.0.1
 pytest==8.2.2
 pytest-asyncio==0.23.7

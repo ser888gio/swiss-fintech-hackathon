@@ -1,11 +1,12 @@
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
 from .. import store
 from ..agents import orchestrator
 from ..config import get_settings
 from ..schemas import AgentLogEntry, ApprovalChallenge, Payment, PaymentIntent, QuoteRequest, Receipt, ReleaseRequest, RouteQuote
 from ..tools import receipt as receipt_tool
+from ..tools import receipt_pdf as receipt_pdf_tool
 from ..tools import routing
 
 router = APIRouter(prefix="/payments")
@@ -110,6 +111,22 @@ async def get_receipt(payment_id: str) -> dict:
         raise HTTPException(status_code=409, detail="receipt only available for terminal payments")
     r = receipt_tool.build_receipt(payment)
     return {"receipt": r.model_dump(by_alias=True), "receiptHash": payment.receipt_hash}
+
+
+@router.get("/{payment_id}/receipt.pdf")
+async def get_receipt_pdf(payment_id: str) -> Response:
+    payment = store.get(payment_id)
+    if payment is None:
+        raise HTTPException(status_code=404, detail="payment not found")
+    if payment.status not in orchestrator.TERMINAL_STATUSES:
+        raise HTTPException(status_code=409, detail="receipt only available for terminal payments")
+    pdf = receipt_pdf_tool.build_receipt_pdf(payment)
+    filename = f"audit-report-{payment.id[:8]}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 def _validate_destination(address: str) -> None:
