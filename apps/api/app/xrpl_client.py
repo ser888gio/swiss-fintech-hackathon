@@ -81,6 +81,24 @@ def token_amount(currency: str, value, settings):
     )
 
 
+def to_wire_amount(amount, currency: str, settings):
+    """Convert a Decimal (or int/float) amount to the XRPL wire format.
+
+    This is the ONLY place in new code where money crosses the ledger boundary.
+    All new modules must call this instead of constructing IssuedCurrencyAmount
+    directly, so the Decimal invariant is enforced at one location.
+
+    - XRP  → drops (str, via xrp_to_drops)
+    - token → IssuedCurrencyAmount with value=str(amount) (6dp canonical form)
+
+    Accepts Decimal, int, or float; callers in new code must pass Decimal.
+    """
+    from decimal import Decimal, ROUND_DOWN
+
+    d = Decimal(str(amount)).quantize(Decimal("0.000001"), rounding=ROUND_DOWN)
+    return token_amount(currency, d, settings)
+
+
 def credential_type_hex(credential_type: str) -> str:
     """XRPL stores CredentialType as uppercase hex of the UTF-8 bytes."""
     from xrpl.utils import str_to_hex
