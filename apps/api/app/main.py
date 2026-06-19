@@ -30,11 +30,21 @@ if settings.railway_service_web_url:
     if web_origin not in cors_origins:
         cors_origins.append(web_origin)
 
+# Vite may be opened through either loopback hostname and can move to the next
+# available port when 5173 is occupied. Keep this independent of CORS_ORIGINS
+# so an older/local .env cannot accidentally break browser development.
+local_dev_origin_regex = r"http://(?:localhost|127\.0\.0\.1):\d+"
+cors_origin_regex = (
+    rf"(?:{settings.cors_origin_regex})|(?:{local_dev_origin_regex})"
+    if settings.cors_origin_regex
+    else local_dev_origin_regex
+)
+
 # The dashboard calls this API directly from local dev and Railway.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_origin_regex=settings.cors_origin_regex,
+    allow_origin_regex=cors_origin_regex,
     allow_methods=["*"],
     allow_headers=["*"],
 )
