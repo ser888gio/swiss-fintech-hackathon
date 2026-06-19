@@ -3,17 +3,19 @@ import type { Payment, PaymentIntent } from "@treasury/shared";
 
 import { api } from "./lib/api.js";
 import { signOnFirefly } from "./lib/firefly.js";
+import { ARSPage } from "./pages/ARSPage.js";
 import { CredentialsPage } from "./pages/CredentialsPage.js";
 import { DashboardPage } from "./pages/DashboardPage.js";
 import { TransferPage } from "./pages/TransferPage.js";
 import { TreasuryPage } from "./pages/TreasuryPage.js";
 
-type Route = "/" | "/transfer" | "/credentials" | "/treasury";
+type Route = "/" | "/transfer" | "/credentials" | "/treasury" | "/ars";
 
 function currentRoute(): Route {
   if (window.location.pathname === "/transfer") return "/transfer";
   if (window.location.pathname === "/credentials") return "/credentials";
   if (window.location.pathname === "/treasury") return "/treasury";
+  if (window.location.pathname === "/ars") return "/ars";
   return "/";
 }
 
@@ -50,6 +52,7 @@ export function App() {
       path === "/transfer" ? "/transfer"
       : path === "/credentials" ? "/credentials"
       : path === "/treasury" ? "/treasury"
+      : path === "/ars" ? "/ars"
       : "/";
     if (window.location.pathname !== nextRoute) {
       window.history.pushState({}, "", nextRoute);
@@ -171,6 +174,9 @@ export function App() {
           <button className={route === "/treasury" ? "active" : ""} type="button" onClick={() => navigate("/treasury")}>
             Agent
           </button>
+          <button className={route === "/ars" ? "active" : ""} type="button" onClick={() => navigate("/ars")}>
+            ARS
+          </button>
         </div>
       </nav>
       <p className="tagline">Autonomous treasury on XRPL. The AI explains; deterministic code decides.</p>
@@ -202,6 +208,7 @@ export function App() {
       )}
       {route === "/credentials" && <CredentialsPage />}
       {route === "/treasury" && <TreasuryPage />}
+      {route === "/ars" && <ARSPage />}
 
       {approvingId && (
         <div className="firefly-overlay" role="status" aria-live="polite">

@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy import select
 
@@ -29,6 +30,7 @@ from .models import (
     CredentialLogRecord,
     CredentialRecord as CredentialRecordDB,
     PaymentRecord,
+    SpendReservationRecord,
 )
 from .schemas import (
     AgentLogEntry,
@@ -327,6 +329,111 @@ def _row_to_credential(row: CredentialRecordDB) -> CredentialRecord:
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
+
+
+# ── ARS spend velocity (G4 / G5) ─────────────────────────────────────────────
+
+# In-memory spend reservations: {agent_address: [(amount: Decimal, idempotency_key: str, status: str, created_at: datetime)]}
+_reservations: dict[str, list[dict]] = {}
+
+
+def reserve_spend(
+    agent_address: str,
+    idempotency_key: str,
+    amount: Decimal,
+    currency: str,
+    context_kind: str,
+) -> bool:
+    """Atomically reserve a spend slot under idempotency_key.
+
+    Returns True if the reservation was created, False if the key already exists
+    (idempotent replay). The caller must call commit_spend or release_spend after
+    the transaction attempt completes.
+    """
+    import uuid
+    bucket = _reservations.setdefault(agent_address, [])
+    if any(r["idempotency_key"] == idempotency_key for r in bucket):
+        return False
+    bucket.append({
+        "id": str(uuid.uuid4()),
+        "idempotency_key": idempotency_key,
+        "amount": amount,
+        "currency": currency,
+        "context_kind": context_kind,
+        "status": "reserved",
+        "created_at": datetime.now(timezone.utc),
+    })
+    _schedule(_persist_reservation(agent_address, idempotency_key, amount, currency, context_kind))
+    return True
+
+
+def commit_spend(agent_address: str, idempotency_key: str) -> None:
+    """Mark a reserved spend as committed (transaction landed)."""
+    for r in _reservations.get(agent_address, []):
+        if r["idempotency_key"] == idempotency_key:
+            r["status"] = "committed"
+            break
+
+
+def release_spend(agent_address: str, idempotency_key: str) -> None:
+    """Release a reservation on failure so it exits the velocity window."""
+    for r in _reservations.get(agent_address, []):
+        if r["idempotency_key"] == idempotency_key:
+            r["status"] = "released"
+            break
+
+
+def recent_payments_sum(
+    agent_address: str,
+    since: datetime,
+    currency: str,
+) -> Decimal:
+    """Return the sum of committed + reserved spend amounts for an agent in [since, now).
+
+    Includes both committed (settled) and outstanding reserved amounts so the
+    velocity cap is enforced atomically. Released slots are excluded.
+    Pure in-memory — the DB is write-behind only. Returns Decimal("0") when no
+    spend exists.
+    """
+    total = Decimal("0")
+    for r in _reservations.get(agent_address, []):
+        if r["status"] == "released":
+            continue
+        if r["currency"] != currency:
+            continue
+        if r["created_at"] < since:
+            continue
+        total += r["amount"]
+    return total
+
+
+# ── Async persist for spend reservations ──────────────────────────────────────
+
+async def _persist_reservation(
+    agent_address: str,
+    idempotency_key: str,
+    amount: Decimal,
+    currency: str,
+    context_kind: str,
+) -> None:
+    if db.session_factory is None:
+        return
+    import uuid
+    try:
+        async with db.session_factory() as session:
+            row = SpendReservationRecord(
+                id=str(uuid.uuid4()),
+                agent_address=agent_address,
+                idempotency_key=idempotency_key,
+                amount=str(amount),
+                currency=currency,
+                context_kind=context_kind,
+                status="reserved",
+            )
+            session.add(row)
+            await session.commit()
+    except Exception as exc:
+        log.warning("Failed to persist spend reservation %s: %s", idempotency_key, exc)
 
 
 # ── Utility ───────────────────────────────────────────────────────────────────

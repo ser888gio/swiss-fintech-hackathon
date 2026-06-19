@@ -12,13 +12,28 @@ the tools or the policy boundary.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 from .. import store
 from ..config import get_settings
 from ..policy import engine
-from ..schemas import AgentLogEntry, Payment, PaymentIntent, PaymentStatus
+from ..policy.scope import AgentScope, evaluate_scope
+from ..schemas import (
+    AgentLogEntry,
+    DelegationGrantCreate,
+    GuardrailResult,
+    Payment,
+    PaymentIntent,
+    PaymentStatus,
+    Receivable,
+    ReceivableCreate,
+    X402Settlement,
+)
 from ..tools import audit, compliance, credentials, execution, firefly, receipt, routing
+from ..tools import delegation as delegation_tool
+from ..tools import trade_finance as tf_tool
+from ..tools import x402 as x402_tool
 
 # Statuses that represent a terminal, immutable outcome.
 TERMINAL_STATUSES = {PaymentStatus.settled, PaymentStatus.released, PaymentStatus.blocked}
@@ -186,6 +201,203 @@ def challenge_for(payment_id: str):
     if payment.status is not PaymentStatus.pending_approval:
         raise InvalidApprovalState(payment.status)
     return firefly.challenge_for_payment(payment)
+
+
+# ── x402 pay-at-need (Feature A) ─────────────────────────────────────────────
+
+async def process_service_payment(
+    service_url: str,
+    *,
+    service_type: str = "data_lookup",
+    agent_address: str | None = None,
+) -> X402Settlement:
+    """Pay for an external service via x402. Runs G1→G4 guardrails before paying.
+
+    Guardrail order:
+      G1  KYA          — agent must have an accepted credential
+      G2  sanctions    — service host checked (OpenSanctions not wired for hosts,
+                         so we verify the host is in the allowed list instead)
+      G4  spend scope  — per-tx + daily velocity cap
+    """
+    settings = get_settings()
+    trail: list[GuardrailResult] = []
+
+    # G1: agent KYA
+    effective_agent = agent_address or settings.treasury_wallet_address or "rMOCK_TREASURY"
+    g1 = await _run_g1(effective_agent)
+    trail.append(g1)
+    if not g1.passed:
+        raise GuardrailBlocked("G1_kya", g1.reason or g1.rule_fired or "kya_failed", trail)
+
+    # G4: scope (host allowlist + velocity)
+    from urllib.parse import urlparse
+    host = urlparse(service_url).netloc
+    scope = _agent_scope(settings)
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    spent_today = store.recent_payments_sum(effective_agent, since, "RLUSD")
+    g4 = evaluate_scope(
+        Decimal("1"),        # placeholder; real amount comes from the 402 challenge
+        scope,
+        spent_today,
+        service_host=host,
+        service_type=service_type,
+    )
+    trail.append(GuardrailResult(
+        name="G4_scope",
+        passed=g4.allowed,
+        rule_fired=g4.rule_fired,
+        reason=g4.reasons[0] if g4.reasons else None,
+    ))
+    if not g4.allowed:
+        raise GuardrailBlocked("G4_scope", g4.reasons[0] if g4.reasons else "scope_blocked", trail)
+
+    settlement = await x402_tool.request_with_payment(
+        service_url, service_type=service_type, guardrail_trail=trail
+    )
+    return settlement
+
+
+# ── On-chain credit / trade finance (Feature B) ───────────────────────────────
+
+async def register_receivable(create: ReceivableCreate) -> Receivable:
+    """Register a trade-finance receivable. No guardrails — this is record-only."""
+    return await tf_tool.register_receivable(create)
+
+
+async def process_early_payment(
+    invoice_id: str,
+    *,
+    agent_address: str | None = None,
+) -> Receivable:
+    """Pay a supplier early from the vault pool. Runs G1→G4→G6 guardrails.
+
+    G6 (amount threshold): large early-payments still escalate to Firefly via the
+    standard process_payment path — this function raises GuardrailEscalation so
+    the caller can redirect to the hardware-approval flow.
+    """
+    settings = get_settings()
+    trail: list[GuardrailResult] = []
+
+    rec = tf_tool.get_by_invoice(invoice_id)
+    if rec is None:
+        from ..tools.trade_finance import ReceivableNotFound
+        raise ReceivableNotFound(invoice_id)
+
+    face = Decimal(rec.amount)
+    discount = Decimal(rec.discount_rate)
+    supplier_amount = face * (Decimal("1") - discount)
+
+    effective_agent = agent_address or settings.treasury_wallet_address or "rMOCK_TREASURY"
+
+    # G1
+    g1 = await _run_g1(effective_agent)
+    trail.append(g1)
+    if not g1.passed:
+        raise GuardrailBlocked("G1_kya", g1.reason or "kya_failed", trail)
+
+    # G4 is intentionally skipped for trade finance: receivable face values are
+    # large by design (institutional invoices). G6 below provides the threshold
+    # gate; Firefly covers anything above policy_threshold_usd.
+    trail.append(GuardrailResult(
+        name="G4_scope",
+        passed=True,
+        rule_fired=None,
+        reason="trade_finance_exempt",
+    ))
+
+    # G6: amount threshold → Firefly escalation
+    policy = engine.evaluate(
+        float(supplier_amount),
+        aml_score=0,
+        sanctioned=False,
+        threshold_usd=settings.policy_threshold_usd,
+        flag_score=settings.policy_compliance_flag_score,
+    )
+    g6_passed = not policy.blocked and not policy.requires_approval
+    trail.append(GuardrailResult(
+        name="G6_threshold",
+        passed=g6_passed,
+        rule_fired=policy.rule_fired,
+        reason="; ".join(policy.reasons) if policy.reasons else None,
+    ))
+    if policy.blocked:
+        raise GuardrailBlocked("G6_threshold", policy.block_reason or "policy_blocked", trail)
+    if policy.requires_approval:
+        raise GuardrailEscalation("G6_threshold", "requires_hardware_approval", trail)
+
+    return await tf_tool.pay_supplier_early(invoice_id, guardrail_trail=trail)
+
+
+async def collect_repayment(
+    invoice_id: str, *, repayment_tx_hash: str | None = None
+) -> Receivable:
+    """Collect buyer repayment and replenish vault. No additional guardrails."""
+    return await tf_tool.collect_repayment(invoice_id, repayment_tx_hash=repayment_tx_hash)
+
+
+# ── Agent-to-Agent Delegation (Feature C) ─────────────────────────────────────
+
+async def process_delegation_fund(create: DelegationGrantCreate) -> "delegation_tool.DelegationGrant":
+    """Grant delegation and fund the sub-agent. Runs G1 on the parent."""
+    settings = get_settings()
+    trail: list[GuardrailResult] = []
+
+    g1 = await _run_g1(create.parent_address)
+    trail.append(g1)
+    if not g1.passed:
+        raise GuardrailBlocked("G1_kya", g1.reason or "kya_failed", trail)
+
+    return await delegation_tool.grant_delegation(create)
+
+
+# ── Shared guardrail helpers ──────────────────────────────────────────────────
+
+async def _run_g1(agent_address: str) -> GuardrailResult:
+    """Run G1 KYA: verify the agent holds an accepted credential."""
+    settings = get_settings()
+    if not settings.credential_kyc_enabled:
+        return GuardrailResult(name="G1_kya", passed=True, rule_fired=None, reason="KYC disabled")
+    cred = await credentials.verify_kyc(agent_address)
+    passed = cred.verified
+    return GuardrailResult(
+        name="G1_kya",
+        passed=passed,
+        rule_fired=None if passed else "kya_unverified",
+        reason=cred.reason if not passed else None,
+    )
+
+
+def _agent_scope(settings) -> AgentScope:
+    allowed_hosts = (
+        [h.strip() for h in settings.x402_allowed_service_hosts.split(",") if h.strip()]
+        if settings.x402_allowed_service_hosts
+        else None
+    )
+    return AgentScope(
+        max_per_transaction=Decimal(str(settings.x402_scope_max_per_tx_usd)),
+        max_per_day=Decimal(str(settings.x402_scope_max_per_day_usd)),
+        allowed_service_hosts=allowed_hosts,
+    )
+
+
+# ── Guardrail exceptions ──────────────────────────────────────────────────────
+
+class GuardrailBlocked(Exception):
+    """A guardrail hard-blocked the action. No payment submitted."""
+    def __init__(self, guardrail: str, reason: str, trail: list[GuardrailResult]):
+        super().__init__(f"{guardrail}: {reason}")
+        self.guardrail = guardrail
+        self.reason = reason
+        self.trail = trail
+
+
+class GuardrailEscalation(Exception):
+    """A guardrail demands Firefly escalation (not a hard block)."""
+    def __init__(self, guardrail: str, reason: str, trail: list[GuardrailResult]):
+        super().__init__(f"{guardrail}: {reason}")
+        self.guardrail = guardrail
+        self.reason = reason
+        self.trail = trail
 
 
 class PaymentNotFound(Exception):

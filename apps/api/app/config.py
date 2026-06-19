@@ -113,6 +113,43 @@ class Settings(BaseSettings):
     vault_recall_threshold_usd: float = 1_000.0
     vault_id: str = ""  # hex LedgerIndex of the Vault object; set after VaultCreate
 
+    # ARS x402 pay-at-need. When enabled, the agent can pay for external services
+    # that respond with HTTP 402. Facilitator URL is the t54 x402 facilitator.
+    # Allowed assets and facilitators are allowlisted here; the x402 tool rejects
+    # any challenge that requests a currency or facilitator not in these lists.
+    # Agent spend scope (G4): caps per single x402 call and rolling 24-hour window.
+    x402_enabled: bool = False
+    x402_facilitator_url: str = "https://xrpl-x402.t54.ai"
+    x402_allowed_assets: str = "RLUSD"          # comma-separated currency codes
+    x402_allowed_facilitators: str = "https://xrpl-x402.t54.ai"  # comma-sep URLs
+    x402_scope_max_per_tx_usd: float = 50.0     # G4 per-transaction cap
+    x402_scope_max_per_day_usd: float = 500.0   # G4 rolling 24h cap
+    x402_allowed_service_hosts: str = ""        # comma-sep; empty = any host allowed
+    x402_source_tag: int = 20260530             # Starter Kit convention
+
+    # ARS Agent-to-Agent Delegation (G5). When enabled, the orchestrator accepts
+    # grant_delegation / sub-agent payment calls. delegation_default_max_total is
+    # the hard ceiling any single grant may authorise; individual grants may be lower.
+    delegation_enabled: bool = False
+    delegation_default_max_total_usd: float = 1_000.0
+    delegation_default_max_per_tx_usd: float = 100.0
+    delegation_default_max_per_day_usd: float = 250.0
+
+    # ARS Trade Finance (on-chain credit, XLS-65 vault-backed early payment).
+    # discount_rate_default is the fraction deducted from face value when paying
+    # early (e.g. 0.02 = 2 %).
+    trade_finance_enabled: bool = False
+    trade_finance_discount_rate_default: float = 0.02
+    trade_finance_source_tag: int = 20260530
+
+    # ARS XLS-66 Lending (LoanBroker / LoanSet / LoanCreate / LoanRepay).
+    # Amendment-gated — Devnet only at build time. If the amendment check fails
+    # at demo time, flip this to false and fall back to XLS-65 early payment.
+    lending_enabled: bool = False
+    lending_xrpl_endpoint: str = "wss://s.devnet.rippletest.net:51233"
+    lending_loan_broker_address: str = ""  # LoanBroker account on Devnet
+    lending_source_tag: int = 20260530
+
     # XLS-33 MPTokens — COMPLY compliance-attestation issuance.
     # Disabled by default. XLS-33 is available on Testnet and Devnet.
     # mpt_xrpl_endpoint defaults to xrpl_endpoint when empty.

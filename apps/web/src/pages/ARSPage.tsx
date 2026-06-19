@@ -1,0 +1,538 @@
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import type {
+  DelegationGrant,
+  DelegationGrantCreate,
+  GuardrailResult,
+  Receivable,
+  ReceivableCreate,
+  X402Settlement,
+} from "@treasury/shared";
+import { api } from "../lib/api.js";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface LogLine {
+  ts: string;
+  kind: "info" | "success" | "error" | "guardrail";
+  text: string;
+  txHash?: string;
+  explorerUrl?: string;
+  guardrailTrail?: GuardrailResult[];
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const DEVNET_EXPLORER = "https://devnet.xrpl.org";
+
+function devnetTxUrl(hash: string): string {
+  return `${DEVNET_EXPLORER}/transactions/${hash}`;
+}
+
+function hashShort(hash: string): string {
+  return `${hash.slice(0, 10)}…`;
+}
+
+function statusColor(status: string): string {
+  switch (status) {
+    case "closed": return "status-settled";
+    case "awaiting_maturity": return "status-routing";
+    case "supplier_paid": return "status-routing";
+    case "registered": return "status-routing";
+    case "needs_recovery": return "status-blocked";
+    default: return "status-routing";
+  }
+}
+
+// ── Payment Log panel ─────────────────────────────────────────────────────────
+
+function PaymentLog({ lines }: { lines: LogLine[] }) {
+  const bottom = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ behavior: "smooth" });
+  }, [lines]);
+
+  return (
+    <div className="ars-log-panel">
+      <div className="ars-log-header">
+        <span className="eyebrow">Live payment log</span>
+        <span className="muted" style={{ fontSize: "0.7rem" }}>{lines.length} events</span>
+      </div>
+      <div className="ars-log-body">
+        {lines.length === 0 && (
+          <p className="muted ars-log-empty">No transactions yet. Trigger an action on the left.</p>
+        )}
+        {lines.map((l, i) => (
+          <div key={i} className={`ars-log-line ars-log-${l.kind}`}>
+            <span className="ars-log-ts">{l.ts}</span>
+            <span className="ars-log-text">{l.text}</span>
+            {l.txHash && (
+              <a
+                href={l.explorerUrl ?? devnetTxUrl(l.txHash)}
+                target="_blank"
+                rel="noreferrer"
+                className="ars-log-link"
+              >
+                {hashShort(l.txHash)} ↗
+              </a>
+            )}
+            {l.guardrailTrail && l.guardrailTrail.length > 0 && (
+              <div className="ars-guardrail-trail">
+                {l.guardrailTrail.map((g) => (
+                  <span
+                    key={g.name}
+                    className={`ars-guardrail-badge ${g.passed ? "ars-g-pass" : "ars-g-fail"}`}
+                    title={g.reason ?? g.ruleFired ?? ""}
+                  >
+                    {g.passed ? "✓" : "✗"} {g.name}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        <div ref={bottom} />
+      </div>
+    </div>
+  );
+}
+
+// ── Trade Finance panel ────────────────────────────────────────────────────────
+
+const DEFAULT_RECEIVABLE: ReceivableCreate = {
+  invoiceId: "INV-TF-001",
+  buyer: "rBUYER000000000000000000000000000",
+  supplier: "rSUPPLIER00000000000000000000000",
+  amount: "100000.000000",
+  discountRate: "0.020000",
+  dueDate: new Date(Date.now() + 90 * 86400 * 1000).toISOString(),
+};
+
+function TradeFinancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
+  const [receivables, setReceivables] = useState<Receivable[]>([]);
+  const [form, setForm] = useState<ReceivableCreate>(DEFAULT_RECEIVABLE);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  const log = useCallback((l: LogLine) => onLog(l), [onLog]);
+  const now = () => new Date().toISOString().slice(11, 19);
+
+  const refresh = useCallback(async () => {
+    try {
+      setReceivables(await api.listReceivables());
+    } catch {
+      /* silently ignore on disabled feature */
+    }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const setBusyKey = (key: string, val: boolean) =>
+    setBusy((p) => ({ ...p, [key]: val }));
+
+  const register = async () => {
+    setBusyKey("register", true);
+    setError(null);
+    log({ ts: now(), kind: "info", text: `Registering receivable ${form.invoiceId}…` });
+    try {
+      const rec = await api.registerReceivable(form);
+      log({ ts: now(), kind: "success", text: `Receivable ${rec.invoiceId} registered — status: ${rec.status}` });
+      await refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      log({ ts: now(), kind: "error", text: `Register failed: ${msg}` });
+    } finally {
+      setBusyKey("register", false);
+    }
+  };
+
+  const payEarly = async (invoiceId: string) => {
+    setBusyKey(invoiceId, true);
+    log({ ts: now(), kind: "info", text: `Paying supplier early for ${invoiceId}…` });
+    try {
+      const rec = await api.paySupplierEarly(invoiceId);
+      const txHash = rec.paymentTxHash ?? rec.drawTxHash ?? "";
+      const explorerUrl = rec.paymentExplorerUrl ?? rec.drawExplorerUrl ?? (txHash ? devnetTxUrl(txHash) : undefined);
+      log({
+        ts: now(),
+        kind: "success",
+        text: `Supplier paid — ${rec.amount} @ ${(Number(rec.discountRate) * 100).toFixed(1)}% discount → ${(Number(rec.amount) * (1 - Number(rec.discountRate))).toLocaleString()} delivered`,
+        txHash: txHash || undefined,
+        explorerUrl,
+        guardrailTrail: rec.guardrailTrail,
+      });
+      if (rec.loanId) {
+        log({ ts: now(), kind: "info", text: `XLS-66 LoanCreate → loan ${rec.loanId.slice(0, 12)}…` });
+      }
+      await refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log({ ts: now(), kind: "error", text: `Early payment failed: ${msg}` });
+    } finally {
+      setBusyKey(invoiceId, false);
+    }
+  };
+
+  const collect = async (invoiceId: string) => {
+    setBusyKey(`collect_${invoiceId}`, true);
+    log({ ts: now(), kind: "info", text: `Collecting repayment for ${invoiceId}…` });
+    try {
+      const rec = await api.collectRepayment(invoiceId);
+      const txHash = rec.settleTxHash ?? rec.repaymentTxHash ?? "";
+      log({
+        ts: now(),
+        kind: "success",
+        text: `Repayment collected — receivable ${rec.status}. Vault replenished.`,
+        txHash: txHash || undefined,
+        explorerUrl: txHash ? devnetTxUrl(txHash) : undefined,
+      });
+      await refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log({ ts: now(), kind: "error", text: `Collect failed: ${msg}` });
+    } finally {
+      setBusyKey(`collect_${invoiceId}`, false);
+    }
+  };
+
+  const field = (key: keyof ReceivableCreate) => (e: ChangeEvent<HTMLInputElement>) =>
+    setForm((p) => ({ ...p, [key]: e.target.value }));
+
+  return (
+    <section className="queue ars-panel" aria-label="Trade Finance">
+      <div className="section-heading">
+        <span className="eyebrow">XLS-65 + XLS-66 · Devnet</span>
+        <strong>Trade Finance — early supplier payment</strong>
+      </div>
+      <p className="muted" style={{ marginBottom: "1rem" }}>
+        Register a 90-day invoice. The agent pays the supplier today from the vault pool at a
+        discount. At maturity the buyer repays and the vault is replenished. XLS-66 LoanCreate
+        fires automatically when <code>lending_enabled=True</code>.
+      </p>
+
+      {error && <p className="error">{error}</p>}
+
+      <div className="ars-form-grid">
+        <label><span>Invoice ID</span>
+          <input value={form.invoiceId} onChange={field("invoiceId")} spellCheck={false} />
+        </label>
+        <label><span>Face amount (RLUSD)</span>
+          <input value={form.amount} onChange={field("amount")} />
+        </label>
+        <label><span>Discount rate</span>
+          <input value={form.discountRate} onChange={field("discountRate")} placeholder="0.020000" />
+        </label>
+        <label><span>Buyer address</span>
+          <input value={form.buyer} onChange={field("buyer")} spellCheck={false} />
+        </label>
+        <label><span>Supplier address</span>
+          <input value={form.supplier} onChange={field("supplier")} spellCheck={false} />
+        </label>
+        <label><span>Due date (ISO)</span>
+          <input value={form.dueDate.slice(0, 10)} onChange={(e) => setForm((p) => ({ ...p, dueDate: `${e.target.value}T00:00:00Z` }))} type="date" />
+        </label>
+      </div>
+
+      <button className="primary-action" type="button" disabled={busy.register} onClick={() => void register()}>
+        {busy.register ? "Registering…" : "Register receivable"}
+      </button>
+
+      {receivables.length > 0 && (
+        <ul className="credential-log" style={{ marginTop: "1rem" }}>
+          {receivables.map((rec) => (
+            <li key={rec.id} className="decision-row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong>{rec.invoiceId}</strong>{" "}
+                <span className={`dashboard-status ${statusColor(rec.status)}`}>{rec.status}</span>
+                <p className="muted" style={{ margin: "0.2rem 0" }}>
+                  {Number(rec.amount).toLocaleString()} RLUSD · {(Number(rec.discountRate) * 100).toFixed(1)}% discount
+                </p>
+                {rec.paymentTxHash && (
+                  <p className="muted" style={{ fontSize: "0.72rem" }}>
+                    Pay tx:{" "}
+                    <a href={rec.paymentExplorerUrl ?? devnetTxUrl(rec.paymentTxHash)} target="_blank" rel="noreferrer">
+                      {hashShort(rec.paymentTxHash)} ↗
+                    </a>
+                  </p>
+                )}
+                {rec.settleTxHash && (
+                  <p className="muted" style={{ fontSize: "0.72rem" }}>
+                    Settle tx:{" "}
+                    <a href={devnetTxUrl(rec.settleTxHash)} target="_blank" rel="noreferrer">
+                      {hashShort(rec.settleTxHash)} ↗
+                    </a>
+                  </p>
+                )}
+                {rec.loanId && (
+                  <p className="muted" style={{ fontSize: "0.72rem" }}>XLS-66 loan: {rec.loanId.slice(0, 16)}…</p>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                {(rec.status === "registered" || rec.status === "funds_reserved") && (
+                  <button className="primary-action" type="button" disabled={busy[rec.invoiceId]}
+                    onClick={() => void payEarly(rec.invoiceId)}>
+                    {busy[rec.invoiceId] ? "Paying…" : "Pay early"}
+                  </button>
+                )}
+                {rec.status === "awaiting_maturity" && (
+                  <button className="primary-action" type="button" disabled={busy[`collect_${rec.invoiceId}`]}
+                    onClick={() => void collect(rec.invoiceId)}>
+                    {busy[`collect_${rec.invoiceId}`] ? "Collecting…" : "Collect repayment"}
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ── x402 Service Payment panel ─────────────────────────────────────────────────
+
+function X402Panel({ onLog }: { onLog: (l: LogLine) => void }) {
+  const [serviceUrl, setServiceUrl] = useState("https://xrpl-x402.t54.ai/demo-resource");
+  const [serviceType, setServiceType] = useState("data_lookup");
+  const [busy, setBusy] = useState(false);
+  const [last, setLast] = useState<X402Settlement | null>(null);
+  const now = () => new Date().toISOString().slice(11, 19);
+
+  const pay = async () => {
+    setBusy(true);
+    onLog({ ts: now(), kind: "info", text: `x402 → ${serviceUrl}` });
+    try {
+      const result = await api.triggerServicePayment(serviceUrl, serviceType);
+      setLast(result);
+      onLog({
+        ts: now(),
+        kind: "success",
+        text: `x402 paid — ${result.amount} ${result.currency} · invoice ${result.invoiceId.slice(0, 12)}…`,
+        txHash: result.txHash,
+        explorerUrl: result.explorerUrl ?? undefined,
+        guardrailTrail: result.guardrailTrail,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      onLog({ ts: now(), kind: "error", text: `x402 failed: ${msg}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="queue ars-panel" aria-label="x402 service payment">
+      <div className="section-heading">
+        <span className="eyebrow">x402 · Testnet RLUSD</span>
+        <strong>Pay-at-need — agent pays for a service per request</strong>
+      </div>
+      <p className="muted" style={{ marginBottom: "1rem" }}>
+        Agent hits a paid endpoint → 402 → G1+G4 guardrails screen the spend →
+        RLUSD Payment via the t54 facilitator → retries with proof.
+      </p>
+
+      <label><span>Service URL</span>
+        <input value={serviceUrl} onChange={(e) => setServiceUrl(e.target.value)} spellCheck={false}
+          style={{ width: "100%" }} disabled={busy} />
+      </label>
+      <label style={{ marginTop: "0.5rem" }}><span>Service type</span>
+        <input value={serviceType} onChange={(e) => setServiceType(e.target.value)} disabled={busy} />
+      </label>
+
+      <button className="primary-action" type="button" disabled={busy} style={{ marginTop: "0.75rem" }}
+        onClick={() => void pay()}>
+        {busy ? "Paying…" : "Trigger x402 payment"}
+      </button>
+
+      {last && (
+        <div className="ars-tx-card" style={{ marginTop: "1rem" }}>
+          <p className="muted" style={{ fontSize: "0.75rem", margin: 0 }}>Last settlement</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginTop: "0.4rem" }}>
+            <div><p className="muted">Amount</p><strong>{last.amount} {last.currency}</strong></div>
+            <div><p className="muted">Invoice</p><code style={{ fontSize: "0.72rem" }}>{last.invoiceId.slice(0, 16)}…</code></div>
+            <div>
+              <p className="muted">Tx hash</p>
+              <a href={last.explorerUrl ?? devnetTxUrl(last.txHash)} target="_blank" rel="noreferrer" style={{ fontSize: "0.75rem" }}>
+                {hashShort(last.txHash)} ↗
+              </a>
+            </div>
+            <div><p className="muted">Proof header</p><code style={{ fontSize: "0.68rem" }}>{last.proofHeader.slice(0, 20)}…</code></div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ── Delegation panel ───────────────────────────────────────────────────────────
+
+const DEFAULT_GRANT: DelegationGrantCreate = {
+  parentAddress: "",
+  childAddress: "",
+  maxTotal: "500.000000",
+  maxPerTx: "50.000000",
+  maxPerDay: "200.000000",
+  currency: "RLUSD",
+};
+
+function DelegationPanel({ onLog }: { onLog: (l: LogLine) => void }) {
+  const [grants, setGrants] = useState<DelegationGrant[]>([]);
+  const [form, setForm] = useState<DelegationGrantCreate>(DEFAULT_GRANT);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<string | null>(null);
+  const now = () => new Date().toISOString().slice(11, 19);
+
+  const refresh = useCallback(async () => {
+    try { setGrants(await api.listDelegations()); } catch { /* feature may be disabled */ }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const setBusyKey = (key: string, val: boolean) =>
+    setBusy((p) => ({ ...p, [key]: val }));
+
+  const create = async () => {
+    setBusyKey("create", true);
+    setError(null);
+    onLog({ ts: now(), kind: "info", text: `Granting ${form.maxTotal} ${form.currency} to ${form.childAddress.slice(0, 12)}…` });
+    try {
+      const grant = await api.createDelegation(form);
+      onLog({
+        ts: now(), kind: "success",
+        text: `Delegation created — child: ${grant.childAddress.slice(0, 12)}… max: ${grant.maxTotal}`,
+        txHash: grant.fundTxHash ?? undefined,
+        explorerUrl: grant.fundExplorerUrl ?? undefined,
+      });
+      await refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      onLog({ ts: now(), kind: "error", text: `Delegation failed: ${msg}` });
+    } finally {
+      setBusyKey("create", false);
+    }
+  };
+
+  const revoke = async (grantId: string) => {
+    setBusyKey(grantId, true);
+    try {
+      await api.revokeDelegation(grantId);
+      onLog({ ts: now(), kind: "info", text: `Grant ${grantId.slice(0, 8)}… revoked` });
+      await refresh();
+    } catch (e) {
+      onLog({ ts: now(), kind: "error", text: `Revoke failed: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setBusyKey(grantId, false);
+    }
+  };
+
+  const field = (key: keyof DelegationGrantCreate) => (e: ChangeEvent<HTMLInputElement>) =>
+    setForm((p) => ({ ...p, [key]: e.target.value }));
+
+  return (
+    <section className="queue ars-panel" aria-label="Agent delegation">
+      <div className="section-heading">
+        <span className="eyebrow">G5 · Agent-to-Agent</span>
+        <strong>Delegation — scoped sub-agent budget</strong>
+      </div>
+      <p className="muted" style={{ marginBottom: "1rem" }}>
+        A parent agent grants a sub-agent wallet a delegated budget. The sub-agent can only
+        spend within the delegated limits (per-tx, per-day, lifetime total).
+      </p>
+
+      {error && <p className="error">{error}</p>}
+
+      <div className="ars-form-grid">
+        <label><span>Parent address</span>
+          <input value={form.parentAddress} onChange={field("parentAddress")} spellCheck={false} />
+        </label>
+        <label><span>Child (sub-agent) address</span>
+          <input value={form.childAddress} onChange={field("childAddress")} spellCheck={false} />
+        </label>
+        <label><span>Max total</span>
+          <input value={form.maxTotal} onChange={field("maxTotal")} />
+        </label>
+        <label><span>Max per tx</span>
+          <input value={form.maxPerTx} onChange={field("maxPerTx")} />
+        </label>
+        <label><span>Max per day</span>
+          <input value={form.maxPerDay} onChange={field("maxPerDay")} />
+        </label>
+      </div>
+
+      <button className="primary-action" type="button" disabled={busy.create} onClick={() => void create()}>
+        {busy.create ? "Granting…" : "Grant delegation"}
+      </button>
+
+      {grants.length > 0 && (
+        <ul className="credential-log" style={{ marginTop: "1rem" }}>
+          {grants.map((g) => (
+            <li key={g.id} className="decision-row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong>{g.childAddress.slice(0, 16)}…</strong>{" "}
+                <span className={`dashboard-status ${g.revoked ? "status-blocked" : "status-settled"}`}>
+                  {g.revoked ? "revoked" : "active"}
+                </span>
+                <p className="muted" style={{ margin: "0.2rem 0", fontSize: "0.75rem" }}>
+                  max: {g.maxTotal} · per-tx: {g.maxPerTx} · per-day: {g.maxPerDay} {g.currency}
+                </p>
+                {g.fundTxHash && (
+                  <p className="muted" style={{ fontSize: "0.72rem" }}>
+                    Fund tx:{" "}
+                    <a href={g.fundExplorerUrl ?? devnetTxUrl(g.fundTxHash)} target="_blank" rel="noreferrer">
+                      {hashShort(g.fundTxHash)} ↗
+                    </a>
+                  </p>
+                )}
+              </div>
+              {!g.revoked && (
+                <button className="text-action" type="button" disabled={busy[g.id]}
+                  onClick={() => void revoke(g.id)}>
+                  Revoke
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export function ARSPage() {
+  const [lines, setLines] = useState<LogLine[]>([]);
+
+  const addLog = useCallback((l: LogLine) => {
+    setLines((prev) => [...prev, l]);
+  }, []);
+
+  return (
+    <div className="ars-root">
+      <div className="ars-left">
+        <div className="send-topbar" style={{ marginBottom: "1.5rem" }}>
+          <div>
+            <span className="eyebrow">ARS · Agentic Risk Standard</span>
+            <h1>Agentic Payment Infrastructure</h1>
+          </div>
+          <span className="policy-pill">code decides · LLM narrates</span>
+        </div>
+        <p className="tagline" style={{ marginBottom: "1.5rem" }}>
+          All three paths share the same guardrail spine (G1 KYA → G2 sanctions → G4 scope → G5
+          delegation → G6 threshold → G7 Firefly). Every transaction links to the{" "}
+          <a href="https://devnet.xrpl.org" target="_blank" rel="noreferrer">Devnet explorer</a>.
+        </p>
+
+        <TradeFinancePanel onLog={addLog} />
+        <X402Panel onLog={addLog} />
+        <DelegationPanel onLog={addLog} />
+      </div>
+
+      <div className="ars-right">
+        <PaymentLog lines={lines} />
+      </div>
+    </div>
+  );
+}

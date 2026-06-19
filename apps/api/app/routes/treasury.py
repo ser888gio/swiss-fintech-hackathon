@@ -5,12 +5,16 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 
-from ..agents import treasury_agent
+from ..agents import orchestrator, treasury_agent
 from ..config import get_settings
 from ..schemas import (
+    DelegationGrant,
+    DelegationGrantCreate,
     MPTAttestationRecord,
     MPTAuthorizeRequest,
     MPTStatus,
+    Receivable,
+    ReceivableCreate,
     TreasuryAgentRun,
     TreasuryGoal,
     TreasuryGoalCreate,
@@ -18,9 +22,12 @@ from ..schemas import (
     VaultOpRecord,
     VaultStatus,
     VaultWithdrawRequest,
+    X402Settlement,
 )
 from .. import xrpl_client
+from ..tools import delegation as delegation_tool
 from ..tools import mptoken as mptoken_tool
+from ..tools import trade_finance as tf_tool
 from ..tools import vault as vault_tool
 
 router = APIRouter(prefix="/treasury")
@@ -200,6 +207,114 @@ async def mint_mpt_attestation() -> MPTAttestationRecord:
         amount_settled=amount_settled,
     )
     return _mpt_record(result, payment_id=payment_id, amount_settled=amount_settled)
+
+
+# ── Trade Finance / On-chain Credit ──────────────────────────────────────────
+
+@router.post("/receivables", response_model=Receivable, status_code=201)
+async def register_receivable(create: ReceivableCreate) -> Receivable:
+    """Register a trade-finance receivable (supplier early-payment claim)."""
+    settings = get_settings()
+    if not settings.trade_finance_enabled:
+        raise HTTPException(status_code=403, detail="trade_finance_enabled is False")
+    return await orchestrator.register_receivable(create)
+
+
+@router.get("/receivables", response_model=list[Receivable])
+async def list_receivables() -> list[Receivable]:
+    return tf_tool.list_receivables()
+
+
+@router.get("/receivables/{invoice_id}", response_model=Receivable)
+async def get_receivable(invoice_id: str) -> Receivable:
+    rec = tf_tool.get_by_invoice(invoice_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="receivable not found")
+    return rec
+
+
+@router.post("/receivables/{invoice_id}/pay-early", response_model=Receivable)
+async def pay_supplier_early(invoice_id: str) -> Receivable:
+    """Draw from the vault pool, pay the supplier at a discount. Runs G1+G4+G6."""
+    settings = get_settings()
+    if not settings.trade_finance_enabled:
+        raise HTTPException(status_code=403, detail="trade_finance_enabled is False")
+    try:
+        return await orchestrator.process_early_payment(invoice_id)
+    except orchestrator.GuardrailBlocked as exc:
+        raise HTTPException(status_code=403, detail=f"Guardrail {exc.guardrail} blocked: {exc.reason}")
+    except orchestrator.GuardrailEscalation as exc:
+        raise HTTPException(status_code=402, detail=f"Requires hardware approval: {exc.reason}")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@router.post("/receivables/{invoice_id}/collect", response_model=Receivable)
+async def collect_repayment(invoice_id: str) -> Receivable:
+    """Record buyer repayment and replenish the vault pool."""
+    settings = get_settings()
+    if not settings.trade_finance_enabled:
+        raise HTTPException(status_code=403, detail="trade_finance_enabled is False")
+    try:
+        return await orchestrator.collect_repayment(invoice_id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+# ── x402 Service Payments ─────────────────────────────────────────────────────
+
+from pydantic import BaseModel
+
+class ServicePaymentRequest(BaseModel):
+    service_url: str
+    service_type: str = "data_lookup"
+
+
+@router.post("/service-payment", response_model=X402Settlement, status_code=201)
+async def trigger_service_payment(req: ServicePaymentRequest) -> X402Settlement:
+    """Pay for an external service via x402 (G1+G4 guardrailed)."""
+    settings = get_settings()
+    if not settings.x402_enabled:
+        raise HTTPException(status_code=403, detail="x402_enabled is False")
+    try:
+        result = await orchestrator.process_service_payment(
+            req.service_url, service_type=req.service_type
+        )
+        return result.payment
+    except orchestrator.GuardrailBlocked as exc:
+        raise HTTPException(status_code=403, detail=f"Guardrail {exc.guardrail} blocked: {exc.reason}")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+# ── Delegation ────────────────────────────────────────────────────────────────
+
+@router.post("/delegations", response_model=DelegationGrant, status_code=201)
+async def create_delegation(create: DelegationGrantCreate) -> DelegationGrant:
+    """Grant a scoped budget to a sub-agent wallet (G1 guardrailed)."""
+    settings = get_settings()
+    if not settings.delegation_enabled:
+        raise HTTPException(status_code=403, detail="delegation_enabled is False")
+    try:
+        return await orchestrator.process_delegation_fund(create)
+    except orchestrator.GuardrailBlocked as exc:
+        raise HTTPException(status_code=403, detail=f"Guardrail {exc.guardrail} blocked: {exc.reason}")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@router.get("/delegations", response_model=list[DelegationGrant])
+async def list_delegations() -> list[DelegationGrant]:
+    from ..tools.delegation import _grants
+    return list(_grants.values())
+
+
+@router.delete("/delegations/{grant_id}", response_model=DelegationGrant)
+async def revoke_delegation(grant_id: str) -> DelegationGrant:
+    try:
+        return delegation_tool.revoke_delegation(grant_id)
+    except delegation_tool.DelegationNotFound:
+        raise HTTPException(status_code=404, detail="grant not found")
 
 
 def _current_vault_id() -> str:

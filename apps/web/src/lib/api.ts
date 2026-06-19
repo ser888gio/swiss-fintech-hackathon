@@ -5,18 +5,23 @@ import type {
   CredentialLogEntry,
   CredentialRecord,
   CredentialStatus,
+  DelegationGrant,
+  DelegationGrantCreate,
   MPTAttestationRecord,
   MPTAuthorizeRequest,
   MPTStatus,
   Payment,
   PaymentIntent,
   QuoteRequest,
+  Receivable,
+  ReceivableCreate,
   RouteQuote,
   TreasuryAgentRun,
   TreasuryGoal,
   TreasuryGoalCreate,
   VaultOpRecord,
   VaultStatus,
+  X402Settlement,
 } from "@treasury/shared";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
@@ -127,4 +132,27 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ amount }),
     }),
+
+  // Trade Finance / On-chain Credit.
+  listReceivables: () => request<Receivable[]>("/treasury/receivables"),
+  registerReceivable: (create: ReceivableCreate) =>
+    request<Receivable>("/treasury/receivables", { method: "POST", body: JSON.stringify(create) }),
+  paySupplierEarly: (invoiceId: string) =>
+    request<Receivable>(`/treasury/receivables/${invoiceId}/pay-early`, { method: "POST" }),
+  collectRepayment: (invoiceId: string) =>
+    request<Receivable>(`/treasury/receivables/${invoiceId}/collect`, { method: "POST" }),
+
+  // x402 service payments.
+  triggerServicePayment: (serviceUrl: string, serviceType = "data_lookup") =>
+    request<X402Settlement>("/treasury/service-payment", {
+      method: "POST",
+      body: JSON.stringify({ service_url: serviceUrl, service_type: serviceType }),
+    }),
+
+  // Agent-to-Agent Delegation.
+  listDelegations: () => request<DelegationGrant[]>("/treasury/delegations"),
+  createDelegation: (create: DelegationGrantCreate) =>
+    request<DelegationGrant>("/treasury/delegations", { method: "POST", body: JSON.stringify(create) }),
+  revokeDelegation: (grantId: string) =>
+    request<DelegationGrant>(`/treasury/delegations/${grantId}`, { method: "DELETE" }),
 };

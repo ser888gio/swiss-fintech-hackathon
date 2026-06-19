@@ -1385,3 +1385,192 @@ a {
     gap: 8px;
   }
 }
+
+/* ── ARS Page ──────────────────────────────────────────────────────────────── */
+
+.ars-root {
+  display: grid;
+  grid-template-columns: 1fr 22rem;
+  gap: 1.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+  align-items: start;
+}
+
+.ars-left {
+  min-width: 0;
+}
+
+.ars-right {
+  position: sticky;
+  top: 1rem;
+}
+
+.ars-panel {
+  margin-bottom: 1.5rem;
+}
+
+.ars-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.ars-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+}
+
+.ars-form-grid label span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ars-form-grid input {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.ars-tx-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.ars-tx-card p.muted {
+  font-size: 0.7rem;
+  margin: 0 0 0.1rem;
+  color: var(--muted);
+}
+
+/* ── Live payment log ─────────────────────────────────────────────────────── */
+
+.ars-log-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 8rem);
+  min-height: 400px;
+}
+
+.ars-log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+}
+
+.ars-log-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  font-size: 0.72rem;
+}
+
+.ars-log-empty {
+  padding: 1rem;
+  text-align: center;
+}
+
+.ars-log-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.3rem 1rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  line-height: 1.4;
+}
+
+.ars-log-line:last-child {
+  border-bottom: none;
+}
+
+.ars-log-ts {
+  color: var(--muted);
+  flex-shrink: 0;
+  font-size: 0.65rem;
+}
+
+.ars-log-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.ars-log-link {
+  color: var(--accent);
+  text-decoration: none;
+  flex-shrink: 0;
+  font-size: 0.68rem;
+}
+
+.ars-log-link:hover {
+  text-decoration: underline;
+}
+
+.ars-log-info .ars-log-text  { color: var(--muted); }
+.ars-log-success .ars-log-text { color: var(--paper); }
+.ars-log-error .ars-log-text  { color: var(--accent); }
+.ars-log-guardrail .ars-log-text { color: var(--stone); }
+
+.ars-guardrail-trail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  width: 100%;
+  margin-top: 0.2rem;
+}
+
+.ars-guardrail-badge {
+  font-size: 0.62rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  font-family: inherit;
+  cursor: default;
+}
+
+.ars-g-pass {
+  background: rgba(235, 234, 233, 0.1);
+  color: var(--paper);
+}
+
+.ars-g-fail {
+  background: rgba(209, 103, 31, 0.25);
+  color: var(--accent-strong);
+}
+
+@media (max-width: 900px) {
+  .ars-root {
+    grid-template-columns: 1fr;
+  }
+
+  .ars-right {
+    position: static;
+  }
+
+  .ars-log-panel {
+    height: 20rem;
+  }
+
+  .ars-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
