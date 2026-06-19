@@ -1,45 +1,79 @@
 # Judging map
 
-| Criterion | Weight | How we score it |
-|---|---|---|
-| **Viability & feasibility** | 40% | Everything live on XRPL **testnet** with explorer proof; deployed on **Railway**, not localhost; a crisp 30-second path-to-mainnet answer. |
-| **Technical XRPL use** | 25% | TokenEscrow (XLS-85) for the locked large payments, RLUSD or self-issued IOU, `ripple_path_find` for routing, compliance metadata on-chain (memos/MPTokens). |
-| **Innovation** | 20% | Physical hardware veto + a **code-enforced policy boundary** — the LLM literally cannot move money. |
-| **Design & UX** | 15% | Live agent log, pending-approval queue, plain-language audit trail. |
+This map follows the official weights and requirements in
+[`../challenge.md`](../challenge.md).
 
-## Path to mainnet (rehearse this)
+| Criterion | Weight | What this project must prove |
+|---|---:|---|
+| **Viability & Feasibility** | 40% | A genuine institutional treasury pain point; working deployment; real Testnet/Devnet evidence; business model, go-to-market, and credible Mainnet path. |
+| **Technical Integration / XRPL Features** | 30% | Autonomous XRPL transaction, RLUSD/issued-token settlement, TokenEscrow (XLS-85), Credentials, pathfinding, and accurate explorer links. XLS-65/XLS-66 count only if demonstrated coherently on Devnet. |
+| **Creativity & Innovation** | 15% | Deterministic guardrails plus a cryptographic Firefly veto: the agent can act autonomously but cannot bypass policy or forge approval. |
+| **Presentation** | 10% | Clear problem, architecture, live on-chain demo, business model, go-to-market, and honest fallback story in 5–10 minutes. |
+| **Design & Usability** | 5% | Institutional dashboard, understandable states, actionable approval details, and auditor-friendly evidence. |
 
-Production swaps testnet → mainnet; mock compliance → a real screening provider
-(Chainalysis/Elliptic-style); self-issued IOU → real RLUSD; the local Firefly
-bridge → an HSM or institutional custody signer. The architecture —
-**policy-in-code, on-chain escrow, hardware approval** — does not change. That is
-the feasibility argument.
+## Positioning
+
+- **Primary pillar:** Agent Financial Infrastructure.
+- **Use case:** Payments & FX for cross-border treasury operations.
+- **Optional extension:** Credit & Lending through XLS-65/XLS-66 on Devnet.
+- **Required proof:** at least one transaction autonomously executed by an agent
+  within deterministic institutional guardrails.
+
+The demo should show four distinct outcomes: an autonomous routine settlement,
+a deterministic sanctions refusal, an escrow lock requiring Firefly approval,
+and a tampered approval rejection. Every submitted XRPL transaction needs an
+explorer URL.
+
+## Path to Mainnet
+
+Production changes the network and vendors, not the trust boundary: Testnet or
+Devnet becomes Mainnet; mock screening becomes a regulated sanctions/KYC
+provider; demo wallets become institutional custody/HSM-backed accounts; the
+local Firefly approval role can become an enterprise signer; Postgres audit
+storage gains production retention and access controls. Policy remains pure,
+versioned, and tested. Verify amendment activation and issuer configuration
+before promising a feature on Mainnet.
+
+## Business model and go-to-market
+
+Sell to treasury teams and payment/fintech platforms as a workflow and controls
+layer: subscription by entity/environment plus usage-based payment and screening
+fees. Start with regulated fintech design partners that already operate XRPL or
+stablecoin corridors, then integrate custody, compliance, and ERP providers.
 
 ## Claims discipline
 
-- Do **not** say "zero intermediaries" — fiat on/off ramps exist.
-- Do **not** imply the LLM is trusted with money — it is explicitly not.
-- Do say: routine payments settle autonomously; the payments that matter require
-  a cryptographic human approval that nobody can bypass.
+- Do not say “zero intermediaries”; fiat on/off ramps and service providers exist.
+- Do not imply the LLM decides policy, signs, or can release escrow.
+- Do not present mocks, self-issued tokens, or simulators as production systems.
+- Distinguish Testnet features from Devnet-only XLS-65/XLS-66 functionality.
+- Say that routine payments can settle autonomously while consequential payments
+  require policy and cryptographic approval.
 
-## Anticipated judge questions
+## Anticipated jury questions
 
-- *"What stops the agent from draining the treasury?"* → Policy is deterministic
-  code with unit tests; large payments are escrow-locked and need a verified
-  hardware signature; sanctioned payments are **blocked in code — hardware cannot
-  override them**. Show `apps/api/app/policy/engine.py`. Better yet: demo the
-  sanctions refusal live (beat 3).
-- *"Is the approval real or a button in the UI?"* → It is a secp256k1 signature
-  from the Firefly, verified server-side against a pre-registered public key
-  before EscrowFinish. The bridge displays the *actual* payment (WYSIWYS) — not a
-  server-supplied hash. And we prove the binding live: hit the Tamper button →
-  same signature, altered amount → 403 rejected (beat 6).
-- *"Can a rogue LLM approve its own payments?"* → No. The `release_payment`
-  function in the orchestrator is synchronous deterministic code; it requires a
-  valid secp256k1 signature from the registered Firefly public key. The LLM has
-  no access to the private key and cannot produce that signature.
-- *"Why XRPL?"* → Native escrow (XLS-85), fast cheap settlement, RLUSD,
-  pathfinding for FX — the primitives the use case needs, on-ledger.
-- *"Path to mainnet?"* → The 30-second answer above. Architecture is unchanged;
-  swap testnet→mainnet, mock compliance→Chainalysis/Elliptic, self-issued
-  IOU→real RLUSD, local Firefly bridge→HSM/custody signer.
+- **What stops the agent draining the treasury?** Deterministic, unit-tested
+  policy; sanctions short-circuit; large/risky payments lock in escrow; release
+  requires a verified signature whose private key the LLM cannot access.
+- **Is approval just a UI button?** No. The device signs the canonical payment
+  digest, the backend verifies it against a registered public key, and changing
+  payment details makes verification fail.
+- **Why XRPL?** Fast settlement, issued assets/RLUSD, native token escrow,
+  Credentials, pathfinding, and public transaction evidence match the workflow.
+- **Where is the autonomous transaction?** The treasury agent initiates the
+  routine payment; deterministic tools screen and settle it without a human pay
+  click. Humans intervene only when policy requires approval.
+- **Why is this viable?** It addresses an existing treasury controls problem and
+  has a clear migration to regulated screening, custody, HSM signing, and
+  Mainnet.
+
+## Submission checklist
+
+- Working prototype on XRPL Testnet and/or Devnet
+- Public GitHub repository with clear documentation
+- Demo video and visible on-chain transaction evidence
+- Explicit list of XRPL features, amendments, and target networks
+- AI-agent interaction shown where claimed
+- Pitch deck of no more than 10 slides
+- Developer feedback form submitted
+- 5–10 minute pitch/demo rehearsed, plus 3-minute Q&A

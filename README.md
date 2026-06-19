@@ -1,6 +1,6 @@
 # Autonomous Treasury Agent — Firefly Hardware Veto on XRPL
 
-**SwissHacks 2026 · Ripple — Future of Finance on XRPL**
+**SwissHacks 2026 · Ripple — Future of Finance on XRPL: Payments, Credit & Agent Financial Infrastructure**
 
 A treasury agent that runs corporate cross-border payments on XRPL. Small,
 low-risk payments settle autonomously in seconds. Large or compliance-flagged
@@ -11,7 +11,7 @@ enforces policy and signing** — the AI is never trusted with money.
 > "The AI decides nothing about money — code does. The AI explains. And no one,
 > including the agent, can move a large payment without the device in hand."
 
-See [`docs/PLAN.md`](docs/PLAN.md) for the full plan, [`docs/challenge.md`](docs/challenge.md)
+See [`docs/PLAN.md`](docs/PLAN.md) for the full plan, [`challenge.md`](challenge.md)
 for the brief, [`docs/architecture.md`](docs/architecture.md) for the design, and
 [`AGENTS.md`](AGENTS.md) for the tool/agent spec. [`CLAUDE.md`](CLAUDE.md) holds
 the conventions — including the one rule: the LLM never decides policy or signs.
@@ -43,8 +43,14 @@ apps/
   firefly-bridge/   Local-only Node bridge to the Firefly device
 packages/
   shared/           Shared TypeScript types (web + bridge)
-docs/               Plan, challenge, architecture, demo script, judging map
+docs/               Plan, architecture, demo script, judging map, verification
 ```
+
+The project targets the challenge's **Agent Financial Infrastructure** pillar,
+using a **Payments & FX** treasury workflow as the proof. It demonstrates real
+autonomous on-chain activity within institutional guardrails: deterministic
+policy, compliance screening, credentials, audit evidence, and cryptographic
+human approval. XLS-65/XLS-66 treasury yield is an optional Devnet extension.
 
 The Python API is its own service with its own venv. The TS packages (`web`,
 `firefly-bridge`, `shared`) are an npm workspace.
@@ -72,12 +78,16 @@ The API defaults to `USE_MOCK_XRPL=true`, so the full flow — auto-settle, lock
 hardware approve, release — runs offline with deterministic fake tx hashes. Flip
 it off and supply funded testnet wallet seeds to hit XRPL testnet for real.
 
-## The demo (under 3 minutes)
+## The demo
 
 A $500 invoice auto-settles. A $50,000 invoice locks on-chain and waits. Pick up
 the Firefly, press the button, the signature verifies, the escrow releases. Both
 transactions are live on testnet with explorer links, every decision explained in
 plain language. Full script in [`docs/demo-script.md`](docs/demo-script.md).
+
+The submission also includes public documentation, a demo video, explicit XRPL
+feature/amendment mapping, a maximum-10-slide deck, and a 5–10 minute live pitch
+and demo followed by 3 minutes of Q&A, as required by [`challenge.md`](challenge.md).
 
 ## Deployment
 

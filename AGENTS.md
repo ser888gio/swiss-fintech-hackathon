@@ -7,6 +7,18 @@ authoritative spec for the orchestration layer.
 > Companion file: `CLAUDE.md` holds repo conventions and the hard rule that the
 > **LLM never decides policy or signs**. Read it first.
 
+> Challenge authority: [`challenge.md`](challenge.md) is the source of truth for
+> challenge scope, deliverables, feature availability, judging weights, and
+> event facts. This file remains authoritative for implementation architecture.
+
+## Challenge fit
+
+The primary pillar is **Agent Financial Infrastructure**: at least one payment
+is initiated autonomously on XRPL inside deterministic spending, compliance,
+approval, and audit guardrails. **Payments & FX** supplies the institutional use
+case through RLUSD/issued-token settlement and routing. **Credit & Lending** via
+XLS-65/XLS-66 is optional and must not displace the guarded payment MVP.
+
 ## Mental model
 
 The product *presents* a team of agents. The implementation is **one backend
@@ -28,6 +40,92 @@ payment intent
 (determ.) (determ.)  (CODE, not   (determ.)
                       the LLM)
 ```
+
+## XRPL SDK and research policy
+
+### Python SDK only
+
+All application code that constructs, signs, submits, queries, or decodes XRPL
+transactions **must use Python and [`xrpl-py`](https://xrpl.org/docs/tutorials/get-started/get-started-python)**.
+Do not add `xrpl.js`, `xrpl4j`, or another XRPL SDK. The React frontend and the
+TypeScript Firefly bridge may call the Python API, but they must not become a
+second XRPL client or transaction-signing implementation. If an external sample
+is written in JavaScript or Java, translate the relevant behavior to `xrpl-py`
+and cover it with Python tests.
+
+Keep XRPL network access behind the Python API's tool/client boundary. Never
+move transaction construction, wallet seeds, policy evaluation, or signing into
+the browser, the LLM prompt, or an MCP server.
+
+### Required research and integration resources
+
+Before implementing or changing XRPL behavior, agents should consult the
+official documentation and use the available XRPL research tools. Confirm
+transaction fields, amendment/network availability, and `xrpl-py` support; do
+not rely on model memory. Record material Testnet/Devnet/Mainnet assumptions in
+the relevant plan or verification document.
+
+Installed XRPL agent skills (in `.claude/skills/`, invoke via the Skill tool):
+
+- **`xrpl-payments`** — constructs XRP/RLUSD/IOU/cross-currency/escrow transaction
+  objects (SourceTag, Memos, simulate-before-submit). Build with `xrpl-py`.
+- **`xrpl-agent-wallet`** — wallet lifecycle and the signing ceremony (no-seed-echo,
+  autofill, `submit_and_wait`, untrusted-memo guard). Each carries a
+  *project adapter* note: in this repo signing is `xrpl-py` only, server-side,
+  and human confirmation is the Firefly + policy boundary — not an interactive
+  chat prompt. Use the skills for discipline and patterns; obey the adapter.
+
+Core references and discovery tools:
+
+- [XRPL documentation and API reference](https://xrpl.org/docs)
+- [Open Source Ripple documentation](https://opensource.ripple.com)
+- [XRPL resources index](https://linktr.ee/rippledevrel)
+- [Context7 XRPL search/MCP](https://context7.com/?q=xrpl) — use for current,
+  source-grounded library and protocol context
+- [XRPL AI tools, Skills, and MCP resources](https://xrpl.org/resources/dev-tools/ai-tools)
+- [RippleDevRel sample scripts](https://github.com/RippleDevRel/xrpl-js-python-simple-scripts)
+  — use only the Python/`xrpl-py` examples or port the behavior to Python
+- [XRPL CLI (`xrpl-up`)](https://github.com/ripple/xrpl-up) — environment and
+  node/dev tooling only; production transaction logic remains in `xrpl-py`
+
+Agent-payment and wallet resources to use when the corresponding integration is
+in scope:
+
+- [XRPL x402 facilitator](https://xrpl-x402.t54.ai/#setup)
+- [x402Secure Service](https://www.x402secure.com/)
+- [Claw Credit](https://www.claw.credit)
+- [x402 XRPL SDK](https://github.com/t54-labs/x402-xrpl) — integration reference
+  or external service boundary only; do not introduce a JavaScript XRPL runtime
+  into this repository
+- [RLUSD CLI](https://github.com/t54-labs/rlusd-cli) — development and
+  verification aid, not the application's transaction engine
+- [RLUSD Agent Skills](https://github.com/t54-labs/rlusd-skills)
+- [OpenWallet Standard](https://openwallet.sh)
+
+RLUSD references:
+
+- [RLUSD stablecoin documentation](https://docs.ripple.com/products/stablecoin)
+- [RLUSD Testnet faucet](https://tryrlusd.com) — Testnet only, not Devnet
+
+Wallet testing:
+
+- Use [Crossmark](https://crossmark.io) or
+  [GemWallet](https://gemwallet.app) for manual browser-wallet, connection,
+  authorization, and user-signing tests. Do not introduce or recommend another
+  browser wallet without updating this policy.
+- Use dedicated Testnet/Devnet accounts with faucet funds only. Never import the
+  treasury seed, credential-issuer seed, Firefly key, or any production key into
+  a browser extension.
+- Treat wallet approval as a user-facing integration test, not as a replacement
+  for the Python API, deterministic policy engine, or Firefly approval flow.
+  XRPL application logic and server-submitted transactions remain implemented
+  with `xrpl-py`.
+- Record the wallet name, network, account, transaction hash, and explorer URL in
+  the relevant verification report. Never commit recovery phrases or secrets.
+
+These resources can inform implementation, verification, and interoperability,
+but none may bypass this repository's deterministic policy boundary, Python API,
+credential checks, Firefly approval verification, or audit trail.
 
 ## Components
 
@@ -106,3 +204,10 @@ innovation is fake.
 3. Every tool that touches XRPL returns an explorer URL. Demos need proof.
 4. Keep tools pure where possible; isolate I/O (network, DB) at the edges so the
    policy engine stays trivially testable.
+5. Use only Python + `xrpl-py` for XRPL application logic. Do not introduce a
+   second XRPL SDK in the web or bridge packages.
+6. Use the official XRPL docs, Context7 XRPL MCP/search, and the relevant tools
+   listed above before changing protocol behavior; verify network/amendment
+   availability and return explorer evidence.
+7. Use only Crossmark or GemWallet for browser-wallet testing, with isolated
+   faucet-funded accounts and no repository or production secrets.

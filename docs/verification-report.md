@@ -80,7 +80,7 @@ to `main`** (see `apps/api/app/tools/execution.py`):
    reimplement `app/store.py` against it (route layer depends only on those funcs).
 
 ## B4. Recommendation
-Strongest demo for the 40%/25% rubric, in order:
+Strongest demo for the 40% viability / 30% technical rubric, in order:
 1. Land the two escrow fixes (above) — the hardware-veto loop is the innovation
    centerpiece and now works on-chain.
 2. Wire the policy threshold to a USD-normalized amount (kills the dead-config gap).

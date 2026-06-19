@@ -5,7 +5,7 @@
 We consolidated onto `main`. It contains a working-in-mock treasury agent
 (FastAPI + React + a mock Firefly bridge) for the SwissHacks Ripple "Future of
 Finance" challenge. The challenge scores **viability/feasibility (40%)** and
-**technical XRPL use (25%)** the heaviest, and judging hinges on *everything
+**technical XRPL use (30%)** the heaviest, and judging hinges on *everything
 proven live on Testnet with explorer links* — but `main` currently defaults to
 `USE_MOCK_XRPL=true`, so **nothing has been demonstrated on-chain yet**.
 
@@ -172,7 +172,7 @@ Each with file-level notes, impact (rubric %), and effort:
    Testnet. (The "add credential issuers" ask.)
 2. **On-chain compliance metadata** — add `Memos` (AML score, `rule_fired`,
    `receipt_hash`) to `Payment`/`EscrowCreate` in `app/tools/execution.py`; add an
-   `xrpscan` URL helper in `app/xrpl_client.py`. (25% technical + verifiability.)
+   `xrpscan` URL helper in `app/xrpl_client.py`. (30% technical + verifiability.)
 3. **Autonomous AI-agent payments** — new `app/agents/treasury_agent.py` with
    deterministic trigger thresholds whose *only* actuator is
    `orchestrator.process_payment` (no signing, no executor access — invariant I1);

@@ -1,7 +1,12 @@
-# Demo script (target: under 4 minutes)
+# Demo script (live demo: about 4 minutes within a 5–10 minute pitch)
 
 The physical Firefly button press is the money shot. The sanctions block and the
-tamper rejection are the proof shots. Choreograph all three.
+tamper rejection are the proof shots. The autonomous routine settlement is the
+challenge-qualification shot. Choreograph all four.
+
+Use the remaining pitch time for the institutional pain point, architecture and
+XRPL feature map, business model/go-to-market, and credible Mainnet path. Reserve
+3 minutes for jury Q&A.
 
 ## Setup before judges arrive
 
@@ -18,7 +23,8 @@ tamper rejection are the proof shots. Choreograph all three.
 1. **Open the dashboard.** Invoice queue, live agent log streaming. "This agent
    runs our cross-border payments on XRPL."
 
-2. **$500 vendor invoice.** Click pay. Agent narrates: routes via
+2. **$500 vendor invoice.** Let the autonomous treasury cycle detect the due
+   invoice and initiate it—do not click a human “Pay” button. Agent narrates: routes via
    `ripple_path_find`, compliance clears (AML 12/100), policy says auto-settle.
    Direct Payment lands in ~4s. **Show the testnet explorer link.**
 
@@ -27,14 +33,17 @@ tamper rejection are the proof shots. Choreograph all three.
    the approval queue. The hardware cannot approve a sanctions block. This is
    refused in code, period."
 
-4. **$50,000 invoice.** Click pay. Agent flags it — over the $10k threshold.
+4. **$50,000 invoice.** Let the agent initiate it. Deterministic policy flags it
+   as over the $10k threshold.
    Funds **locked on-chain via escrow**. Pending-approval card appears.
    "The agent cannot release this. Nobody can — without the device."
 
 5. **Pick up the Firefly. The bridge terminal shows the actual payment — amount,
    payee, reference — not a hash. Press the button.** Signature verifies on
    screen → EscrowFinish submitted → settled in <5s. Slow down here. "The device
-   signed *5,000 RLUSD to Berlin GmbH* — the real payment. Not a hash."
+   signed *50,000 [configured asset] to Berlin GmbH* — the real payment. Not a
+   hash." Name the exact asset shown in the live dashboard; do not call a
+   self-issued token RLUSD.
 
 6. **Tamper & retry (DEMO).** Click the purple button on the just-released card.
    Big red: **SIGNATURE REJECTED — payment details were altered**. "The signature

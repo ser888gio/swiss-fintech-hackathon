@@ -2,10 +2,11 @@
 ## Autonomous Treasury Agent with Firefly Hardware Veto (XRPL)
 
 **Event:** SwissHacks 2026, Zurich, June 19–21 · 48 hours
-**Challenge:** Ripple — Future of Finance on XRPL · Track: AI Agents for Finance
+**Challenge:** Ripple — Future of Finance on XRPL: Payments, Credit & Agent Financial Infrastructure
 
-> This is the source-of-truth plan. Architecture decisions here are **locked** —
-> do not relitigate at the hackathon. See `challenge.md` for the official brief,
+> [`../challenge.md`](../challenge.md) is the source of truth for the challenge.
+> This is the source-of-truth execution plan; architecture decisions here are
+> **locked** unless the brief or verified platform behavior requires a change. See
 > `architecture.md` for the system design, `demo-script.md` and `judging.md` for
 > the pitch.
 
@@ -35,7 +36,8 @@ routine. The human controls what matters."*
 
 ## 2a. Track strategy
 
-- **Primary: AI Agents for Finance** — the treasury agent itself.
+- **Primary: Agent Financial Infrastructure** — guarded autonomous treasury
+  activity, not AI for its own sake.
 - **Secondary: Cross-border payments & FX** — routing/RLUSD settlement layer.
 - **Optional bonus: Credit & Lending (XLS-66)** — *idle treasury sweep* into a
   Single Asset Vault (XLS-65). One `VaultDeposit`/`VaultWithdraw` pair, narrated
@@ -74,7 +76,9 @@ architecture is unchanged.
 **Questions for Ripple mentors (day 1 morning):**
 1. Testnet vs. Devnet — are XLS-65/66 enabled on Testnet yet, or Devnet only?
 2. Current RLUSD testnet/devnet issuer address — has it enabled trust-line
-   locking (escrow flag)?
+   locking (escrow flag)? **(Testnet RLUSD issuer confirmed:
+   `rQhWct2fv4Vc4KRjRgMrxa8xPN9Zx9iLKV`. Still verify the escrow flag before
+   relying on it; otherwise fall back to a self-issued USD IOU.)**
 3. Judging priority among TokenEscrow / multisig / MPTokens / pathfinding?
 4. Preferred compliance metadata channel: memos, MPTokens, credentials, or
    off-chain hash anchored on-chain? **(Decided: XRPL Credentials / XLS-70 —
@@ -166,7 +170,8 @@ presented honestly, or demo Firefly signing the challenge standalone.
 5. Open testnet explorer: both transactions live on-chain. Show audit log: every
    decision explained in plain language.
 
-Practice until under 3 minutes. The physical button press is the money shot.
+Practice this demo segment until it fits comfortably inside the required 5–10
+minute pitch. The physical button press is the money shot.
 
 ---
 
@@ -175,9 +180,10 @@ Practice until under 3 minutes. The physical button press is the money shot.
 | Criterion | Weight | How we score |
 |---|---|---|
 | Viability & feasibility | 40% | Everything live on testnet, explorer proof, deployed on Railway (not localhost) |
-| Technical XRPL use | 25% | Escrow (or multisig), RLUSD/issued token, ripple_path_find, compliance metadata |
-| Innovation | 20% | Physical hardware veto + code-enforced policy boundary |
-| Design & UX | 15% | Live agent log, pending-approval queue, plain-language audit trail |
+| Technical integration / XRPL features | 30% | TokenEscrow (XLS-85), Credentials, RLUSD/issued token, pathfinding, and explorer evidence; Devnet vault/lending only if stable |
+| Creativity & innovation | 15% | Physical hardware veto + code-enforced policy boundary + guarded autonomous transaction |
+| Presentation | 10% | Clear institutional story, architecture, live on-chain demo, business model, and go-to-market |
+| Design & usability | 5% | Institutional dashboard, pending-approval queue, and plain-language audit trail |
 
 Two lines to land: (1) "The AI decides nothing about money — code does. The AI
 explains." (2) "No one, including the agent, can move a large payment without this
@@ -196,4 +202,8 @@ device in my hand."
 - [ ] Mock sanctions list + AML scoring function drafted
 - [ ] Dashboard skeleton (React) with fake data, deployable
 - [ ] Pitch deck skeleton: problem → demo → architecture → why XRPL
+- [ ] Public GitHub documentation and demo video ready
+- [ ] XRPL features/amendments and target networks documented accurately
+- [ ] Pitch deck is no more than 10 slides; 5–10 minute pitch/demo rehearsed
+- [ ] Developer feedback form submitted (link in `../challenge.md`)
 - [ ] Team roles assigned (§3 item 5)

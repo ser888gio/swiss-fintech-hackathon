@@ -124,7 +124,8 @@ attestation token, or an MPT-denominated settlement asset).
   via MCP first. Escrow of an MPT additionally needs `tfMPTCanEscrow`.
 
 ## Sequencing & rationale
-Rubric weights: viability 40%, technical XRPL 25%, innovation 20%, UX 15%. Build
+Rubric weights from `../challenge.md`: viability 40%, technical XRPL 30%,
+innovation 15%, presentation 10%, design/usability 5%. Build
 order: **1 (finish matrix) → 2.2 + 2.1 (memos + credentials gate) → 2.4 (Postgres) →
 2.3 (autonomous agent) → 4 (real Firefly) → 3 (vaults) → 5 (MPTokens)**. Phases 3
 and 5 are amendment-gated and may need Devnet — verify first. Never cut the

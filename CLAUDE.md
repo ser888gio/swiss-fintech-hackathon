@@ -5,7 +5,8 @@ Guidance for Claude Code (and any AI agent) working in this repository.
 ## What this project is
 
 An **Autonomous Treasury Agent with a Firefly hardware veto, built on XRPL** for
-SwissHacks 2026 (Ripple — Future of Finance track). It runs corporate
+SwissHacks 2026 and Ripple's **Future of Finance on XRPL: Payments, Credit &
+Agent Financial Infrastructure** challenge. It runs corporate
 cross-border payments: small/low-risk payments settle autonomously in seconds;
 large or compliance-flagged payments are locked on-chain and can only be
 released by a physical Firefly hardware approval.
@@ -13,6 +14,23 @@ released by a physical Firefly hardware approval.
 One-line framing for any user-facing copy:
 **"The AI decides nothing about money — code does. The AI explains. And no one,
 including the agent, can move a large payment without the device in hand."**
+
+## Source-of-truth order
+
+1. [`challenge.md`](challenge.md) is authoritative for challenge scope,
+   submission requirements, network/feature availability, judging weights, and
+   event facts.
+2. [`AGENTS.md`](AGENTS.md) is authoritative for orchestration and tool
+   contracts.
+3. This file is authoritative for repository conventions and safety invariants.
+4. `docs/PLAN.md`, `docs/judging.md`, and `docs/demo-script.md` translate those
+   sources into execution and presentation plans and must not contradict them.
+
+The submission is positioned primarily under **Agent Financial
+Infrastructure**, with **Payments & FX** as the live institutional use case.
+Credit & Lending is an optional extension, not an MVP requirement. The challenge
+is about infrastructure agents need—not an AI demo—so prioritize real guarded
+on-chain activity, institutional usability, and a credible Mainnet path.
 
 ## The one rule that must never be broken
 
@@ -49,6 +67,27 @@ worst, produce bad narration — never a bad payment.
 - DB: PostgreSQL.
 - Monorepo: npm workspaces for the TS packages; the Python API lives alongside
   in `apps/api` and is run with its own venv.
+
+> **XRPL SDK rule: Python `xrpl-py` only.** All code that constructs, signs,
+> submits, queries, or decodes XRPL transactions uses `xrpl-py`. Do not add
+> `xrpl.js`, `xrpl4j`, or any other XRPL SDK; the React frontend and the
+> TypeScript Firefly bridge call the Python API and must never become a second
+> XRPL client. `AGENTS.md` holds the full policy and the required research tools.
+
+## XRPL research tools (use before changing protocol behavior)
+
+Confirm transaction fields, amendment/network availability, and `xrpl-py`
+support against primary sources — never model memory:
+
+- [XRPL docs](https://xrpl.org/docs) · [Open Source Ripple](https://opensource.ripple.com)
+- [Context7 XRPL MCP/search](https://context7.com/?q=xrpl) — source-grounded library context
+- [XRPL AI tools, Skills & MCP](https://xrpl.org/resources/dev-tools/ai-tools)
+- [Resources index](https://linktr.ee/rippledevrel) · [RippleDevRel sample scripts](https://github.com/RippleDevRel/xrpl-js-python-simple-scripts) (port JS to `xrpl-py`)
+- RLUSD: [docs](https://docs.ripple.com/products/stablecoin) · [Testnet faucet](https://tryrlusd.com) (Testnet only, not Devnet)
+- Agent/x402: [x402 facilitator](https://xrpl-x402.t54.ai/#setup) · [x402Secure](https://www.x402secure.com/) · [Claw Credit](https://www.claw.credit) · [x402 XRPL SDK](https://github.com/t54-labs/x402-xrpl) · [RLUSD CLI](https://github.com/t54-labs/rlusd-cli) · [RLUSD Agent Skills](https://github.com/t54-labs/rlusd-skills) · [OpenWallet Standard](https://openwallet.sh)
+- Browser-wallet testing: [Crossmark](https://crossmark.io) or [GemWallet](https://gemwallet.app) only, with isolated faucet-funded accounts — never repo or production secrets.
+
+See `AGENTS.md` for how each tool maps to the deterministic policy boundary.
 
 ## Repo layout
 
@@ -89,5 +128,10 @@ docs/             Plan, architecture, demo script, judging map
 
 ## When in doubt
 
-Read `docs/PLAN.md` (the full preparation plan) and `docs/architecture.md`.
+Read `challenge.md` first, then `docs/PLAN.md` and `docs/architecture.md`.
 The MVP build order and the hour-32 demo gate are in `docs/PLAN.md §6`.
+
+Before submission, verify the public repository documentation, demo video,
+on-chain transaction evidence, XRPL feature/amendment explanation, developer
+feedback form, and a pitch deck of no more than 10 slides. The live pitch and
+demo must fit 5–10 minutes, followed by 3 minutes of jury Q&A.
