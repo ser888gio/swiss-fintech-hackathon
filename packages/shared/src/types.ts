@@ -304,3 +304,194 @@ export interface BridgeSignResponse {
   signature: string; // hex secp256k1 signature
   publicKey: string; // hex, for the backend to verify against
 }
+
+// ── ARS Guardrails & Audit (Pillar 5) ────────────────────────────────────────
+// Mirror of apps/api/app/schemas.py ARS section — keep in sync by hand.
+
+export interface GuardrailResult {
+  name: string;         // e.g. "G1_kya", "G4_scope", "G7_hardware_veto"
+  passed: boolean;
+  ruleFired: string | null;
+  reason: string | null;
+}
+
+export interface ConstraintResult {
+  allowed: boolean;
+  action: "allow" | "review" | "block";
+  ruleFired: string | null;
+  reasons: string[];
+  guardrailTrail: GuardrailResult[];
+}
+
+// ── ARS Scope Policy (G4) ────────────────────────────────────────────────────
+
+export interface AgentScopeSchema {
+  maxPerTransaction: string;   // Decimal string
+  maxPerDay: string;           // Decimal string
+  allowedServiceHosts: string[] | null;
+  allowedServiceTypes: string[] | null;
+}
+
+export interface ScopeDecisionSchema {
+  allowed: boolean;
+  ruleFired: string | null;
+  reasons: string[];
+}
+
+// ── ARS Delegation (G5) ──────────────────────────────────────────────────────
+
+export interface DelegationGrant {
+  id: string;
+  parentAddress: string;
+  childAddress: string;
+  maxTotal: string;            // Decimal string
+  maxPerTx: string;
+  maxPerDay: string;
+  currency: string;
+  allowedServiceHosts: string[] | null;
+  allowedServiceTypes: string[] | null;
+  expiresAt: string | null;
+  fundTxHash: string | null;
+  fundExplorerUrl: string | null;
+  revoked: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DelegationGrantCreate {
+  parentAddress: string;
+  childAddress: string;
+  maxTotal: string;
+  maxPerTx: string;
+  maxPerDay: string;
+  currency?: string;
+  allowedServiceHosts?: string[] | null;
+  allowedServiceTypes?: string[] | null;
+  expiresAt?: string | null;
+}
+
+// ── ARS x402 Service Payment ─────────────────────────────────────────────────
+
+export interface X402PaymentRequirement {
+  serviceUrl: string;
+  facilitatorUrl: string;
+  payTo: string;
+  assetCurrency: string;
+  assetIssuer: string;
+  network: string;
+  amount: string;              // Decimal string
+  invoiceId: string;
+  expiresAt: string | null;
+}
+
+export interface X402Settlement {
+  invoiceId: string;
+  txHash: string;
+  explorerUrl: string | null;
+  proofHeader: string;
+  amount: string;              // Decimal string
+  currency: string;
+  guardrailTrail: GuardrailResult[];
+  auditEventId: string | null;
+}
+
+export interface ServicePaymentRecord {
+  id: string;
+  serviceHost: string;
+  invoiceId: string;
+  assetCurrency: string;
+  assetIssuer: string;
+  amount: string;              // Decimal string
+  txHash: string | null;
+  explorerUrl: string | null;
+  guardrailTrail: GuardrailResult[];
+  auditEventId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── ARS Trade Finance / Credit (Pillar 2) ────────────────────────────────────
+
+export type ReceivableStatus =
+  | "registered"
+  | "funds_reserved"
+  | "credit_drawn"
+  | "supplier_paid"
+  | "awaiting_maturity"
+  | "repayment_received"
+  | "credit_settled"
+  | "closed"
+  | "needs_recovery";
+
+export interface Receivable {
+  id: string;
+  invoiceId: string;
+  buyer: string;
+  supplier: string;
+  amount: string;              // Decimal string — face value
+  discountRate: string;        // Decimal string
+  dueDate: string;
+  status: ReceivableStatus;
+  drawTxHash: string | null;
+  drawExplorerUrl: string | null;
+  paymentTxHash: string | null;
+  paymentExplorerUrl: string | null;
+  repaymentTxHash: string | null;
+  settleTxHash: string | null;
+  loanId: string | null;
+  guardrailTrail: GuardrailResult[];
+  auditEventId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReceivableCreate {
+  invoiceId: string;
+  buyer: string;
+  supplier: string;
+  amount: string;
+  discountRate: string;
+  dueDate: string;
+}
+
+// ── ARS Insurance (Pillar 3) ─────────────────────────────────────────────────
+
+export interface InsurancePremiumRecord {
+  id: string;
+  jobId: string;
+  agentAddress: string;
+  premiumAmount: string;       // Decimal string
+  currency: string;
+  txHash: string | null;
+  explorerUrl: string | null;
+  scoreBand: string | null;
+  createdAt: string;
+}
+
+export interface InsurancePayoutRecord {
+  id: string;
+  jobId: string;
+  merchant: string;
+  collateralSlashed: string;   // Decimal string
+  poolDrawn: string;
+  totalPaid: string;
+  currency: string;
+  slashTxHash: string | null;
+  poolDrawTxHash: string | null;
+  reputationMptProtected: boolean;
+  createdAt: string;
+}
+
+// ── ARS Audit Log Event ──────────────────────────────────────────────────────
+
+export interface AuditEventRecord {
+  eventId: string;
+  eventType: string;
+  actor: string;
+  contextKind: string;
+  payload: Record<string, unknown>;
+  timestamp: string;
+  priorEventHash: string;
+  eventHash: string;
+  signature: string;
+}

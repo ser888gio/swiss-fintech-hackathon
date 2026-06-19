@@ -370,3 +370,229 @@ class TreasuryAgentRun(CamelModel):
     # LLM narration of the run — explains outcomes, never decides anything.
     narration: str | None = None
     status: str  # "completed" | "error"
+
+
+# ── ARS Guardrails & Audit (Pillar 5) ─────────────────────────────────────────
+
+class GuardrailResult(CamelModel):
+    """Outcome of one guardrail check in the constraint engine evaluation.
+
+    Included in the guardrail_trail on every Payment/ServicePayment/etc. so
+    the audit log records exactly which rules passed and which one blocked.
+    Money values are str to preserve Decimal precision across JSON.
+    """
+
+    name: str               # e.g. "G1_kya", "G4_scope", "G7_hardware_veto"
+    passed: bool
+    rule_fired: str | None = None
+    reason: str | None = None
+
+
+class ConstraintResult(CamelModel):
+    """Full output of the ARS constraint engine for one evaluation."""
+
+    allowed: bool
+    action: str             # "allow" | "review" | "block"
+    rule_fired: str | None = None
+    reasons: list[str] = Field(default_factory=list)
+    guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
+
+
+# ── ARS Scope Policy (G4) ─────────────────────────────────────────────────────
+
+class AgentScopeSchema(CamelModel):
+    """Agent spending policy configuration (mirrors policy/scope.AgentScope).
+
+    String fields for monetary values preserve Decimal precision in JSON.
+    """
+
+    max_per_transaction: str    # Decimal string, e.g. "500.000000"
+    max_per_day: str            # Decimal string
+    allowed_service_hosts: list[str] | None = None
+    allowed_service_types: list[str] | None = None
+
+
+class ScopeDecisionSchema(CamelModel):
+    """Result of a G4 scope evaluation (mirrors policy/scope.ScopeDecision)."""
+
+    allowed: bool
+    rule_fired: str | None = None
+    reasons: list[str] = Field(default_factory=list)
+
+
+# ── ARS Delegation (G5) ───────────────────────────────────────────────────────
+
+class DelegationGrant(CamelModel):
+    """A parent agent's grant of a scoped budget to a sub-agent."""
+
+    id: str
+    parent_address: str
+    child_address: str
+    max_total: str              # Decimal string
+    max_per_tx: str             # Decimal string
+    max_per_day: str            # Decimal string
+    currency: str
+    allowed_service_hosts: list[str] | None = None
+    allowed_service_types: list[str] | None = None
+    expires_at: datetime | None = None
+    fund_tx_hash: str | None = None
+    fund_explorer_url: str | None = None
+    revoked: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+
+class DelegationGrantCreate(CamelModel):
+    parent_address: str
+    child_address: str
+    max_total: str
+    max_per_tx: str
+    max_per_day: str
+    currency: str = "RLUSD"
+    allowed_service_hosts: list[str] | None = None
+    allowed_service_types: list[str] | None = None
+    expires_at: datetime | None = None
+
+
+# ── ARS x402 Service Payment ──────────────────────────────────────────────────
+
+class X402PaymentRequirement(CamelModel):
+    """Fields extracted from an HTTP 402 challenge response.
+
+    All fields are verified against config allowlists before a Payment is built.
+    """
+
+    service_url: str
+    facilitator_url: str        # must be in x402_allowed_facilitators
+    pay_to: str                 # destination XRPL address
+    asset_currency: str         # must match x402_allowed_assets
+    asset_issuer: str
+    network: str                # must match configured network
+    amount: str                 # Decimal string from the challenge
+    invoice_id: str             # anti-replay nonce
+    expires_at: datetime | None = None
+
+
+class X402Settlement(CamelModel):
+    """Result of a successful x402 payment+proof cycle."""
+
+    invoice_id: str
+    tx_hash: str
+    explorer_url: str | None = None
+    proof_header: str           # X-PAYMENT or equivalent sent on retry
+    amount: str                 # Decimal string
+    currency: str
+    guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
+    audit_event_id: str | None = None
+
+
+class ServicePaymentRecord(CamelModel):
+    """Audit record for one x402 service payment."""
+
+    id: str
+    service_host: str
+    invoice_id: str
+    asset_currency: str
+    asset_issuer: str
+    amount: str                 # Decimal string
+    tx_hash: str | None = None
+    explorer_url: str | None = None
+    guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
+    audit_event_id: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+# ── ARS Trade Finance / Credit (Pillar 2) ─────────────────────────────────────
+
+class ReceivableStatus(str, Enum):
+    registered = "registered"
+    funds_reserved = "funds_reserved"
+    credit_drawn = "credit_drawn"
+    supplier_paid = "supplier_paid"
+    awaiting_maturity = "awaiting_maturity"
+    repayment_received = "repayment_received"
+    credit_settled = "credit_settled"
+    closed = "closed"
+    needs_recovery = "needs_recovery"
+
+
+class Receivable(CamelModel):
+    """A trade-finance receivable (supplier early-payment)."""
+
+    id: str
+    invoice_id: str
+    buyer: str
+    supplier: str
+    amount: str                 # Decimal string — face value
+    discount_rate: str          # Decimal string — e.g. "0.020000" = 2%
+    due_date: datetime
+    status: ReceivableStatus
+    draw_tx_hash: str | None = None
+    draw_explorer_url: str | None = None
+    payment_tx_hash: str | None = None
+    payment_explorer_url: str | None = None
+    repayment_tx_hash: str | None = None
+    settle_tx_hash: str | None = None
+    loan_id: str | None = None  # XLS-66 loan sequence if lending_enabled
+    guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
+    audit_event_id: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReceivableCreate(CamelModel):
+    invoice_id: str
+    buyer: str
+    supplier: str
+    amount: str         # Decimal string
+    discount_rate: str  # Decimal string
+    due_date: datetime
+
+
+# ── ARS Insurance (Pillar 3) ──────────────────────────────────────────────────
+
+class InsurancePremiumRecord(CamelModel):
+    """One per-transaction premium payment into the Insurance Vault."""
+
+    id: str
+    job_id: str
+    agent_address: str
+    premium_amount: str         # Decimal string
+    currency: str
+    tx_hash: str | None = None
+    explorer_url: str | None = None
+    score_band: str | None = None   # score band that determined the rate
+    created_at: datetime
+
+
+class InsurancePayoutRecord(CamelModel):
+    """One insurance payout (slash + pool draw) on agent default."""
+
+    id: str
+    job_id: str
+    merchant: str
+    collateral_slashed: str     # Decimal string — from agent collateral
+    pool_drawn: str             # Decimal string — from Insurance Vault first-loss
+    total_paid: str             # Decimal string — to merchant
+    currency: str
+    slash_tx_hash: str | None = None
+    pool_draw_tx_hash: str | None = None
+    reputation_mpt_protected: bool = True   # principal score NOT burned on insured default
+    created_at: datetime
+
+
+# ── ARS Audit Log Event ───────────────────────────────────────────────────────
+
+class AuditEventSchema(CamelModel):
+    """Read-model of one Ed25519-signed audit event for API responses."""
+
+    event_id: str
+    event_type: str
+    actor: str
+    context_kind: str
+    payload: dict
+    timestamp: str
+    prior_event_hash: str
+    event_hash: str
+    signature: str

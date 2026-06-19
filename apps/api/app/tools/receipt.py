@@ -4,6 +4,10 @@ Produces a deterministic, hash-anchored audit receipt for every terminal payment
 (settled / released / blocked). The canonical JSON is stable — same payment always
 yields the same hash — so the hash can be anchored on-chain (XRPL memo) and
 independently recomputed by an auditor.
+
+ARS extension: the canonical hash now includes the guardrail_trail (if present on
+the payment) and the current ARS audit log root hash, so the on-chain Memo anchors
+the complete decision chain.
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ import json
 from datetime import datetime
 
 from ..schemas import Payment, Receipt
+from . import audit_log as _audit_log
 
 
 def build_receipt(payment: Payment) -> Receipt:
@@ -43,11 +48,15 @@ def compute_decision_hash(payment: Payment) -> str:
     """sha256 of the deterministic decision trail, known BEFORE submission.
 
     Covers only the inputs that authorized the payment — intent, route,
-    compliance and policy — and deliberately excludes post-execution fields
-    (tx hash, status, timestamps). This makes it stable enough to anchor on the
-    ledger as a transaction Memo at submission time, then recompute and match
-    later against the persisted decision.
+    compliance, policy, and the ARS guardrail trail + audit log root hash —
+    and deliberately excludes post-execution fields (tx hash, status, timestamps).
+    This makes it stable enough to anchor on the ledger as a transaction Memo at
+    submission time, then recompute and match later against the persisted decision.
+
+    ARS extension: guardrail_trail and audit_log_root are included so the Memo
+    anchors the full constraint-engine decision chain.
     """
+    guardrail_trail = getattr(payment, "guardrail_trail", None)
     data = {
         "paymentId": payment.id,
         "intent": {
@@ -66,6 +75,8 @@ def compute_decision_hash(payment: Payment) -> str:
         "routeQuote": _route(payment),
         "compliance": _compliance(payment),
         "policyDecision": _policy(payment),
+        "guardrailTrail": _guardrail_trail(guardrail_trail),
+        "auditLogRoot": _audit_log.root_hash(),
     }
     canonical = json.dumps(data, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
@@ -167,3 +178,17 @@ def _policy(payment: Payment) -> dict | None:
 
 def _iso(dt: datetime) -> str:
     return dt.isoformat()
+
+
+def _guardrail_trail(trail) -> list[dict] | None:
+    if not trail:
+        return None
+    return [
+        {
+            "name": g.name,
+            "passed": g.passed,
+            "ruleFired": g.rule_fired,
+            "reason": g.reason,
+        }
+        for g in trail
+    ]
