@@ -27,12 +27,6 @@ interface LogLine {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const DEVNET_EXPLORER = "https://devnet.xrpl.org";
-
-function devnetTxUrl(hash: string): string {
-  return `${DEVNET_EXPLORER}/transactions/${hash}`;
-}
-
 function hashShort(hash: string): string {
   return `${hash.slice(0, 10)}…`;
 }
@@ -71,15 +65,20 @@ function PaymentLog({ lines }: { lines: LogLine[] }) {
           <div key={i} className={`ars-log-line ars-log-${l.kind}`}>
             <span className="ars-log-ts">{l.ts}</span>
             <span className="ars-log-text">{l.text}</span>
-            {l.txHash && (
+            {l.txHash && l.explorerUrl && (
               <a
-                href={l.explorerUrl ?? devnetTxUrl(l.txHash)}
+                href={l.explorerUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="ars-log-link"
               >
                 {hashShort(l.txHash)} ↗
               </a>
+            )}
+            {l.txHash && !l.explorerUrl && (
+              <code className="ars-log-link" title="No on-ledger explorer proof was returned">
+                {hashShort(l.txHash)} · simulated
+              </code>
             )}
             {l.guardrailTrail && l.guardrailTrail.length > 0 && (
               <div className="ars-guardrail-trail">
@@ -108,7 +107,7 @@ const DEFAULT_RECEIVABLE: ReceivableCreate = {
   invoiceId: "INV-TF-001",
   buyer: "rBUYER000000000000000000000000000",
   supplier: "rSUPPLIER00000000000000000000000",
-  amount: "100000.000000",
+  amount: "5000.000000",
   discountRate: "0.020000",
   dueDate: new Date(Date.now() + 90 * 86400 * 1000).toISOString(),
 };
@@ -158,7 +157,7 @@ function TradeFinancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
     try {
       const rec = await api.paySupplierEarly(invoiceId);
       const txHash = rec.paymentTxHash ?? rec.drawTxHash ?? "";
-      const explorerUrl = rec.paymentExplorerUrl ?? rec.drawExplorerUrl ?? (txHash ? devnetTxUrl(txHash) : undefined);
+      const explorerUrl = rec.paymentExplorerUrl ?? rec.drawExplorerUrl ?? undefined;
       log({
         ts: now(),
         kind: "success",
@@ -173,7 +172,15 @@ function TradeFinancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
       await refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      log({ ts: now(), kind: "error", text: `Early payment failed: ${msg}` });
+      if (msg.includes("Requires hardware approval")) {
+        log({
+          ts: now(),
+          kind: "guardrail",
+          text: "Early payment not executed — G6 threshold requires Firefly hardware approval.",
+        });
+      } else {
+        log({ ts: now(), kind: "error", text: `Early payment failed: ${msg}` });
+      }
     } finally {
       setBusyKey(invoiceId, false);
     }
@@ -190,7 +197,7 @@ function TradeFinancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
         kind: "success",
         text: `Repayment collected — receivable ${rec.status}. Vault replenished.`,
         txHash: txHash || undefined,
-        explorerUrl: txHash ? devnetTxUrl(txHash) : undefined,
+        explorerUrl: undefined,
       });
       await refresh();
     } catch (e) {
@@ -253,20 +260,22 @@ function TradeFinancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
                 <p className="muted" style={{ margin: "0.2rem 0" }}>
                   {Number(rec.amount).toLocaleString()} RLUSD · {(Number(rec.discountRate) * 100).toFixed(1)}% discount
                 </p>
-                {rec.paymentTxHash && (
+                {rec.paymentTxHash && rec.paymentExplorerUrl && (
                   <p className="muted" style={{ fontSize: "0.72rem" }}>
                     Pay tx:{" "}
-                    <a href={rec.paymentExplorerUrl ?? devnetTxUrl(rec.paymentTxHash)} target="_blank" rel="noreferrer">
+                    <a href={rec.paymentExplorerUrl} target="_blank" rel="noreferrer">
                       {hashShort(rec.paymentTxHash)} ↗
                     </a>
                   </p>
                 )}
+                {rec.paymentTxHash && !rec.paymentExplorerUrl && (
+                  <p className="muted" style={{ fontSize: "0.72rem" }}>
+                    Pay tx: <code>{hashShort(rec.paymentTxHash)} · simulated</code>
+                  </p>
+                )}
                 {rec.settleTxHash && (
                   <p className="muted" style={{ fontSize: "0.72rem" }}>
-                    Settle tx:{" "}
-                    <a href={devnetTxUrl(rec.settleTxHash)} target="_blank" rel="noreferrer">
-                      {hashShort(rec.settleTxHash)} ↗
-                    </a>
+                    Settle tx: <code>{hashShort(rec.settleTxHash)} · no explorer proof</code>
                   </p>
                 )}
                 {rec.loanId && (
@@ -298,13 +307,19 @@ function TradeFinancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
 // ── x402 Service Payment panel ─────────────────────────────────────────────────
 
 function X402Panel({ onLog }: { onLog: (l: LogLine) => void }) {
-  const [serviceUrl, setServiceUrl] = useState("https://xrpl-x402.t54.ai/demo-resource");
+  const [serviceUrl, setServiceUrl] = useState(
+    import.meta.env.VITE_X402_SERVICE_URL ?? "http://localhost:8000/treasury/x402/demo-resource",
+  );
   const [serviceType, setServiceType] = useState("data_lookup");
   const [busy, setBusy] = useState(false);
   const [last, setLast] = useState<X402Settlement | null>(null);
   const now = () => new Date().toISOString().slice(11, 19);
 
   const pay = async () => {
+    if (!serviceUrl.trim()) {
+      onLog({ ts: now(), kind: "error", text: "Enter an x402-protected service URL first." });
+      return;
+    }
     setBusy(true);
     onLog({ ts: now(), kind: "info", text: `x402 → ${serviceUrl}` });
     try {
@@ -313,7 +328,7 @@ function X402Panel({ onLog }: { onLog: (l: LogLine) => void }) {
       onLog({
         ts: now(),
         kind: "success",
-        text: `x402 paid — ${result.amount} ${result.currency} · invoice ${result.invoiceId.slice(0, 12)}…`,
+        text: `x402 ${result.explorerUrl ? "paid" : "simulated"} — ${result.amount} ${result.currency} · invoice ${result.invoiceId.slice(0, 12)}…`,
         txHash: result.txHash,
         explorerUrl: result.explorerUrl ?? undefined,
         guardrailTrail: result.guardrailTrail,
@@ -358,9 +373,13 @@ function X402Panel({ onLog }: { onLog: (l: LogLine) => void }) {
             <div><p className="muted">Invoice</p><code style={{ fontSize: "0.72rem" }}>{last.invoiceId.slice(0, 16)}…</code></div>
             <div>
               <p className="muted">Tx hash</p>
-              <a href={last.explorerUrl ?? devnetTxUrl(last.txHash)} target="_blank" rel="noreferrer" style={{ fontSize: "0.75rem" }}>
-                {hashShort(last.txHash)} ↗
-              </a>
+              {last.explorerUrl ? (
+                <a href={last.explorerUrl} target="_blank" rel="noreferrer" style={{ fontSize: "0.75rem" }}>
+                  {hashShort(last.txHash)} ↗
+                </a>
+              ) : (
+                <code style={{ fontSize: "0.72rem" }}>{hashShort(last.txHash)} · simulated</code>
+              )}
             </div>
             <div><p className="muted">Proof header</p><code style={{ fontSize: "0.68rem" }}>{last.proofHeader.slice(0, 20)}…</code></div>
           </div>
@@ -373,8 +392,8 @@ function X402Panel({ onLog }: { onLog: (l: LogLine) => void }) {
 // ── Delegation panel ───────────────────────────────────────────────────────────
 
 const DEFAULT_GRANT: DelegationGrantCreate = {
-  parentAddress: "",
-  childAddress: "",
+  parentAddress: "rTREASURYAGENT000000000000000000",
+  childAddress: "rSUBAGENTWALLET00000000000000000",
   maxTotal: "500.000000",
   maxPerTx: "50.000000",
   maxPerDay: "200.000000",
@@ -398,8 +417,12 @@ function DelegationPanel({ onLog }: { onLog: (l: LogLine) => void }) {
     setBusy((p) => ({ ...p, [key]: val }));
 
   const create = async () => {
-    setBusyKey("create", true);
     setError(null);
+    if (!form.parentAddress.trim() || !form.childAddress.trim()) {
+      setError("Parent and child addresses are required.");
+      return;
+    }
+    setBusyKey("create", true);
     onLog({ ts: now(), kind: "info", text: `Granting ${form.maxTotal} ${form.currency} to ${form.childAddress.slice(0, 12)}…` });
     try {
       const grant = await api.createDelegation(form);
@@ -482,12 +505,17 @@ function DelegationPanel({ onLog }: { onLog: (l: LogLine) => void }) {
                 <p className="muted" style={{ margin: "0.2rem 0", fontSize: "0.75rem" }}>
                   max: {g.maxTotal} · per-tx: {g.maxPerTx} · per-day: {g.maxPerDay} {g.currency}
                 </p>
-                {g.fundTxHash && (
+                {g.fundTxHash && g.fundExplorerUrl && (
                   <p className="muted" style={{ fontSize: "0.72rem" }}>
                     Fund tx:{" "}
-                    <a href={g.fundExplorerUrl ?? devnetTxUrl(g.fundTxHash)} target="_blank" rel="noreferrer">
+                    <a href={g.fundExplorerUrl} target="_blank" rel="noreferrer">
                       {hashShort(g.fundTxHash)} ↗
                     </a>
+                  </p>
+                )}
+                {g.fundTxHash && !g.fundExplorerUrl && (
+                  <p className="muted" style={{ fontSize: "0.72rem" }}>
+                    Fund tx: <code>{hashShort(g.fundTxHash)} · simulated</code>
                   </p>
                 )}
               </div>
@@ -789,7 +817,7 @@ export function ARSPage() {
         <p className="tagline" style={{ marginBottom: "1.5rem" }}>
           All three paths share the same guardrail spine (G1 KYA → G2 sanctions → G4 scope → G5
           delegation → G6 threshold → G7 Firefly). Every transaction links to the{" "}
-          <a href="https://devnet.xrpl.org" target="_blank" rel="noreferrer">Devnet explorer</a>.
+          <a href="https://testnet.xrpl.org" target="_blank" rel="noreferrer">Testnet explorer</a>.
         </p>
 
         <TradeFinancePanel onLog={addLog} />
