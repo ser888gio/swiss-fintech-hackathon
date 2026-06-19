@@ -69,7 +69,7 @@ class Settings(BaseSettings):
 
     # XRPL network identifier included in the approval payload to prevent
     # testnet signatures from being replayed on mainnet.
-    xrpl_network: str = "xrpl:testnet"
+    xrpl_network: str = "xrpl:1"
 
     # XRPL address of the treasury wallet that owns the escrows. Included in
     # the approval payload so the device commits to the exact escrow owner.
@@ -119,13 +119,16 @@ class Settings(BaseSettings):
     # any challenge that requests a currency or facilitator not in these lists.
     # Agent spend scope (G4): caps per single x402 call and rolling 24-hour window.
     x402_enabled: bool = False
-    x402_facilitator_url: str = "https://xrpl-x402.t54.ai"
+    x402_facilitator_url: str = "https://xrpl-facilitator-testnet.t54.ai"
     x402_allowed_assets: str = "RLUSD"          # comma-separated currency codes
-    x402_allowed_facilitators: str = "https://xrpl-x402.t54.ai"  # comma-sep URLs
+    x402_allowed_facilitators: str = "https://xrpl-facilitator-testnet.t54.ai"  # comma-sep URLs
     x402_scope_max_per_tx_usd: float = 50.0     # G4 per-transaction cap
     x402_scope_max_per_day_usd: float = 500.0   # G4 rolling 24h cap
     x402_allowed_service_hosts: str = ""        # comma-sep; empty = any host allowed
     x402_source_tag: int = 20260530             # Starter Kit convention
+    x402_demo_enabled: bool = False             # local/test merchant resource only
+    x402_demo_pay_to: str = ""                  # trust-lined Testnet recipient
+    x402_demo_price: str = "1.000000"           # exact RLUSD amount
 
     # ARS Agent-to-Agent Delegation (G5). When enabled, the orchestrator accepts
     # grant_delegation / sub-agent payment calls. delegation_default_max_total is

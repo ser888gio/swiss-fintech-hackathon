@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -41,11 +42,103 @@ SOURCE_TAG = 20260530  # Starter Kit convention; overridden by config
 # ── Mock 402 server state ─────────────────────────────────────────────────────
 
 _mock_invoices: dict[str, dict] = {}
+_demo_invoice_id: str | None = None
+_demo_last_verified: tuple[str, str] | None = None
 
 
 def reset_mock_state() -> None:
     """Clear in-process mock invoices (test isolation)."""
+    global _demo_invoice_id, _demo_last_verified
     _mock_invoices.clear()
+    _demo_invoice_id = None
+    _demo_last_verified = None
+
+
+def issue_demo_requirement(service_url: str, settings) -> X402PaymentRequirement:
+    """Issue one exact RLUSD challenge for the built-in Testnet demo merchant."""
+    global _demo_invoice_id
+    if not settings.x402_demo_pay_to:
+        raise X402Error("x402_demo_pay_to is not configured")
+    _demo_invoice_id = f"ars-demo-{uuid.uuid4()}"
+    return X402PaymentRequirement(
+        service_url=service_url,
+        facilitator_url=settings.x402_facilitator_url,
+        pay_to=settings.x402_demo_pay_to,
+        asset_currency=settings.token_currency,
+        asset_issuer=settings.token_issuer_address,
+        network=settings.xrpl_network,
+        amount=settings.x402_demo_price,
+        invoice_id=_demo_invoice_id,
+    )
+
+
+async def verify_demo_proof(proof_header: str, settings) -> str:
+    """Verify the demo payment independently against the validated ledger."""
+    global _demo_invoice_id, _demo_last_verified
+    match = re.fullmatch(r"xrpl:([A-Fa-f0-9]{64}):(.+)", proof_header)
+    if not match:
+        raise X402Error("invalid x402 proof header or invoice binding")
+    tx_hash = match.group(1).upper()
+    proof_invoice_id = match.group(2)
+    if _demo_last_verified == (proof_invoice_id, tx_hash):
+        return tx_hash
+
+    invoice_id = _demo_invoice_id
+    if not invoice_id:
+        raise X402Error("no demo invoice is pending")
+    if proof_invoice_id != invoice_id:
+        raise X402Error("invalid x402 proof header or invoice binding")
+
+    from xrpl.models.requests import Tx
+
+    async with xrpl_client.async_client(settings.xrpl_endpoint) as client:
+        response = await client.request(Tx(transaction=tx_hash))
+    if not response.is_successful():
+        raise X402Error("payment transaction was not found on XRPL Testnet")
+
+    result = response.result
+    tx = result.get("tx_json") or result
+    meta = result.get("meta") or {}
+    # XRPL API v2 renames Payment.Amount to DeliverMax in transaction responses.
+    amount = tx.get("Amount") or tx.get("DeliverMax") or {}
+    expected_currency = xrpl_client.currency_code(settings.token_currency).upper()
+    checks = {
+        "validated": result.get("validated") is True,
+        "tesSUCCESS": meta.get("TransactionResult") == "tesSUCCESS",
+        "payment": tx.get("TransactionType") == "Payment",
+        "payer": tx.get("Account") == _agent_address(settings),
+        "destination": tx.get("Destination") == settings.x402_demo_pay_to,
+        "currency": isinstance(amount, dict)
+        and str(amount.get("currency", "")).upper() == expected_currency,
+        "issuer": isinstance(amount, dict)
+        and amount.get("issuer") == settings.token_issuer_address,
+        "amount": isinstance(amount, dict)
+        and Decimal(str(amount.get("value", "0"))) == Decimal(settings.x402_demo_price),
+        "source_tag": tx.get("SourceTag") == settings.x402_source_tag,
+        "invoice_memo": _tx_contains_invoice(tx, invoice_id),
+    }
+    failed = [name for name, passed in checks.items() if not passed]
+    if failed:
+        raise X402Error(f"payment proof failed ledger checks: {', '.join(failed)}")
+
+    _demo_last_verified = (invoice_id, tx_hash)
+    _demo_invoice_id = None
+    return tx_hash
+
+
+def _tx_contains_invoice(tx: dict, invoice_id: str) -> bool:
+    for wrapper in tx.get("Memos") or []:
+        memo = wrapper.get("Memo") or {}
+        raw = memo.get("MemoData")
+        if not raw:
+            continue
+        try:
+            decoded = bytes.fromhex(raw).decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            continue
+        if invoice_id in decoded:
+            return True
+    return False
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -83,7 +176,9 @@ async def request_with_payment(
         resp = await client.get(service_url)
 
     if resp.status_code != 402:
-        return ServiceResponse(body=resp.text, status_code=resp.status_code, payment=_noop_settlement())
+        raise X402Error(
+            f"service returned {resp.status_code}, expected 402 — no payment made"
+        )
 
     requirement = _parse_402(resp, service_url, settings)
     _validate_requirement(requirement, settings)
@@ -295,17 +390,6 @@ def _agent_address(settings) -> str:
     if settings.use_mock_xrpl or not settings.treasury_wallet_seed:
         return settings.treasury_wallet_address or "rMOCK_TREASURY_0000000000000000000"
     return Ledger(settings).treasury_wallet.address
-
-
-def _noop_settlement() -> X402Settlement:
-    return X402Settlement(
-        invoice_id="noop",
-        tx_hash="0" * 64,
-        explorer_url=None,
-        proof_header="noop",
-        amount="0",
-        currency="RLUSD",
-    )
 
 
 # ── Errors ────────────────────────────────────────────────────────────────────

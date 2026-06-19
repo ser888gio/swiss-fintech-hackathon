@@ -68,6 +68,20 @@ def mock_tx_hash(kind: str, key: str) -> str:
     return hashlib.sha256(f"{kind}:{key}".encode()).hexdigest().upper()
 
 
+def currency_code(currency: str) -> str:
+    """Normalise a currency code to XRPL wire form.
+
+    Standard ISO-style 3-char codes (USD, EUR) pass through unchanged. Longer
+    codes such as RLUSD must be sent as a 40-char hex string — xrpl-py's binary
+    codec rejects anything else — so "RLUSD" becomes 524C555344 + zero padding.
+    """
+    from xrpl.utils import str_to_hex
+
+    if len(currency) <= 3:
+        return currency
+    return str_to_hex(currency).upper().ljust(40, "0")
+
+
 def token_amount(currency: str, value, settings):
     """Build an XRPL amount: drops for XRP, IssuedCurrencyAmount for a token."""
     if currency.upper() == "XRP":
@@ -77,7 +91,7 @@ def token_amount(currency: str, value, settings):
     from xrpl.models.amounts import IssuedCurrencyAmount
 
     return IssuedCurrencyAmount(
-        currency=currency, issuer=settings.token_issuer_address, value=str(value)
+        currency=currency_code(currency), issuer=settings.token_issuer_address, value=str(value)
     )
 
 

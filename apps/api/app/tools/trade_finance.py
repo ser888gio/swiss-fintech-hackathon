@@ -318,10 +318,9 @@ def _emit_audit(event_type: str, rec: Receivable) -> None:
 def _schedule_persist(rec: Receivable) -> None:
     import asyncio
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.create_task(_persist_receivable(rec))
-            return
+        asyncio.get_running_loop()
+        asyncio.create_task(_persist_receivable(rec))
+        return
     except RuntimeError:
         pass
 

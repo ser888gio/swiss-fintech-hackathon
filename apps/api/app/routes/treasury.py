@@ -3,7 +3,8 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from ..agents import orchestrator, treasury_agent
 from ..config import get_settings
@@ -29,6 +30,7 @@ from ..tools import delegation as delegation_tool
 from ..tools import mptoken as mptoken_tool
 from ..tools import trade_finance as tf_tool
 from ..tools import vault as vault_tool
+from ..tools import x402 as x402_tool
 
 router = APIRouter(prefix="/treasury")
 
@@ -265,6 +267,37 @@ async def collect_repayment(invoice_id: str) -> Receivable:
 
 from pydantic import BaseModel
 
+
+@router.get("/x402/demo-resource")
+async def x402_demo_resource(request: Request):
+    """Testnet demo merchant that releases content only after ledger verification."""
+    settings = get_settings()
+    if not settings.x402_demo_enabled:
+        raise HTTPException(status_code=404, detail="x402 demo resource is disabled")
+
+    proof = request.headers.get("X-PAYMENT")
+    if not proof:
+        requirement = x402_tool.issue_demo_requirement(str(request.url), settings)
+        return JSONResponse(
+            status_code=402,
+            content={
+                "payTo": requirement.pay_to,
+                "currency": requirement.asset_currency,
+                "issuer": requirement.asset_issuer,
+                "network": requirement.network,
+                "amount": requirement.amount,
+                "invoiceId": requirement.invoice_id,
+                "facilitatorUrl": requirement.facilitator_url,
+            },
+        )
+
+    try:
+        tx_hash = await x402_tool.verify_demo_proof(proof, settings)
+    except x402_tool.X402Error as exc:
+        raise HTTPException(status_code=402, detail=str(exc))
+    return {"message": "paid Testnet RLUSD resource", "txHash": tx_hash}
+
+
 class ServicePaymentRequest(BaseModel):
     service_url: str
     service_type: str = "data_lookup"
@@ -292,6 +325,11 @@ async def trigger_service_payment(req: ServicePaymentRequest) -> X402Settlement:
 @router.post("/delegations", response_model=DelegationGrant, status_code=201)
 async def create_delegation(create: DelegationGrantCreate) -> DelegationGrant:
     """Grant a scoped budget to a sub-agent wallet (G1 guardrailed)."""
+    if not create.parent_address.strip() or not create.child_address.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="parent_address and child_address must not be blank",
+        )
     settings = get_settings()
     if not settings.delegation_enabled:
         raise HTTPException(status_code=403, detail="delegation_enabled is False")
