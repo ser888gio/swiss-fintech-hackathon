@@ -193,8 +193,8 @@ class Settings(BaseSettings):
     )
 
     # Railway preview/prod service hosts plus Cloudflare Pages (*.pages.dev).
-    # Keep explicit origins above for the main demo URL; this catches
-    # regenerated Railway/Pages domains during rehearsals.
+    # Local loopback origins are added separately in main.py so local .env
+    # overrides cannot disable Vite development on a fallback port.
     cors_origin_regex: str = r"https://.*\.(up\.railway\.app|railway\.app|pages\.dev)"
 
     # Injected by Railway. When the web service URL changes, include it without
