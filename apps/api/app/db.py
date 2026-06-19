@@ -11,6 +11,7 @@ failed (no DB), they are None and every caller must guard with `if session_facto
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -21,6 +22,7 @@ log = logging.getLogger(__name__)
 
 # Module-level: set by init_db on first successful connection. None means no DB.
 session_factory: async_sessionmaker[AsyncSession] | None = None
+DB_STARTUP_TIMEOUT_SECONDS = 5.0
 
 
 async def init_db(database_url: str) -> bool:
@@ -31,13 +33,18 @@ async def init_db(database_url: str) -> bool:
     returns False on DB error so the app starts in graceful in-memory mode.
     """
     global session_factory
+    engine = None
     try:
         engine = create_async_engine(database_url, echo=False, pool_pre_ping=True)
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all, checkfirst=True)
+        async with asyncio.timeout(DB_STARTUP_TIMEOUT_SECONDS):
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all, checkfirst=True)
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
         log.info("Postgres connected; audit store ready.")
         return True
     except Exception as exc:
+        session_factory = None
+        if engine is not None:
+            await engine.dispose()
         log.warning("DB unavailable — running in-memory only: %s", exc)
         return False
