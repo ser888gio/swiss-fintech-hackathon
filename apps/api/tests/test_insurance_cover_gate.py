@@ -64,7 +64,7 @@ async def test_cover_required_auto_binds_before_settle(monkeypatch):
     async def fake_kyc(subject):
         return CredentialStatus(checked=False, verified=False, reason="disabled")
 
-    async def fake_audit(route, screen, decision):
+    async def fake_audit(route, screen, decision, **kwargs):
         return "audit"
 
     async def fake_execute(*args, **kwargs):
@@ -133,7 +133,7 @@ async def test_cover_disabled_leaves_existing_flow_unchanged(monkeypatch):
     async def fake_kyc(subject):
         return CredentialStatus(checked=False, verified=False, reason="disabled")
 
-    async def fake_audit(route, screen, decision):
+    async def fake_audit(route, screen, decision, **kwargs):
         return "audit"
 
     async def fake_execute(*args, **kwargs):

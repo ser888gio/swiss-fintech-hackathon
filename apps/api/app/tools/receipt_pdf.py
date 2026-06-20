@@ -117,6 +117,18 @@ def build_receipt_pdf(payment: Payment) -> bytes:
             rows.append(("Reasons", "; ".join(policy.reasons)))
         flow += _section("Policy decision", rows)
 
+    if receipt.guardrail_trail:
+        rows = [
+            (
+                guardrail.name,
+                ("passed" if guardrail.passed else "blocked")
+                + (f" — {guardrail.rule_fired}" if guardrail.rule_fired else "")
+                + (f": {guardrail.reason}" if guardrail.reason else ""),
+            )
+            for guardrail in receipt.guardrail_trail
+        ]
+        flow += _section("Deterministic guardrails", rows)
+
     settlement = [
         ("Escrow sequence", str(receipt.escrow_sequence) if receipt.escrow_sequence is not None else "—"),
         ("Approval signature", receipt.approval_signature or "—"),

@@ -34,6 +34,7 @@ def build_receipt(payment: Payment) -> Receipt:
         tx_hash=payment.tx_hash,
         explorer_url=payment.explorer_url,
         audit_explanation=payment.audit_explanation,
+        guardrail_trail=payment.guardrail_trail,
         created_at=payment.created_at,
         updated_at=payment.updated_at,
     )
@@ -109,6 +110,7 @@ def _canonical_json(payment: Payment) -> str:
         "txHash": payment.tx_hash,
         "explorerUrl": payment.explorer_url,
         "auditExplanation": payment.audit_explanation,
+        "guardrailTrail": _guardrail_trail(payment.guardrail_trail),
         "createdAt": _iso(payment.created_at),
         "updatedAt": _iso(payment.updated_at),
     }

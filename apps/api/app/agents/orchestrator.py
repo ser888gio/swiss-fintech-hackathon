@@ -151,7 +151,6 @@ async def process_payment(
                 f"Non-production Firefly bypass applied on {settings.xrpl_network}.",
             )
     payment.policy_decision = decision
-    payment.audit_explanation = await audit.write_audit(route, screen, decision)
     _log(
         payment_id,
         (
@@ -159,13 +158,6 @@ async def process_payment(
             f"AML {screen.aml_score} vs {settings.policy_compliance_flag_score} flag → "
             f"{'block' if decision.blocked else 'approval required' if decision.requires_approval else 'auto-settle'}."
         ),
-    )
-
-    # Anchor the deterministic decision trail on-ledger via transaction Memos.
-    memo = execution.ComplianceMemo(
-        aml_score=screen.aml_score,
-        rule_fired=decision.rule_fired,
-        receipt_hash=receipt.compute_decision_hash(payment),
     )
 
     if settings.insurance_enabled and insurance_engine.cover_requirement(
@@ -202,10 +194,8 @@ async def process_payment(
                     "rule_fired": "insurance_decline",
                 }
             )
-            await _block(payment)
-            payment.updated_at = _now()
-            return store.save(payment)
-        if quote.decision.value == "REVIEW":
+            decision = payment.policy_decision
+        elif quote.decision.value == "REVIEW":
             payment.policy_decision = decision.model_copy(
                 update={
                     "requires_approval": True,
@@ -213,6 +203,7 @@ async def process_payment(
                     "rule_fired": decision.rule_fired or "insurance_review",
                 }
             )
+            decision = payment.policy_decision
         else:
             premium = await insurance_tool.bind(
                 BindRequest(
@@ -230,6 +221,24 @@ async def process_payment(
                     f"({quote.receipt_hash[:12]}...)."
                 ),
             )
+
+    # Narration is generated only after every deterministic gate has produced
+    # the final decision. It explains that decision; it never changes it.
+    payment.audit_explanation = await audit.write_audit(
+        route,
+        screen,
+        decision,
+        guardrail_trail=payment.guardrail_trail,
+        context_kind="agent_payment" if has_agent_scope else "payment",
+        payment_id=payment_id,
+    )
+
+    # Anchor the final deterministic decision trail on-ledger via transaction Memos.
+    memo = execution.ComplianceMemo(
+        aml_score=screen.aml_score,
+        rule_fired=decision.rule_fired,
+        receipt_hash=receipt.compute_decision_hash(payment),
+    )
 
     # Reserve agent spend before submitting (prevents double-spend on concurrent runs).
     if agent_id is not None and not decision.blocked:

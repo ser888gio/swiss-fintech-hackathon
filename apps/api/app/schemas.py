@@ -368,6 +368,7 @@ class Receipt(CamelModel):
     tx_hash: str | None
     explorer_url: str | None
     audit_explanation: str | None
+    guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

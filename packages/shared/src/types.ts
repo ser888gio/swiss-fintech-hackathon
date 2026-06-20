@@ -214,6 +214,7 @@ export interface Receipt {
   txHash: string | null;
   explorerUrl: string | null;
   auditExplanation: string | null;
+  guardrailTrail: GuardrailResult[];
   createdAt: string;
   updatedAt: string;
 }
