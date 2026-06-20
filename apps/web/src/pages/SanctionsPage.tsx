@@ -81,8 +81,8 @@ export function SanctionsPage() {
               <span style="color:#6b7280;font-size:11px">${entry.sources.join(" · ")}</span>
             </div>`;
           })
-          .width(el.clientWidth)
-          .height(420);
+          .width(el.clientWidth || 800)
+          .height(520);
 
         globe.controls().autoRotate = true;
         globe.controls().autoRotateSpeed = 0.4;
