@@ -23,9 +23,9 @@ const SENDERS = [
 ];
 
 const RECIPIENTS = [
-  { label: "Acme Supplies AG", country: "US", entityType: "company" as const, account: "rwjNyXSKQ5Rt6StJHHPzdHY5KA8UqYjBuC" },
-  { label: "Globex Trading Ltd", country: "GB", entityType: "company" as const, account: "rnt6pfdVx7cRsSrzm38783o7H4unfkpRqv" },
-  { label: "ACME Shell Co", country: "RU", entityType: "company" as const, account: "rDabdgRBdnms9zkbNtaLaVwqJuSbxjgroC" },
+  { label: "Maersk Repair Yard", country: "US", entityType: "company" as const, account: "rJw33SjizSjbJiKB9PVmrgdWN3MAAUwr7v" },
+  { label: "Maersk Customs", country: "GB", entityType: "company" as const, account: "rJw33SjizSjbJiKB9PVmrgdWN3MAAUwr7v" },
+  { label: "ACME Shell Co", country: "RU", entityType: "company" as const, account: "rJw33SjizSjbJiKB9PVmrgdWN3MAAUwr7v" },
 ];
 
 const NUMPAD = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "backspace"];

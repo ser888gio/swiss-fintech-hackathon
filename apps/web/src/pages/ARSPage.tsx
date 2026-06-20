@@ -106,8 +106,8 @@ function PaymentLog({ lines }: { lines: LogLine[] }) {
 
 const DEFAULT_RECEIVABLE: ReceivableCreate = {
   invoiceId: "INV-TF-001",
-  buyer: "rBUYER000000000000000000000000000",
-  supplier: "rSUPPLIER00000000000000000000000",
+  buyer: "rJw33SjizSjbJiKB9PVmrgdWN3MAAUwr7v",
+  supplier: "rJw33SjizSjbJiKB9PVmrgdWN3MAAUwr7v",
   amount: "5000.000000",
   discountRate: "0.020000",
   dueDate: new Date(Date.now() + 90 * 86400 * 1000).toISOString(),
@@ -394,7 +394,7 @@ function X402Panel({ onLog }: { onLog: (l: LogLine) => void }) {
 
 const DEFAULT_GRANT: DelegationGrantCreate = {
   parentAddress: "",
-  childAddress: "",
+  childAddress: "rJw33SjizSjbJiKB9PVmrgdWN3MAAUwr7v",
   maxTotal: "500.000000",
   maxPerTx: "50.000000",
   maxPerDay: "200.000000",
