@@ -386,6 +386,7 @@ class Payment(CamelModel):
     receipt_hash: str | None = None
     cover: PremiumQuote | None = None
     agent_id: str | None = None    # set when initiated by a business agent
+    guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

@@ -20,11 +20,13 @@ from ..config import get_settings
 from ..insurance import binding as insurance_binding
 from ..insurance import engine as insurance_engine
 from ..policy import engine
-from ..policy.scope import AgentScope, evaluate_scope
+from ..policy.guardrail import evaluate_guardrails
+from ..policy.scope import AgentScope
 from ..schemas import (
     AgentLogEntry,
     BindRequest,
     CoverLine,
+    ConstraintResult,
     DelegationGrantCreate,
     InsuranceQuoteRequest,
     GuardrailResult,
@@ -91,66 +93,38 @@ async def process_payment(
         amount_usd = route.dest_amount
     else:
         amount_usd = await routing.convert_to_usd(intent.amount, intent.currency)
-    # Per-agent scope check (G4 guardrail, deepened for business agents).
-    # Runs before engine.evaluate so hard-scope blocks short-circuit to avoid
-    # misleading "escalate" outcomes when a cap is simply exceeded.
-    scope_requires_approval = False
-    _scope_result = None
-    if agent_scope is not None and agent_id is not None:
+    # Run guardrails: G2 (sanctions) + G6 (threshold) for all payments;
+    # G4 (scope) added when a business agent scope is provided.
+    has_agent_scope = agent_scope is not None and agent_id is not None
+    spent_today = Decimal("0")
+    if has_agent_scope:
         since = _now() - timedelta(hours=24)
         spent_today = store.agent_payments_sum(agent_id, since, intent.currency)
-        _scope_result = evaluate_scope(
-            spend=Decimal(str(amount_usd)),
-            scope=agent_scope,
-            spent_today=spent_today,
-            payee_address=intent.to,
-            asset=intent.currency,
-            network="XRPL",
-            category=intent.purpose,
-        )
-        _log(
-            payment_id,
-            f"Agent scope [{agent_id}]: "
-            + (_scope_result.rule_fired or "all checks passed")
-            + (f" — {_scope_result.reasons[0]}" if _scope_result.reasons else ""),
-        )
-        if not _scope_result.allowed:
-            if not _scope_result.requires_approval:
-                # Hard BLOCK — e.g. address on blocklist, daily cap breached
-                _block_reason = _scope_result.reasons[0] if _scope_result.reasons else "scope_block"
-                payment.policy_decision = PolicyDecision(
-                    requires_approval=False,
-                    rule_fired=_scope_result.rule_fired,
-                    reasons=list(_scope_result.reasons),
-                    blocked=True,
-                    block_reason=_block_reason,
-                )
-                payment.audit_explanation = (
-                    f"Blocked by agent policy [{agent_id}]: {_block_reason}. "
-                    f"Rule: {_scope_result.rule_fired}."
-                )
-                await _block(payment)
-                payment.updated_at = _now()
-                return store.save(payment)
-            else:
-                # ESCALATE — e.g. approval threshold exceeded
-                scope_requires_approval = True
 
-    decision = engine.evaluate(
-        amount_usd,
-        screen.aml_score,
+    g_result = evaluate_guardrails(
+        context_kind="agent_payment" if has_agent_scope else "payment",
         sanctioned=screen.sanctioned,
+        aml_score=screen.aml_score,
+        amount=Decimal(str(amount_usd)),
+        spent_today=spent_today,
+        scope_max_per_tx=agent_scope.max_per_transaction if agent_scope else Decimal("0"),
+        scope_max_per_day=agent_scope.max_per_day if agent_scope else Decimal("0"),
         threshold_usd=settings.policy_threshold_usd,
         flag_score=settings.policy_compliance_flag_score,
     )
-    # If scope says ESCALATE but engine would auto-settle, honour the scope escalation.
-    if scope_requires_approval and not decision.blocked and not decision.requires_approval:
-        assert _scope_result is not None
-        decision = decision.model_copy(update={
-            "requires_approval": True,
-            "rule_fired": _scope_result.rule_fired,
-            "reasons": list(decision.reasons) + list(_scope_result.reasons),
-        })
+    payment.guardrail_trail = list(g_result.guardrail_trail)
+
+    if has_agent_scope:
+        g4 = next((s for s in g_result.guardrail_trail if s.name == "G4_scope"), None)
+        if g4:
+            _log(
+                payment_id,
+                f"Agent scope [{agent_id}]: "
+                + (g4.rule_fired or "all checks passed")
+                + (f" — {g4.reason}" if g4.reason else ""),
+            )
+
+    decision = _policy_decision_from(g_result)
 
     # Explicit demo switch: Testnet/Devnet can exercise a real direct payment
     # without the local Firefly bridge. Mainnet always fails closed and retains
@@ -381,36 +355,29 @@ async def process_service_payment(
       G4  spend scope  — per-tx + daily velocity cap
     """
     settings = get_settings()
-    trail: list[GuardrailResult] = []
-
-    # G1: agent KYA
-    effective_agent = agent_address or settings.treasury_wallet_address or "rMOCK_TREASURY"
-    g1 = await _run_g1(effective_agent)
-    trail.append(g1)
-    if not g1.passed:
-        raise GuardrailBlocked("G1_kya", g1.reason or g1.rule_fired or "kya_failed", trail)
-
-    # G4: scope (host allowlist + velocity)
     from urllib.parse import urlparse
+
+    effective_agent = agent_address or settings.treasury_wallet_address or "rMOCK_TREASURY"
     host = urlparse(service_url).netloc
     scope = _agent_scope(settings)
     since = datetime.now(timezone.utc) - timedelta(hours=24)
     spent_today = store.recent_payments_sum(effective_agent, since, "RLUSD")
-    g4 = evaluate_scope(
-        Decimal("1"),        # placeholder; real amount comes from the 402 challenge
-        scope,
-        spent_today,
+    cred = await credentials.verify_kyc(effective_agent)
+
+    result = evaluate_guardrails(
+        context_kind="service_payment",
+        agent_credential_verified=cred.verified if settings.credential_kyc_enabled else True,
+        amount=Decimal("1"),  # placeholder; real amount comes from the 402 challenge
+        spent_today=spent_today,
+        scope_max_per_tx=scope.max_per_transaction,
+        scope_max_per_day=scope.max_per_day,
+        allowed_service_hosts=scope.allowed_service_hosts,
         service_host=host,
         service_type=service_type,
     )
-    trail.append(GuardrailResult(
-        name="G4_scope",
-        passed=g4.allowed,
-        rule_fired=g4.rule_fired,
-        reason=g4.reasons[0] if g4.reasons else None,
-    ))
-    if not g4.allowed:
-        raise GuardrailBlocked("G4_scope", g4.reasons[0] if g4.reasons else "scope_blocked", trail)
+    trail = result.guardrail_trail
+    if not result.allowed:
+        raise GuardrailBlocked(result.rule_fired or "guardrail", result.reasons[0] if result.reasons else "blocked", trail)
 
     settlement = await x402_tool.request_with_payment(
         service_url, service_type=service_type, guardrail_trail=trail
@@ -437,8 +404,6 @@ async def process_early_payment(
     the caller can redirect to the hardware-approval flow.
     """
     settings = get_settings()
-    trail: list[GuardrailResult] = []
-
     rec = tf_tool.get_by_invoice(invoice_id)
     if rec is None:
         from ..tools.trade_finance import ReceivableNotFound
@@ -449,42 +414,25 @@ async def process_early_payment(
     supplier_amount = face * (Decimal("1") - discount)
 
     effective_agent = agent_address or settings.treasury_wallet_address or "rMOCK_TREASURY"
-
-    # G1
-    g1 = await _run_g1(effective_agent)
-    trail.append(g1)
-    if not g1.passed:
-        raise GuardrailBlocked("G1_kya", g1.reason or "kya_failed", trail)
+    cred = await credentials.verify_kyc(effective_agent)
 
     # G4 is intentionally skipped for trade finance: receivable face values are
-    # large by design (institutional invoices). G6 below provides the threshold
-    # gate; Firefly covers anything above policy_threshold_usd.
-    trail.append(GuardrailResult(
-        name="G4_scope",
-        passed=True,
-        rule_fired=None,
-        reason="trade_finance_exempt",
-    ))
-
-    # G6: amount threshold → Firefly escalation
-    policy = engine.evaluate(
-        float(supplier_amount),
-        aml_score=0,
+    # large by design (institutional invoices). G6 provides the threshold gate;
+    # Firefly covers anything above policy_threshold_usd.
+    result = evaluate_guardrails(
+        context_kind="loan_underwrite",  # G1 + G6 (no G4 for trade finance)
+        agent_credential_verified=cred.verified if settings.credential_kyc_enabled else True,
         sanctioned=False,
+        aml_score=0,
+        amount=supplier_amount,
         threshold_usd=settings.policy_threshold_usd,
         flag_score=settings.policy_compliance_flag_score,
     )
-    g6_passed = not policy.blocked and not policy.requires_approval
-    trail.append(GuardrailResult(
-        name="G6_threshold",
-        passed=g6_passed,
-        rule_fired=policy.rule_fired,
-        reason="; ".join(policy.reasons) if policy.reasons else None,
-    ))
-    if policy.blocked:
-        raise GuardrailBlocked("G6_threshold", policy.block_reason or "policy_blocked", trail)
-    if policy.requires_approval:
-        raise GuardrailEscalation("G6_threshold", "requires_hardware_approval", trail)
+    trail = result.guardrail_trail
+    if not result.allowed:
+        if result.action == "review":
+            raise GuardrailEscalation(result.rule_fired or "G6_threshold", "requires_hardware_approval", trail)
+        raise GuardrailBlocked(result.rule_fired or "guardrail", result.reasons[0] if result.reasons else "blocked", trail)
 
     return await tf_tool.pay_supplier_early(invoice_id, guardrail_trail=trail)
 
@@ -501,30 +449,33 @@ async def collect_repayment(
 async def process_delegation_fund(create: DelegationGrantCreate) -> "delegation_tool.DelegationGrant":
     """Grant delegation and fund the sub-agent. Runs G1 on the parent."""
     settings = get_settings()
-    trail: list[GuardrailResult] = []
+    cred = await credentials.verify_kyc(create.parent_address)
 
-    g1 = await _run_g1(create.parent_address)
-    trail.append(g1)
-    if not g1.passed:
-        raise GuardrailBlocked("G1_kya", g1.reason or "kya_failed", trail)
+    result = evaluate_guardrails(
+        context_kind="delegation_fund",
+        agent_credential_verified=cred.verified if settings.credential_kyc_enabled else True,
+        amount=Decimal(str(create.max_total)),
+        spent_today=Decimal("0"),
+        scope_max_per_tx=Decimal(str(create.max_per_tx)),
+        scope_max_per_day=Decimal(str(create.max_per_day)),
+    )
+    if not result.allowed:
+        raise GuardrailBlocked(result.rule_fired or "guardrail", result.reasons[0] if result.reasons else "blocked", result.guardrail_trail)
 
     return await delegation_tool.grant_delegation(create)
 
 
-# ── Shared guardrail helpers ──────────────────────────────────────────────────
+# ── Shared helpers ────────────────────────────────────────────────────────────
 
-async def _run_g1(agent_address: str) -> GuardrailResult:
-    """Run G1 KYA: verify the agent holds an accepted credential."""
-    settings = get_settings()
-    if not settings.credential_kyc_enabled:
-        return GuardrailResult(name="G1_kya", passed=True, rule_fired=None, reason="KYC disabled")
-    cred = await credentials.verify_kyc(agent_address)
-    passed = cred.verified
-    return GuardrailResult(
-        name="G1_kya",
-        passed=passed,
-        rule_fired=None if passed else "kya_unverified",
-        reason=cred.reason if not passed else None,
+def _policy_decision_from(result: ConstraintResult) -> PolicyDecision:
+    """Derive a PolicyDecision from a ConstraintResult for downstream consumers."""
+    blocked = result.action == "block"
+    return PolicyDecision(
+        requires_approval=result.action == "review",
+        blocked=blocked,
+        rule_fired=result.rule_fired,
+        reasons=result.reasons,
+        block_reason=result.reasons[0] if blocked and result.reasons else None,
     )
 
 
