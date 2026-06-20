@@ -177,7 +177,7 @@ export const api = {
 
   // Insurance pricing & risk engine.
   quoteInsurance: (req: InsuranceQuoteRequest) =>
-    request<PremiumQuote>("/insurance/quote", { method: "POST", body: JSON.stringify(req) }),
+    request<PremiumQuote>("/treasury/insurance/quote", { method: "POST", body: JSON.stringify(req) }),
   bindInsurance: (req: BindRequest) =>
     request<InsurancePremiumRecord>("/treasury/insurance/bind", { method: "POST", body: JSON.stringify(req) }),
   listInsurancePremiums: () =>

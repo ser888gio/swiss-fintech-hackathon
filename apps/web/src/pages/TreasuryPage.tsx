@@ -569,7 +569,8 @@ function AgentDetail({ agent, onAgentUpdated, onAgentDeleted }: {
         merchantCountry: payment.intent.receiverCountry,
         scoreBand: "STANDARD",
         currency: payment.intent.currency,
-        collateral: "0.000000",
+        claimAmount: String(payment.intent.amount),
+        collateralAvailable: "0.000000",
       });
       setClaimResults((p) => ({ ...p, [payment.id]: payout }));
       await refresh();

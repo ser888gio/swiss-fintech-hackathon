@@ -601,16 +601,20 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
     try {
       const q = await api.quoteInsurance({
         agentAddress: agent,
-        amount,
         scoreBand,
-        activeLines: lines,
-        txn: { category },
+        txnContext: {
+          category,
+          tenorBand: "lt_30d",
+          cptyBand: "known",
+          amount,
+          activeLines: lines,
+        },
       });
       setQuote(q);
       onLog({
         ts: now(),
         kind: q.decision === "OFFER" ? "success" : "error",
-        text: `Quote ${q.decision} — premium ${q.premium} ${q.currency} · PD ${(q.pd * 100).toFixed(2)}% · Z ${(q.credibility * 100).toFixed(0)}%`,
+        text: `Quote ${q.decision} — premium ${q.premium} · PD ${(q.pd * 100).toFixed(2)}% · Z ${(q.credibility * 100).toFixed(0)}%`,
         txHash: q.receiptHash,
       });
       await refreshRisk(agent);
@@ -631,9 +635,8 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
       const rec = await api.bindInsurance({
         agentAddress: agent,
         jobId,
-        amount,
         scoreBand,
-        activeLines: lines,
+        quote,
       });
       onLog({
         ts: now(),
@@ -660,9 +663,8 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
         jobId,
         agentAddress: agent,
         merchant,
-        line: lines[0] ?? "merchant_default",
-        loss: amount,
-        collateral: "0",
+        claimAmount: amount,
+        collateralAvailable: "0",
       });
       onLog({
         ts: now(),
@@ -793,13 +795,13 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
         <div className="ars-tx-card" style={{ marginTop: "1rem" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <span className={`dashboard-status ${decisionClass(quote.decision)}`}>{quote.decision}</span>
-            <strong>{quote.premium} {quote.currency}</strong>
+            <strong>{quote.premium}</strong>
             {quote.reason && <span className="muted" style={{ fontSize: "0.75rem" }}>· {quote.reason}</span>}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginTop: "0.5rem" }}>
             <div><p className="muted">PD</p><strong>{(quote.pd * 100).toFixed(2)}%</strong></div>
             <div><p className="muted">Credibility Z</p><strong>{(quote.credibility * 100).toFixed(0)}%</strong></div>
-            <div><p className="muted">Band</p><strong>{quote.scoreBand ?? "—"}</strong></div>
+            <div><p className="muted">Band</p><strong>{scoreBand}</strong></div>
           </div>
           <div style={{ marginTop: "0.5rem" }}>
             {Object.entries(quote.lines).map(([line, prem]) => (

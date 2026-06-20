@@ -17,9 +17,9 @@ from decimal import Decimal
 
 from .. import store
 from ..config import get_settings
-from ..insurance import binding as insurance_binding
 from ..insurance import engine as insurance_engine
 from ..policy import engine
+from ..tools import insurance as insurance_tool
 from ..policy.guardrail import evaluate_guardrails
 from ..policy.scope import AgentScope
 from ..schemas import (
@@ -189,7 +189,7 @@ async def process_payment(
                 "activeLines": [CoverLine.merchant_default],
             },
         )
-        quote = await insurance_binding.quote(quote_request)
+        quote = insurance_tool.quote(quote_request)
         payment.cover = quote
         if quote.decision.value == "DECLINE":
             payment.policy_decision = decision.model_copy(
@@ -213,7 +213,7 @@ async def process_payment(
                 }
             )
         else:
-            premium = await insurance_binding.bind(
+            premium = await insurance_tool.bind(
                 BindRequest(
                     job_id=payment_id,
                     agent_address=intent.from_account,

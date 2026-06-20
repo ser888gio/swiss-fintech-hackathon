@@ -7,8 +7,7 @@ from fastapi.responses import JSONResponse
 
 from . import db, store
 from .config import get_settings
-from .insurance import store as insurance_store
-from .routes import credentials, health, insurance, payments, treasury, wallet
+from .routes import credentials, health, payments, treasury, wallet
 from .routes.agents import router as agents_router, load_agents_from_db
 
 

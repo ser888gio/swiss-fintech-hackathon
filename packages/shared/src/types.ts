@@ -586,6 +586,7 @@ export interface InsurancePayoutRecord {
   currency: string;
   slashTxHash: string | null;
   poolDrawTxHash: string | null;
+  explorerUrl: string | null;
   reputationMptProtected: boolean;
   guardrailTrail: GuardrailResult[];
   createdAt: string;
@@ -642,7 +643,11 @@ export interface ClaimRequest {
   merchantCountry?: string;
   scoreBand?: string;
   currency?: string;
-  collateral?: string;
+  claimAmount: string;            // Decimal string — the loss being claimed
+  collateralAvailable?: string;   // Decimal string — agent collateral recovered first
+  amlScore?: number;
+  sanctioned?: boolean;
+  receiptHash?: string | null;
 }
 
 export interface AgentRiskState {

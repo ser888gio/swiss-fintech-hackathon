@@ -47,6 +47,9 @@ def _settings(**overrides):
         "token_issuer_address": "",
         "policy_threshold_usd": 10_000.0,
         "policy_compliance_flag_score": 60,
+        # Insurance cover-gate off in agent tests (the orchestrator reads this).
+        "insurance_enabled": False,
+        "insurance_cover_required_above_usd": None,
         "route_slippage_bps": 50,
         "route_partial_payment": False,
         "credential_kyc_enabled": False,

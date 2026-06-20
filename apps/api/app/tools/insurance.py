@@ -207,7 +207,7 @@ async def bind(req: BindRequest) -> InsurancePremiumRecord:
         currency=settings.token_currency,   # actual on-ledger settlement asset
         tx_hash=tx_hash,
         explorer_url=explorer_url,
-        score_band=q.score_band,
+        score_band=req.score_band,
         guardrail_trail=trail,
         created_at=now,
     )
@@ -241,9 +241,11 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
     if not settings.insurance_enabled:
         raise InsuranceDisabled("insurance_enabled is False")
 
-    lp = LINE_PARAMS[req.line.value]
-    loss = Decimal(req.loss)
-    collateral = Decimal(req.collateral)
+    # Canonical claims cover the merchant-default peril: claim_amount is the loss,
+    # collateral_available is recovered first.
+    lp = LINE_PARAMS["merchant_default"]
+    loss = Decimal(req.claim_amount)
+    collateral = Decimal(req.collateral_available)
 
     # Recovery first (collateral), then the pool covers the residual shortfall.
     collateral_recovery = min(collateral, loss).quantize(_Q2, rounding=ROUND_HALF_UP)
@@ -254,11 +256,13 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
 
     # Build the full payout guardrail trail: per-party (G1/G2), the decide(PAYOUT)
     # policy gate, and the collusion guard — then enforce the hard blocks.
-    trail, party_block = await _party_guardrails(agent_address=req.agent_address, counterparty=req.merchant)
+    trail, party_block = await _party_guardrails(
+        agent_address=req.agent_address, counterparty=req.merchant, counterparty_name=req.merchant_name
+    )
     decision = policy_engine.evaluate(
         float(payout),
-        aml_score=0,
-        sanctioned=False,
+        aml_score=req.aml_score,
+        sanctioned=req.sanctioned,
         threshold_usd=settings.policy_threshold_usd,
         flag_score=settings.policy_compliance_flag_score,
     )
@@ -320,7 +324,7 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
         {
             "job_id": req.job_id,
             "merchant": req.merchant,
-            "line": req.line.value,
+            "line": "merchant_default",
             "collateral_slashed": record.collateral_slashed,
             "pool_drawn": record.pool_drawn,
             "total_paid": record.total_paid,
@@ -363,7 +367,7 @@ def get_agent_risk_state(agent_address: str) -> AgentRiskState | None:
         return None
     return AgentRiskState(
         agent_address=agent_address,
-        score_band=_bands.get(agent_address),
+        score_band=_bands.get(agent_address) or "STANDARD",
         alpha=r.alpha,
         beta=r.beta,
         pd=risk.pd_agent(r),
