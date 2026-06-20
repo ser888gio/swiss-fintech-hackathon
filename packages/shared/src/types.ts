@@ -47,6 +47,13 @@ export interface WalletOverview {
   networks: WalletNetworkSnapshot[];
 }
 
+export interface RuntimeStatus {
+  status: "ok";
+  mockMode: boolean;
+  network: "mock" | "testnet" | "devnet";
+  fireflyConfirmationEnabled: boolean;
+}
+
 export interface PaymentIntent {
   from: string;
   to: string;

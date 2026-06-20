@@ -220,6 +220,46 @@ async def test_large_credentialed_payment_still_requires_hardware_approval(monke
     assert payment.compliance.credential.verified is True
 
 
+async def test_non_production_switch_bypasses_firefly_but_preserves_audit_reason(monkeypatch):
+    """An explicit Devnet switch settles directly and records the override."""
+    _patch(
+        monkeypatch,
+        firefly_confirmation_enabled=False,
+        xrpl_network="xrpl:devnet",
+    )
+
+    payment = await orchestrator.process_payment(
+        _intent(to="rVERIFIED_RECEIVER", amount=50_000.0)
+    )
+
+    assert payment.status is PaymentStatus.settled
+    assert payment.policy_decision is not None
+    assert payment.policy_decision.requires_approval is False
+    assert payment.policy_decision.rule_fired == "firefly_bypass_non_production"
+    assert any(
+        "original escalation rule: amount_threshold" in reason
+        for reason in payment.policy_decision.reasons
+    )
+
+
+async def test_mainnet_ignores_firefly_bypass_switch(monkeypatch):
+    """The demo escape hatch must never bypass approval on Mainnet."""
+    _patch(
+        monkeypatch,
+        firefly_confirmation_enabled=False,
+        xrpl_network="xrpl:0",
+    )
+
+    payment = await orchestrator.process_payment(
+        _intent(to="rVERIFIED_RECEIVER", amount=50_000.0)
+    )
+
+    assert payment.status is PaymentStatus.pending_approval
+    assert payment.policy_decision is not None
+    assert payment.policy_decision.requires_approval is True
+    assert payment.policy_decision.rule_fired == "amount_threshold"
+
+
 async def test_gate_disabled_does_not_check_credential(monkeypatch):
     """With CREDENTIAL_KYC_ENABLED=false, unverified subjects auto-settle (if otherwise clean)."""
     _patch(monkeypatch, credential_kyc_enabled=False)

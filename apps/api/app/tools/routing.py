@@ -77,6 +77,11 @@ async def _attach_xrpl_path(
     settings = get_settings()
     if settings.use_mock_xrpl or not settings.token_issuer_address:
         return quote
+    # A same-asset issued-currency transfer is already direct. Asking
+    # ripple_path_find for it can return an unnecessary computed path which then
+    # turns a healthy trust-line payment into tecPATH_DRY at submission time.
+    if intent.currency.upper() == settle_currency.upper():
+        return quote
 
     try:
         source_account = Ledger(settings).treasury_wallet.address

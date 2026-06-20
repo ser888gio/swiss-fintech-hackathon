@@ -151,6 +151,30 @@ async def process_payment(
             "rule_fired": _scope_result.rule_fired,
             "reasons": list(decision.reasons) + list(_scope_result.reasons),
         })
+
+    # Explicit demo switch: Testnet/Devnet can exercise a real direct payment
+    # without the local Firefly bridge. Mainnet always fails closed and retains
+    # the approval requirement, even if the switch is disabled by mistake.
+    if decision.requires_approval and not getattr(settings, "firefly_confirmation_enabled", True):
+        if settings.xrpl_network == "xrpl:0":
+            _log(
+                payment_id,
+                "Firefly bypass ignored on Mainnet; hardware approval remains required.",
+            )
+        else:
+            original_rule = decision.rule_fired or "policy_escalation"
+            decision = decision.model_copy(update={
+                "requires_approval": False,
+                "rule_fired": "firefly_bypass_non_production",
+                "reasons": list(decision.reasons) + [
+                    f"Firefly confirmation disabled for {settings.xrpl_network}; "
+                    f"original escalation rule: {original_rule}"
+                ],
+            })
+            _log(
+                payment_id,
+                f"Non-production Firefly bypass applied on {settings.xrpl_network}.",
+            )
     payment.policy_decision = decision
     payment.audit_explanation = await audit.write_audit(route, screen, decision)
     _log(
@@ -169,10 +193,12 @@ async def process_payment(
         receipt_hash=receipt.compute_decision_hash(payment),
     )
 
-    if settings.insurance_enabled and insurance_engine.cover_gate(
-        intent,
-        has_cover=False,
-        default_threshold_usd=settings.insurance_cover_required_above_usd,
+    if settings.insurance_enabled and insurance_engine.cover_requirement(
+        intent.cover_required,
+        amount_usd,
+        intent.cover_required_above_usd
+        if intent.cover_required_above_usd is not None
+        else settings.insurance_cover_required_above_usd,
     ) == "REQUIRED":
         quote_request = InsuranceQuoteRequest(
             agent_address=intent.from_account,

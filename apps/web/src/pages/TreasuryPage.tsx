@@ -8,6 +8,7 @@ import type {
   InsurancePayoutRecord,
   Payment,
   PoolStatus,
+  RuntimeStatus,
   TreasuryAgentRun,
   TreasuryGoal,
   TreasuryGoalCreate,
@@ -671,16 +672,19 @@ export function TreasuryPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pool, setPool] = useState<PoolStatus | null>(null);
+  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const [a, p] = await Promise.allSettled([
+    const [a, p, r] = await Promise.allSettled([
       api.listAgents(),
       api.getInsurancePool().catch(() => null),
+      api.getRuntimeStatus(),
     ]);
     if (a.status === "fulfilled") setAgents(a.value);
     if (p.status === "fulfilled") setPool(p.value);
+    if (r.status === "fulfilled") setRuntime(r.value);
     setLoading(false);
   }, []);
 
@@ -715,11 +719,14 @@ export function TreasuryPage() {
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <span style={{
+          <span title={runtime ? `XRPL ${runtime.network}; Firefly confirmation ${runtime.fireflyConfirmationEnabled ? "enabled" : "disabled"}` : "Runtime status unavailable"} style={{
             fontSize: "0.7rem", padding: "0.2rem 0.6rem", borderRadius: 999,
-            border: "1px solid rgba(147,197,253,0.4)", color: "#93c5fd",
+            border: runtime?.mockMode
+              ? "1px solid rgba(147,197,253,0.4)"
+              : "1px solid rgba(110,231,183,0.45)",
+            color: runtime?.mockMode ? "#93c5fd" : "#6ee7b7",
           }}>
-            mock mode
+            {runtime ? `${runtime.network} mode` : "status unavailable"}
           </span>
         </div>
       </div>

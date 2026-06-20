@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     # unless the approval signature verifies against this key.
     firefly_public_key: str = ""
 
+    # Non-production escape hatch for live Testnet/Devnet demos. When false, a
+    # policy outcome that would normally require Firefly approval settles
+    # directly, with an explicit audit reason. Mainnet always fails closed and
+    # still requires Firefly regardless of this value.
+    firefly_confirmation_enabled: bool = True
+
     # XRPL network identifier included in the approval payload to prevent
     # testnet signatures from being replayed on mainnet.
     xrpl_network: str = "xrpl:1"

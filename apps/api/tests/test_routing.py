@@ -60,6 +60,24 @@ async def test_mock_mode_uses_direct_path(monkeypatch):
     assert "direct" in quote.path_summary
 
 
+async def test_real_same_asset_payment_does_not_attach_computed_paths(monkeypatch):
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: _settings(use_mock_xrpl=False, token_issuer_address="rIssuer"),
+    )
+
+    async def unexpected_path_find(*_args, **_kwargs):
+        raise AssertionError("same-asset transfer must not invoke pathfinding")
+
+    monkeypatch.setattr(routing.xrpl_client, "find_payment_paths", unexpected_path_find)
+
+    quote = await routing.get_fx_path(_intent(), "USD")
+
+    assert quote.paths is None
+    assert "direct" in quote.path_summary
+
+
 async def test_cheapest_alternative_picks_lowest_source_amount():
     alternatives = [
         {"paths_computed": [[{"currency": "EUR"}]], "source_amount": {"value": "1100"}},

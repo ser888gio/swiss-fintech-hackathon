@@ -31,6 +31,7 @@ import type {
   Receivable,
   ReceivableCreate,
   RouteQuote,
+  RuntimeStatus,
   TreasuryAgentRun,
   TreasuryGoal,
   TreasuryGoalCreate,
@@ -78,6 +79,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  getRuntimeStatus: () => request<RuntimeStatus>("/health"),
   getWallet: () => request<WalletOverview>("/wallet"),
   createPayment: (intent: PaymentIntent) =>
     request<Payment>("/payments", { method: "POST", body: JSON.stringify(intent) }),
