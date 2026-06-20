@@ -600,6 +600,31 @@ select:disabled {
 .cover-facts { display: grid; gap: 9px; margin: 0 0 18px; } .cover-facts div { display: flex; justify-content: space-between; gap: 12px; } .cover-facts dt { color: var(--muted); font-size: .76rem; } .cover-facts dd { margin: 0; font-size: .78rem; font-weight: 800; }
 .cover-health .dashboard-primary { width: 100%; }
 
+/* Agent Cover */
+.cover-page { display: grid; gap: 20px; }
+.cover-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 28px; color: var(--paper); background: linear-gradient(135deg, #22201e, #342820); border: 1px solid var(--border); border-radius: 18px; }
+.cover-hero h1 { margin: 4px 0 10px; font-size: clamp(2rem, 5vw, 3.5rem); }
+.cover-hero p { max-width: 720px; margin: 0; color: var(--muted); line-height: 1.6; }
+.cover-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.cover-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--border); }
+.cover-metrics div { display: grid; gap: 6px; padding: 18px; background: var(--surface); }
+.cover-metrics dt { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; }
+.cover-metrics dd { margin: 0; color: var(--paper); font-size: 1.05rem; font-weight: 800; }
+.cover-form { display: grid; gap: 14px; }
+.cover-form label { display: grid; gap: 7px; color: var(--muted); font-size: .75rem; font-weight: 700; }
+.cover-form input { width: 100%; box-sizing: border-box; padding: 11px 12px; color: var(--paper); background: rgba(255,255,255,.05); border: 1px solid var(--border); border-radius: 8px; }
+.cover-quote { display: grid; gap: 8px; margin-top: 16px; padding: 16px; background: rgba(220,164,105,.1); border: 1px solid rgba(220,164,105,.28); border-radius: 12px; }
+.cover-quote strong { font-size: 1.25rem; }
+.cover-quote p { margin: 0; color: var(--muted); }
+.cover-payouts { display: grid; }
+.cover-payouts article { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 20px; align-items: center; padding: 14px 0; border-top: 1px solid var(--border); }
+.cover-payouts article:first-child { border-top: 0; }
+.cover-payouts article div { display: grid; gap: 4px; }
+.cover-payouts small { color: var(--muted); }
+.cover-payouts a { color: var(--accent-strong); }
+@media (max-width: 800px) { .cover-grid { grid-template-columns: 1fr; } .cover-hero { flex-direction: column; } }
+@media (max-width: 520px) { .cover-metrics { grid-template-columns: 1fr; } .cover-payouts article { grid-template-columns: 1fr; gap: 6px; } }
+
 /* Transfer page wrapper: form on left, audit trail on right */
 .transfer-layout {
   display: grid;

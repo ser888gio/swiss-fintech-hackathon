@@ -127,6 +127,14 @@ async def test_bind_creates_active_policy_with_premium():
     assert Decimal(pool.reserved) == Decimal(policy.cover_cap)
 
 
+def test_empty_pool_status_uses_decimal_zero():
+    pool = cover_tool.get_pool_status()
+
+    assert pool.cover_in_force == "0.00"
+    assert pool.reserved == "0.00"
+    assert pool.policies_active == 0
+
+
 @pytest.mark.anyio
 async def test_bind_review_refused():
     q = cover_tool.quote(CoverQuoteRequest(

@@ -170,7 +170,10 @@ def add_claim(amount: Decimal) -> None:
 def pool_stats(first_loss_usd: float) -> dict:
     _expire_stale()
     active = [p for p in _policies.values() if p.status == CoverPolicyStatus.active]
-    cover_in_force = sum(Decimal(p.cover_cap) for p in active)
+    # Keep the accounting type stable even when there are no active policies.
+    # sum() defaults to the integer 0 for an empty iterable, which later breaks
+    # Decimal-only formatting such as quantize().
+    cover_in_force = sum((Decimal(p.cover_cap) for p in active), Decimal("0"))
     fl = Decimal(str(first_loss_usd)) + _pool["premiums"] - _pool["claims"]
     first_loss = max(Decimal("0"), fl)
     res = reserved_capacity()
