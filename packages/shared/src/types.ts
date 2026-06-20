@@ -721,6 +721,100 @@ export interface LpPosition {
   updatedAt: string;
 }
 
+// ── Agent Cover (annual policy — hallucination) ───────────────────────────────
+
+export type CoverLineKind = "hallucination" | "non_delivery";
+export type CoverPolicyStatus = "active" | "expired" | "exhausted" | "cancelled";
+export type CoverLossBearerKind = "merchant" | "treasury";
+export type CoverDecision = "OFFER" | "REVIEW" | "DECLINE";
+
+export interface CoverQuoteRequest {
+  agentAddress: string;
+  scoreBand?: string;
+  coverCap: string;           // Decimal string
+  perClaimLimit: string;      // Decimal string
+  termDays?: number;
+  lines?: CoverLineKind[];
+}
+
+export interface CoverQuote {
+  decision: CoverDecision;
+  premium: string;            // Decimal string — prorated
+  lineRates: Record<string, string>;
+  pd: number;
+  credibility: number;
+  scoreBand: string;
+  coverCap: string;
+  perClaimLimit: string;
+  termDays: number;
+  reason: string | null;
+  receiptHash: string;
+}
+
+export interface CoverBindRequest {
+  agentAddress: string;
+  scoreBand?: string;
+  coverCap: string;
+  perClaimLimit: string;
+  termDays?: number;
+  lines?: CoverLineKind[];
+  quote: CoverQuote;
+}
+
+export interface CoverPolicy {
+  id: string;
+  agentAddress: string;
+  periodStart: string;
+  periodEnd: string;
+  lines: CoverLineKind[];
+  coverCap: string;
+  perClaimLimit: string;
+  premium: string;
+  coverUsed: string;
+  coverRemaining: string;
+  scoreBand: string;
+  status: CoverPolicyStatus;
+  premiumTxHash: string | null;
+  explorerUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CoverClaimEvidence {
+  policyId: string;
+  paymentId: string;
+}
+
+export interface CoverPayout {
+  id: string;
+  policyId: string;
+  paymentId: string;
+  line: CoverLineKind;
+  lossBearerKind: CoverLossBearerKind;
+  destination: string;
+  amountPaid: string;
+  poolDrawn: string;
+  classification: string;
+  narration: string | null;
+  guardrailTrail: GuardrailResult[];
+  txHash: string | null;
+  explorerUrl: string | null;
+  receiptHash: string;
+  createdAt: string;
+}
+
+export interface CoverPoolStatus {
+  firstLoss: string;
+  reserved: string;
+  freeCapacity: string;
+  currency: string;
+  premiumsCollected: string;
+  claimsPaid: string;
+  capacityRatio: number;
+  policiesActive: number;
+  coverInForce: string;
+}
+
 // ── ARS Audit Log Event ──────────────────────────────────────────────────────
 
 export interface AuditEventRecord {

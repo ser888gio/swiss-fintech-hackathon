@@ -79,6 +79,9 @@ class PaymentIntent(CamelModel):
     reference: str
     cover_required: bool = False
     cover_required_above_usd: float | None = None
+    # Ground truth for deterministic hallucination reconciliation (Cover module).
+    expected_amount: float | None = None
+    expected_recipient: str | None = None
 
 
 class QuoteRequest(CamelModel):
@@ -927,6 +930,115 @@ class LpPosition(CamelModel):
     explorer_url: str | None = None
     guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
     updated_at: datetime
+
+
+# ── Agent Cover (annual policy — hallucination + non-delivery) ────────────────
+
+class CoverLineKind(str, Enum):
+    hallucination = "hallucination"
+    non_delivery = "non_delivery"
+
+
+class CoverPolicyStatus(str, Enum):
+    active = "active"
+    expired = "expired"
+    exhausted = "exhausted"
+    cancelled = "cancelled"
+
+
+class CoverLossBearerKind(str, Enum):
+    merchant = "merchant"
+    treasury = "treasury"
+
+
+class CoverQuoteRequest(CamelModel):
+    agent_address: str
+    score_band: str = "STANDARD"
+    cover_cap: str                      # Decimal string — max pool payout over the period
+    per_claim_limit: str                # Decimal string — max payout per single claim
+    term_days: int = 365
+    lines: list[CoverLineKind] = Field(default_factory=lambda: [CoverLineKind.hallucination])
+
+
+class CoverQuote(CamelModel):
+    decision: str                       # "OFFER" | "REVIEW" | "DECLINE"
+    premium: str                        # Decimal string — prorated premium (not always annual)
+    line_rates: dict[str, str]          # line → annual rate e.g. {"hallucination": "0.030000"}
+    pd: float
+    credibility: float
+    score_band: str
+    cover_cap: str
+    per_claim_limit: str
+    term_days: int
+    reason: str | None = None
+    receipt_hash: str
+
+
+class CoverBindRequest(CamelModel):
+    agent_address: str
+    score_band: str = "STANDARD"
+    cover_cap: str                      # Decimal string — must match quote
+    per_claim_limit: str                # Decimal string — must match quote
+    term_days: int = 365
+    lines: list[CoverLineKind] = Field(default_factory=lambda: [CoverLineKind.hallucination])
+    quote: CoverQuote
+
+
+class CoverPolicy(CamelModel):
+    id: str
+    agent_address: str
+    period_start: datetime
+    period_end: datetime
+    lines: list[CoverLineKind]
+    cover_cap: str                      # Decimal string — total pool capacity for this policy
+    per_claim_limit: str                # Decimal string
+    premium: str                        # Decimal string — what was paid
+    cover_used: str                     # Decimal string — cumulative payouts
+    cover_remaining: str                # Decimal string — cover_cap - cover_used
+    score_band: str
+    status: CoverPolicyStatus
+    premium_tx_hash: str | None = None
+    explorer_url: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CoverClaimEvidence(CamelModel):
+    """Evidence submitted by the caller. All financial data derived server-side
+    from the immutable settled payment record — never trusted from the client."""
+
+    policy_id: str
+    payment_id: str                     # must be a settled payment in the store
+
+
+class CoverPayout(CamelModel):
+    id: str
+    policy_id: str
+    payment_id: str
+    line: CoverLineKind
+    loss_bearer: CoverLossBearerKind
+    destination: str                    # XRPL address that received the payout
+    amount_paid: str                    # Decimal string
+    pool_drawn: str                     # Decimal string
+    classification: str                 # "underpayment" | "wrong_recipient"
+    narration: str | None = None
+    guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
+    tx_hash: str | None = None
+    explorer_url: str | None = None
+    receipt_hash: str
+    created_at: datetime
+
+
+class CoverPoolStatus(CamelModel):
+    first_loss: str                     # Decimal string — available first-loss capital
+    reserved: str                       # Decimal string — capacity reserved by active policies
+    free_capacity: str                  # first_loss - reserved
+    currency: str
+    premiums_collected: str
+    claims_paid: str
+    capacity_ratio: float               # free_capacity / first_loss
+    policies_active: int
+    cover_in_force: str                 # sum of active cover_caps
 
 
 # ── ARS Audit Log Event ───────────────────────────────────────────────────────

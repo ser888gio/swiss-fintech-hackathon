@@ -9,6 +9,7 @@ from . import db, store
 from .config import get_settings
 from .insurance import store as insurance_store
 from .routes import credentials, health, insurance, merchants, payments, treasury, wallet
+from .routes import cover as cover_routes
 from .routes.agents import router as agents_router, load_agents_from_db
 
 
@@ -65,6 +66,7 @@ app.include_router(treasury.router)
 app.include_router(wallet.router)
 app.include_router(agents_router)
 app.include_router(merchants.router)
+app.include_router(cover_routes.router)
 
 
 def _cors_headers(request: Request) -> dict[str, str]:

@@ -10,6 +10,13 @@ import type {
   CapitalDepositRequest,
   CapitalWithdrawRequest,
   ClaimRequest,
+  CoverBindRequest,
+  CoverClaimEvidence,
+  CoverPolicy,
+  CoverPoolStatus,
+  CoverPayout,
+  CoverQuote,
+  CoverQuoteRequest,
   CredentialIssueRequest,
   CredentialLogEntry,
   CredentialRecord,
@@ -236,5 +243,23 @@ export const api = {
   listServicePayments: (agentId?: string) => request<ServicePaymentRecord[]>(
     `/agents/service-payments/history${agentId ? `?agent_id=${encodeURIComponent(agentId)}` : ""}`
   ),
+
+  // Agent Cover (annual policy — hallucination line).
+  coverQuote: (req: CoverQuoteRequest) =>
+    request<CoverQuote>("/cover/quote", { method: "POST", body: JSON.stringify(req) }),
+  coverBind: (req: CoverBindRequest) =>
+    request<CoverPolicy>("/cover/bind", { method: "POST", body: JSON.stringify(req) }),
+  coverPolicies: (agent?: string) =>
+    request<CoverPolicy[]>(`/cover/policies${agent ? `?agent=${encodeURIComponent(agent)}` : ""}`),
+  coverClaim: (evidence: CoverClaimEvidence) =>
+    request<CoverPayout>("/cover/claim", { method: "POST", body: JSON.stringify(evidence) }),
+  coverPayouts: (policyId?: string) =>
+    request<CoverPayout[]>(`/cover/payouts${policyId ? `?policy_id=${encodeURIComponent(policyId)}` : ""}`),
+  coverPool: () =>
+    request<CoverPoolStatus>("/cover/pool"),
+  coverRunDemo41: () =>
+    request<{ scenario: string; description: string; payout: CoverPayout; narration: string }>(
+      "/cover/demo/underpayment", { method: "POST" }
+    ),
 };
 

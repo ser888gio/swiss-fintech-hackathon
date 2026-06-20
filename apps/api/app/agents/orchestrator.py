@@ -168,7 +168,7 @@ async def process_payment(
         receipt_hash=receipt.compute_decision_hash(payment),
     )
 
-    if getattr(settings, "insurance_enabled", False) and insurance_engine.cover_requirement(
+    if getattr(settings, "legacy_inline_cover_enabled", False) and insurance_engine.cover_requirement(
         intent.cover_required,
         amount_usd,
         intent.cover_required_above_usd

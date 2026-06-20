@@ -4,6 +4,7 @@ import type { Payment, PaymentIntent } from "@treasury/shared";
 import { api } from "./lib/api.js";
 import { signOnFirefly } from "./lib/firefly.js";
 import { ARSPage } from "./pages/ARSPage.js";
+import { CoverPage } from "./pages/CoverPage.js";
 import { CredentialsPage } from "./pages/CredentialsPage.js";
 import { DashboardPage } from "./pages/DashboardPage.js";
 import { InsurancePage } from "./pages/InsurancePage.js";
@@ -11,7 +12,7 @@ import { TransferPage } from "./pages/TransferPage.js";
 import { TreasuryPage } from "./pages/TreasuryPage.js";
 import { WalletPage } from "./pages/WalletPage.js";
 
-type Route = "/" | "/transfer" | "/credentials" | "/treasury" | "/ars" | "/insurance" | "/wallet";
+type Route = "/" | "/transfer" | "/credentials" | "/treasury" | "/ars" | "/insurance" | "/wallet" | "/cover";
 
 function currentRoute(): Route {
   if (window.location.pathname === "/transfer") return "/transfer";
@@ -20,6 +21,7 @@ function currentRoute(): Route {
   if (window.location.pathname === "/ars") return "/ars";
   if (window.location.pathname === "/insurance") return "/insurance";
   if (window.location.pathname === "/wallet") return "/wallet";
+  if (window.location.pathname === "/cover") return "/cover";
   return "/";
 }
 
@@ -59,6 +61,7 @@ export function App() {
       : path === "/ars" ? "/ars"
       : path === "/insurance" ? "/insurance"
       : path === "/wallet" ? "/wallet"
+      : path === "/cover" ? "/cover"
       : "/";
     if (window.location.pathname !== nextRoute) {
       window.history.pushState({}, "", nextRoute);
@@ -182,6 +185,9 @@ export function App() {
             <button className={route === "/wallet" ? "active" : ""} type="button" onClick={() => navigate("/wallet")}>
               Shared wallet
             </button>
+            <button className={route === "/cover" ? "active" : ""} type="button" onClick={() => navigate("/cover")}>
+              Agent Cover
+            </button>
             <button className={route === "/insurance" ? "active" : ""} type="button" onClick={() => navigate("/insurance")}>
               Insurance
             </button>
@@ -229,6 +235,7 @@ export function App() {
         {route === "/credentials" && <CredentialsPage />}
         {route === "/treasury" && <TreasuryPage />}
         {route === "/ars" && <ARSPage />}
+        {route === "/cover" && <CoverPage />}
         {route === "/insurance" && <InsurancePage />}
         {route === "/wallet" && <WalletPage />}
       </section>

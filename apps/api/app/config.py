@@ -219,6 +219,19 @@ class Settings(BaseSettings):
     # pre-credentialing every wallet. G2 sanctions is always hard-enforced.
     insurance_enforce_kya: bool = False
 
+    # Cover module (annual agent insurance — hallucination + non-delivery).
+    # A clean self-contained module on the pure actuarial core (insurance/engine.py).
+    # cover_pool_account: premium payee / payout source; falls back to insurance_vault_address.
+    cover_enabled: bool = True
+    cover_hallucination_rate: float = 0.03   # static annual rate for hallucination line
+    cover_rate_min: float = 0.02             # floor on any cover line annual rate
+    cover_rate_max: float = 0.10             # cap on any cover line annual rate
+    cover_term_days_default: int = 365
+    cover_pool_account: str = ""             # falls back to insurance_vault_address
+    # Guard for the broken epoch-1 inline-cover path in the orchestrator.
+    # False (default) makes it inert; set True only to restore the old behaviour.
+    legacy_inline_cover_enabled: bool = False
+
     # XLS-33 MPTokens — COMPLY compliance-attestation issuance.
     # Disabled by default. XLS-33 is available on Testnet and Devnet.
     # mpt_xrpl_endpoint defaults to xrpl_endpoint when empty.

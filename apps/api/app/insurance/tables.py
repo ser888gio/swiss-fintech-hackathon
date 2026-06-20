@@ -127,6 +127,15 @@ LINE_PARAMS: dict[str, LineParams] = {
     "mandate_breach": LineParams(
         lgd=0.95, floor=Decimal("1.00"), limit=Decimal("100000"), recovery_rate=0.85
     ),
+    # Cover module peril: agent hallucinated a wrong amount or wrong recipient.
+    # Static rate line (not PD-driven); LGD=1.0 so the full loss is covered.
+    "hallucination": LineParams(
+        lgd=1.0, floor=Decimal("1.00"), limit=Decimal("50000"), recovery_rate=1.0
+    ),
+    # Cover module peril: merchant was paid but never delivered goods/services.
+    "non_delivery": LineParams(
+        lgd=0.80, floor=Decimal("0.50"), limit=Decimal("100000"), recovery_rate=0.90
+    ),
 }
 
 # Fraction of transaction amount used as the exposure base for principal-score
