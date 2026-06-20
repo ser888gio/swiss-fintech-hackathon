@@ -1,12 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
-import type { MPTStatus, Payment, TreasuryAgentRun, TreasuryGoal, TreasuryGoalCreate, VaultStatus } from "@treasury/shared";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import type { InsurancePayoutRecord, InsurancePremiumRecord, Payment, PoolStatus, TreasuryAgentRun, TreasuryGoal, TreasuryGoalCreate } from "@treasury/shared";
 
 import { api } from "../lib/api.js";
 import { hashShort, money } from "../lib/utils.js";
-
-// XRP-only: the agent transacts natively in XRP so there is no FX step.
-const CURRENCIES = ["XRP"];
-type BusyKey = "goal" | "run" | "vault" | "mpt";
 
 // Payments above this lock on-chain and require a physical Firefly approval —
 // mirrors POLICY_THRESHOLD_USD on the backend. These are the agentic
@@ -144,41 +140,6 @@ const DEFAULT_GOAL: TreasuryGoalCreate = {
   triggerIntervalHours: 0.001, // ~3.6 s — fires immediately for demo
 };
 
-export function TreasuryPage() {
-  const [goals, setGoals] = useState<TreasuryGoal[]>([]);
-  const [runs, setRuns] = useState<TreasuryAgentRun[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [vault, setVault] = useState<VaultStatus | null>(null);
-  const [mpt, setMpt] = useState<MPTStatus | null>(null);
-  const [form, setForm] = useState<TreasuryGoalCreate>(DEFAULT_GOAL);
-  const [vaultAmount, setVaultAmount] = useState<number>(10_000);
-  const [mptHolder, setMptHolder] = useState<string>("");
-  const [busy, setBusy] = useState<Record<BusyKey, boolean>>({
-    goal: false,
-    run: false,
-    vault: false,
-    mpt: false,
-  });
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    try {
-      const [g, r, p, v, m] = await Promise.all([
-        api.listTreasuryGoals(),
-        api.listTreasuryRuns(),
-        api.listPayments().catch(() => [] as Payment[]),
-        api.getVaultStatus().catch(() => null),
-        api.getMptStatus().catch(() => null),
-      ]);
-      setGoals(g);
-      setRuns(r);
-      setPayments(p);
-      setVault(v);
-      setMpt(m);
-    } catch (cause) {
-      setError(String(cause));
-    }
-  }, []);
 
 function ts() {
   return new Date().toISOString().slice(11, 19);
@@ -340,8 +301,6 @@ function PaymentOutcomeCard({
     : "var(--muted)";
 
   const cover = payment.cover;
-
-  const paymentsById = useMemo(() => new Map(payments.map((p) => [p.id, p])), [payments]);
 
   return (
     <div style={{
@@ -552,7 +511,7 @@ function GoalsSidebar({
   busy: boolean;
 }) {
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<TreasuryGoalCreate>(DEMO_GOALS[0]);
+  const [form, setForm] = useState<TreasuryGoalCreate>(DEFAULT_GOAL);
   const [adding, setAdding] = useState(false);
 
   const fieldChange = (key: keyof TreasuryGoalCreate) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -588,75 +547,6 @@ function GoalsSidebar({
           </button>
         </div>
 
-        {/* Active goals */}
-        <section className="queue">
-          <h2>Active goals ({goals.length})</h2>
-          {goals.length === 0 && <p className="muted">No goals yet. Add one above to get started.</p>}
-          {goals.map((goal) => (
-            <article className="decision-row" key={goal.id}>
-              <div>
-                <strong>{goal.name}</strong>
-                <p className="muted">
-                  {goal.amount.toLocaleString()} {goal.currency} → {goal.beneficiaryName} ({goal.beneficiaryCountry})
-                  · every {goal.triggerIntervalHours}h
-                </p>
-                <p className="muted">
-                  {goal.lastTriggeredAt
-                    ? `Last fired: ${new Date(goal.lastTriggeredAt).toLocaleString()}`
-                    : "Never triggered"}
-                </p>
-              </div>
-              <div className="decision-actions">
-                <span className={`dashboard-status ${goal.enabled ? "status-settled" : "status-blocked"}`}>
-                  {goal.enabled ? "Enabled" : "Disabled"}
-                </span>
-                <button className="text-action" type="button" onClick={() => void deleteGoal(goal.id)}>
-                  Remove
-                </button>
-              </div>
-            </article>
-          ))}
-        </section>
-
-        {/* Run history */}
-        <section className="queue">
-          <h2>Recent runs ({runs.length})</h2>
-          {runs.length === 0 && <p className="muted">No runs yet. Click "Run agent cycle now" above.</p>}
-          {runs.map((run) => (
-            <article className="decision-row" key={run.id}>
-              <div>
-                <strong>
-                  {run.goalsTriggered}/{run.goalsEvaluated} goals fired
-                  <span className={`dashboard-status status-${run.goalsTriggered > 0 ? "settled" : "routing"}`} style={{ marginLeft: "0.5rem" }}>
-                    {run.status}
-                  </span>
-                </strong>
-                <p className="muted">{new Date(run.startedAt).toLocaleString()}</p>
-                {run.narration && <p className="audit">{run.narration}</p>}
-                <ul className="credential-log">
-                  {run.triggerLog.map((line, i) => (
-                    <li key={i} className="muted">{line}</li>
-                  ))}
-                </ul>
-                {run.paymentsInitiated.length > 0 && (
-                  <div className="agentic-tx-list">
-                    {run.paymentsInitiated.map((pid) => {
-                      const p = paymentsById.get(pid);
-                      return p ? <AgenticTxCard key={pid} payment={p} /> : null;
-                    })}
-                  </div>
-                )}
-              </div>
-            </article>
-          ))}
-        </section>
-        {/* XLS-33 MPTokens */}
-        <section className="queue" aria-label="XLS-33 MPTokens">
-          <div className="section-heading" style={{ marginBottom: "0.75rem" }}>
-            <span className="eyebrow">XLS-33 · MPTokens</span>
-            <strong>COMPLY compliance-attestation issuance</strong>
-          </div>
-        )}
 
         {goals.map((goal) => (
           <article key={goal.id} style={{
@@ -960,3 +850,4 @@ export function TreasuryPage() {
     </div>
   );
 }
+

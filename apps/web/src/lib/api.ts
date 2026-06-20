@@ -168,16 +168,22 @@ export const api = {
     request<DelegationGrant>(`/treasury/delegations/${grantId}`, { method: "DELETE" }),
 
   // Insurance pricing & risk engine.
-  getInsurancePool: () => request<PoolStatus>("/insurance/pool"),
   quoteInsurance: (req: InsuranceQuoteRequest) =>
     request<PremiumQuote>("/insurance/quote", { method: "POST", body: JSON.stringify(req) }),
   bindInsurance: (req: BindRequest) =>
     request<InsurancePremiumRecord>("/treasury/insurance/bind", { method: "POST", body: JSON.stringify(req) }),
   listInsurancePremiums: () =>
     request<InsurancePremiumRecord[]>("/treasury/insurance/premiums"),
+  // Backward-compatible aliases still used by some pages.
+  listPremiums: () =>
+    request<InsurancePremiumRecord[]>("/treasury/insurance/premiums"),
   claimInsurance: (req: ClaimRequest) =>
     request<InsurancePayoutRecord>("/treasury/insurance/claim", { method: "POST", body: JSON.stringify(req) }),
+  settleClaim: (req: ClaimRequest) =>
+    request<InsurancePayoutRecord>("/treasury/insurance/claim", { method: "POST", body: JSON.stringify(req) }),
   listInsurancePayouts: () =>
+    request<InsurancePayoutRecord[]>("/treasury/insurance/payouts"),
+  listPayouts: () =>
     request<InsurancePayoutRecord[]>("/treasury/insurance/payouts"),
   getInsurancePool: () =>
     request<PoolStatus>("/treasury/insurance/pool"),
@@ -198,3 +204,4 @@ export const api = {
       body: JSON.stringify(req),
     }),
 };
+
