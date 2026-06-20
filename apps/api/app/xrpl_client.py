@@ -25,20 +25,32 @@ BITHOMP_TESTNET_EXPLORER = "https://test.bithomp.com"
 LSF_ACCEPTED = 0x00010000
 
 
+def _is_devnet() -> bool:
+    return "devnet" in get_settings().xrpl_endpoint
+
+
+def _explorer_base() -> str:
+    return DEVNET_EXPLORER if _is_devnet() else TESTNET_EXPLORER
+
+
 def explorer_tx_url(tx_hash: str) -> str:
-    return f"{TESTNET_EXPLORER}/transactions/{tx_hash}"
+    return f"{_explorer_base()}/transactions/{tx_hash}"
 
 
 def explorer_account_url(address: str) -> str:
-    return f"{TESTNET_EXPLORER}/accounts/{address}"
+    return f"{_explorer_base()}/accounts/{address}"
 
 
 def bithomp_tx_url(tx_hash: str) -> str:
-    """Second explorer link for a transaction (cross-check source)."""
+    """Second explorer link — Bithomp Testnet only; returns None on Devnet (no Bithomp equivalent)."""
+    if _is_devnet():
+        return None  # type: ignore[return-value]
     return f"{BITHOMP_TESTNET_EXPLORER}/explorer/{tx_hash}"
 
 
 def bithomp_account_url(address: str) -> str:
+    if _is_devnet():
+        return None  # type: ignore[return-value]
     return f"{BITHOMP_TESTNET_EXPLORER}/explorer/{address}"
 
 

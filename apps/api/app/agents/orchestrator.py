@@ -17,11 +17,16 @@ from decimal import Decimal
 
 from .. import store
 from ..config import get_settings
+from ..insurance import binding as insurance_binding
+from ..insurance import engine as insurance_engine
 from ..policy import engine
 from ..policy.scope import AgentScope, evaluate_scope
 from ..schemas import (
     AgentLogEntry,
+    BindRequest,
+    CoverLine,
     DelegationGrantCreate,
+    InsuranceQuoteRequest,
     GuardrailResult,
     Payment,
     PaymentIntent,
@@ -104,6 +109,67 @@ async def process_payment(intent: PaymentIntent) -> Payment:
         rule_fired=decision.rule_fired,
         receipt_hash=receipt.compute_decision_hash(payment),
     )
+
+    if settings.insurance_enabled and insurance_engine.cover_gate(
+        intent,
+        has_cover=False,
+        default_threshold_usd=settings.insurance_cover_required_above_usd,
+    ) == "REQUIRED":
+        quote_request = InsuranceQuoteRequest(
+            agent_address=intent.from_account,
+            score_band="STANDARD",
+            txn_context={
+                "category": intent.purpose,
+                "tenorBand": "short",
+                "cptyBand": "standard" if intent.receiver_entity_type.value == "company" else "elevated",
+                "firstSeen": False,
+                "amount": f"{amount_usd:.6f}",
+                "amountZ": min(amount_usd / max(settings.policy_threshold_usd, 1.0), 3.0),
+                "velocityZ": 0.0,
+                "concentrationZ": 0.0,
+                "activeLines": [CoverLine.merchant_default],
+            },
+        )
+        quote = await insurance_binding.quote(quote_request)
+        payment.cover = quote
+        if quote.decision.value == "DECLINE":
+            payment.policy_decision = decision.model_copy(
+                update={
+                    "blocked": True,
+                    "requires_approval": False,
+                    "block_reason": quote.reason,
+                    "reasons": list(decision.reasons) + [quote.reason],
+                    "rule_fired": "insurance_decline",
+                }
+            )
+            await _block(payment)
+            payment.updated_at = _now()
+            return store.save(payment)
+        if quote.decision.value == "REVIEW":
+            payment.policy_decision = decision.model_copy(
+                update={
+                    "requires_approval": True,
+                    "reasons": list(decision.reasons) + [quote.reason],
+                    "rule_fired": decision.rule_fired or "insurance_review",
+                }
+            )
+        else:
+            premium = await insurance_binding.bind(
+                BindRequest(
+                    job_id=payment_id,
+                    agent_address=intent.from_account,
+                    score_band=quote_request.score_band,
+                    currency=settings.token_currency,
+                    quote=quote,
+                )
+            )
+            _log(
+                payment_id,
+                (
+                    f"Insurance auto-bound: premium {premium.premium_amount} {premium.currency} "
+                    f"({quote.receipt_hash[:12]}...)."
+                ),
+            )
 
     if decision.blocked:
         await _block(payment)

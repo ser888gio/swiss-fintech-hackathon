@@ -29,7 +29,9 @@ const RECIPIENTS = [
 ];
 
 const NUMPAD = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "backspace"];
-const CURRENCIES = ["USD", "EUR", "XRP"];
+// XRP-only: transactions settle natively in XRP so there is no FX conversion and
+// no risk of a fiat/token currency the ledger or router can't price.
+const CURRENCIES = ["XRP"];
 
 function money(amount: number, currency: string) {
   if (currency === "XRP") {
@@ -66,6 +68,7 @@ function appendDigit(current: string, digit: string) {
 
 function formatRate(route: RouteQuote | null, currency: string) {
   if (!route) return "Fetching live rate...";
+  if (currency === "XRP") return "Native XRP — settled 1:1, no FX";
   return `1 ${currency} = ${money(route.rate, "USD")}`;
 }
 
@@ -83,7 +86,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
   const [recipientCountry, setRecipientCountry] = useState(RECIPIENTS[0].country);
   const [recipientEntityType, setRecipientEntityType] = useState<"company" | "individual">(RECIPIENTS[0].entityType);
   const [amountInput, setAmountInput] = useState("0");
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState("XRP");
   const [purpose, setPurpose] = useState("supplier_payment");
   const [reference, setReference] = useState("Invoice #1042");
   const [routeQuote, setRouteQuote] = useState<RouteQuote | null>(null);
@@ -349,11 +352,11 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
             </div>
             <div>
               <span>Estimated network fee</span>
-              <strong>{money(networkFee, "USD")}</strong>
+              <strong>{money(networkFee, currency)}</strong>
             </div>
             <div>
               <span>Recipient gets after routing</span>
-              <strong>{money(receiveAmount, "USD")}</strong>
+              <strong>{money(receiveAmount, currency)}</strong>
             </div>
             <div>
               <span>Wallet</span>
@@ -414,11 +417,11 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
                   </div>
                   <div>
                     <span>Routing fee</span>
-                    <strong>{money(networkFee, "USD")}</strong>
+                    <strong>{money(networkFee, currency)}</strong>
                   </div>
                   <div className="total-row">
                     <span>Recipient receives estimate</span>
-                    <strong>{money(receiveAmount, "USD")}</strong>
+                    <strong>{money(receiveAmount, currency)}</strong>
                   </div>
                 </div>
               </section>

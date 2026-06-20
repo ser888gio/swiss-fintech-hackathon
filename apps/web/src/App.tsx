@@ -6,16 +6,18 @@ import { signOnFirefly } from "./lib/firefly.js";
 import { ARSPage } from "./pages/ARSPage.js";
 import { CredentialsPage } from "./pages/CredentialsPage.js";
 import { DashboardPage } from "./pages/DashboardPage.js";
+import { InsurancePage } from "./pages/InsurancePage.js";
 import { TransferPage } from "./pages/TransferPage.js";
 import { TreasuryPage } from "./pages/TreasuryPage.js";
 
-type Route = "/" | "/transfer" | "/credentials" | "/treasury" | "/ars";
+type Route = "/" | "/transfer" | "/credentials" | "/treasury" | "/ars" | "/insurance";
 
 function currentRoute(): Route {
   if (window.location.pathname === "/transfer") return "/transfer";
   if (window.location.pathname === "/credentials") return "/credentials";
   if (window.location.pathname === "/treasury") return "/treasury";
   if (window.location.pathname === "/ars") return "/ars";
+  if (window.location.pathname === "/insurance") return "/insurance";
   return "/";
 }
 
@@ -53,6 +55,7 @@ export function App() {
       : path === "/credentials" ? "/credentials"
       : path === "/treasury" ? "/treasury"
       : path === "/ars" ? "/ars"
+      : path === "/insurance" ? "/insurance"
       : "/";
     if (window.location.pathname !== nextRoute) {
       window.history.pushState({}, "", nextRoute);
@@ -177,6 +180,9 @@ export function App() {
           <button className={route === "/ars" ? "active" : ""} type="button" onClick={() => navigate("/ars")}>
             ARS
           </button>
+          <button className={route === "/insurance" ? "active" : ""} type="button" onClick={() => navigate("/insurance")}>
+            Insurance
+          </button>
         </div>
       </nav>
       <p className="tagline">Autonomous treasury on XRPL. The AI explains; deterministic code decides.</p>
@@ -209,6 +215,7 @@ export function App() {
       {route === "/credentials" && <CredentialsPage />}
       {route === "/treasury" && <TreasuryPage />}
       {route === "/ars" && <ARSPage />}
+      {route === "/insurance" && <InsurancePage />}
 
       {approvingId && (
         <div className="firefly-overlay" role="status" aria-live="polite">

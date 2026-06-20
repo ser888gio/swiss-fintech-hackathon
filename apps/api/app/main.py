@@ -5,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import db, store
 from .config import get_settings
-from .routes import credentials, health, payments, treasury
+from .insurance import store as insurance_store
+from .routes import credentials, health, insurance, payments, treasury
 
 
 @asynccontextmanager
@@ -13,6 +14,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     if await db.init_db(settings.database_url):
         await store.load_from_db()
+        await insurance_store.load_from_db()
     yield
 
 
@@ -53,3 +55,4 @@ app.include_router(health.router)
 app.include_router(payments.router)
 app.include_router(credentials.router)
 app.include_router(treasury.router)
+app.include_router(insurance.router)

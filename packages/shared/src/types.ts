@@ -21,6 +21,8 @@ export interface PaymentIntent {
   amount: number;
   currency: string;
   reference: string;
+  coverRequired?: boolean;
+  coverRequiredAboveUsd?: number | null;
 }
 
 export interface QuoteRequest {
@@ -176,6 +178,7 @@ export interface Payment {
   explorerUrlSecondary: string | null;
   auditExplanation: string | null;
   receiptHash: string | null;
+  cover: PremiumQuote | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -480,6 +483,84 @@ export interface InsurancePayoutRecord {
   poolDrawTxHash: string | null;
   reputationMptProtected: boolean;
   createdAt: string;
+}
+
+export type QuoteDecision = "OFFER" | "REVIEW" | "DECLINE";
+export type CoverLine =
+  | "merchant_default"
+  | "lender_credit"
+  | "principal_score"
+  | "mandate_breach";
+
+export interface PremiumQuote {
+  decision: QuoteDecision;
+  premium: string;       // Decimal string
+  lines: Record<string, string>;
+  pd: number;
+  credibility: number;
+  reason: string;
+  receiptHash: string;
+}
+
+export interface PoolStatus {
+  enabled: boolean;
+  currency: string;
+  deposited: string;
+  walletBalance: string;
+  availableCapacity: string;
+  premiumsCollected: string;
+  claimsPaid: string;
+}
+
+export interface AgentRiskState {
+  agentAddress: string;
+  scoreBand: string;
+  alpha: number;
+  beta: number;
+  pd: number;
+  credibility: number;
+  updatedAt: string;
+}
+
+export interface TxnContext {
+  category: string;
+  tenorBand: string;
+  cptyBand: string;
+  firstSeen?: boolean;
+  amount: string;          // Decimal string
+  amountZ?: number;
+  velocityZ?: number;
+  concentrationZ?: number;
+  activeLines: CoverLine[];
+}
+
+export interface InsuranceQuoteRequest {
+  agentAddress: string;
+  scoreBand?: string;
+  txnContext: TxnContext;
+}
+
+export interface BindRequest {
+  jobId: string;
+  agentAddress: string;
+  scoreBand?: string;
+  currency?: string;
+  quote: PremiumQuote;
+}
+
+export interface ClaimRequest {
+  jobId: string;
+  agentAddress: string;
+  merchant: string;
+  merchantName?: string | null;
+  merchantCountry?: string;
+  scoreBand?: string;
+  currency?: string;
+  claimAmount: string;
+  collateralAvailable?: string;
+  amlScore?: number;
+  sanctioned?: boolean;
+  receiptHash?: string | null;
 }
 
 // ── ARS Audit Log Event ──────────────────────────────────────────────────────

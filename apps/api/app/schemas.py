@@ -39,6 +39,8 @@ class PaymentIntent(CamelModel):
     amount: float
     currency: str
     reference: str
+    cover_required: bool = False
+    cover_required_above_usd: float | None = None
 
 
 class QuoteRequest(CamelModel):
@@ -239,6 +241,7 @@ class Payment(CamelModel):
     explorer_url_secondary: str | None = None
     audit_explanation: str | None = None
     receipt_hash: str | None = None
+    cover: PremiumQuote | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -580,6 +583,90 @@ class InsurancePayoutRecord(CamelModel):
     pool_draw_tx_hash: str | None = None
     reputation_mpt_protected: bool = True   # principal score NOT burned on insured default
     created_at: datetime
+
+
+class CoverLine(str, Enum):
+    merchant_default = "merchant_default"
+    lender_credit = "lender_credit"
+    principal_score = "principal_score"
+    mandate_breach = "mandate_breach"
+
+
+class QuoteDecision(str, Enum):
+    offer = "OFFER"
+    review = "REVIEW"
+    decline = "DECLINE"
+
+
+class TxnContext(CamelModel):
+    category: str
+    tenor_band: str
+    cpty_band: str
+    first_seen: bool = False
+    amount: str
+    amount_z: float = 0.0
+    velocity_z: float = 0.0
+    concentration_z: float = 0.0
+    active_lines: list[CoverLine] = Field(default_factory=list)
+
+
+class AgentRiskState(CamelModel):
+    agent_address: str
+    score_band: str
+    alpha: float
+    beta: float
+    pd: float
+    credibility: float
+    updated_at: datetime
+
+
+class PremiumQuote(CamelModel):
+    decision: QuoteDecision
+    premium: str
+    lines: dict[str, str] = Field(default_factory=dict)
+    pd: float
+    credibility: float
+    reason: str
+    receipt_hash: str
+
+
+class InsuranceQuoteRequest(CamelModel):
+    agent_address: str
+    score_band: str = "STANDARD"
+    txn_context: TxnContext
+
+
+class BindRequest(CamelModel):
+    job_id: str
+    agent_address: str
+    score_band: str = "STANDARD"
+    currency: str = "USD"
+    quote: PremiumQuote
+
+
+class ClaimRequest(CamelModel):
+    job_id: str
+    agent_address: str
+    merchant: str
+    merchant_name: str | None = None
+    merchant_country: str = "CH"
+    score_band: str = "STANDARD"
+    currency: str = "USD"
+    claim_amount: str
+    collateral_available: str = "0.000000"
+    aml_score: int = 0
+    sanctioned: bool = False
+    receipt_hash: str | None = None
+
+
+class PoolStatus(CamelModel):
+    enabled: bool
+    currency: str
+    deposited: str
+    wallet_balance: str
+    available_capacity: str
+    premiums_collected: str
+    claims_paid: str
 
 
 # ── ARS Audit Log Event ───────────────────────────────────────────────────────
