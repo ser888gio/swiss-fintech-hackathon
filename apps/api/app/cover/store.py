@@ -157,6 +157,15 @@ def payout_count_for_pair(agent_address: str, merchant: str) -> int:
     )
 
 
+def reset_pair_payouts(agent_address: str, merchant: str) -> None:
+    """Remove stored payouts for one agent↔merchant pair — used by demo reset only."""
+    agent_policy_ids = {p.id for p in _policies.values() if p.agent_address == agent_address}
+    _payouts[:] = [
+        p for p in _payouts
+        if not (p.policy_id in agent_policy_ids and p.destination == merchant)
+    ]
+
+
 # ── Pool accounting ───────────────────────────────────────────────────────────
 
 def add_premium(amount: Decimal) -> None:

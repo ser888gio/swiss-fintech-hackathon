@@ -130,6 +130,9 @@ async def demo_underpayment() -> dict:
     from ..cover import store as cover_store
     from ..cover.store import list_policies
 
+    # Reset demo-pair payouts so the collusion guard doesn't block repeated runs.
+    cover_store.reset_pair_payouts(demo_agent, demo_merchant)
+
     active = [
         p for p in list_policies(agent_address=demo_agent)
         if p.status.value == "active"
