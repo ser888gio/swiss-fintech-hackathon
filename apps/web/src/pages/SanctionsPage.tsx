@@ -105,28 +105,28 @@ export function SanctionsPage() {
         <span className="policy-pill">code decides · LLM narrates</span>
       </div>
 
-      {/* Legend */}
-      <div style={{ display: "flex", gap: "1.25rem", marginBottom: "0.75rem", fontSize: "0.8rem", color: "var(--muted)" }}>
-        <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-          <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ef4444", flexShrink: 0, display: "inline-block" }} />
-          Blocked — FATF call for action
-        </span>
-        <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-          <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#f59e0b", flexShrink: 0, display: "inline-block" }} />
-          Review required — grey-list / sectoral sanctions
-        </span>
-      </div>
+      {/* Globe — centered, full width, above the tables */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: "1.5rem" }}>
+        {/* Legend */}
+        <div style={{ display: "flex", gap: "1.5rem", marginBottom: "0.75rem", fontSize: "0.8rem", color: "var(--muted)", justifyContent: "center" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+            <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ef4444", flexShrink: 0, display: "inline-block" }} />
+            Blocked — FATF call for action
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+            <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#f59e0b", flexShrink: 0, display: "inline-block" }} />
+            Review required — grey-list / sectoral sanctions
+          </span>
+        </div>
 
-      {/* Globe */}
-      <div style={{ marginBottom: "1.5rem" }}>
         {globeError ? (
-          <div style={{ padding: "2rem", textAlign: "center", color: "var(--muted)", border: "1px solid var(--border)", borderRadius: 8 }}>
-            Globe unavailable (network required). Country lists below remain accurate.
+          <div style={{ width: "100%", padding: "2rem", textAlign: "center", color: "var(--muted)", border: "1px solid var(--border)", borderRadius: 8 }}>
+            Globe unavailable (network required for CDN assets). Country lists below remain accurate.
           </div>
         ) : (
           <div
             ref={globeRef}
-            style={{ width: "100%", height: 420, borderRadius: 8, overflow: "hidden", background: "#05070e" }}
+            style={{ width: "100%", height: 520, borderRadius: 12, overflow: "hidden", background: "#05070e" }}
             aria-label="World globe highlighting sanctioned and high-risk countries"
           />
         )}
