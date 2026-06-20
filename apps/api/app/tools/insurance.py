@@ -148,16 +148,22 @@ def get_or_seed_risk(agent_address: str, score_band: str | None) -> AgentRisk:
 # ── Quote (pure pricing, no settlement) ───────────────────────────────────────
 
 def quote(req: InsuranceQuoteRequest) -> PremiumQuote:
-    """Price a cover request via the deterministic envelope. No I/O side effects."""
+    """Price a cover request via the deterministic envelope. No I/O side effects.
+
+    The transaction shape, amount and active cover lines all travel inside
+    `txn_context` (canonical schema); the request itself carries only the agent
+    and its certified score band.
+    """
     settings = get_settings()
     r = get_or_seed_risk(req.agent_address, req.score_band)
+    txn = req.txn_context
     ctx = QuoteContext(
         agent_address=req.agent_address,
         eligible=settings.insurance_enabled,
-        txn=_txn_features(req.txn),
-        active_lines=tuple(l.value for l in req.active_lines),
-        ead=Decimal(req.amount),
-        collateral=Decimal(req.collateral),
+        txn=_txn_features(txn),
+        active_lines=tuple(line.value for line in txn.active_lines),
+        ead=Decimal(txn.amount),
+        collateral=Decimal("0"),
         score_band=req.score_band or _bands.get(req.agent_address),
     )
     return engine.price(ctx, r, _pool_state(settings), _price_policy(settings))
@@ -166,7 +172,7 @@ def quote(req: InsuranceQuoteRequest) -> PremiumQuote:
 # ── Bind (settle the premium into the Insurance Vault) ────────────────────────
 
 async def bind(req: BindRequest) -> InsurancePremiumRecord:
-    """Re-quote then settle the premium. Only an OFFER binds; REVIEW/DECLINE raise."""
+    """Settle the bound quote's premium. Only an OFFER binds; REVIEW/DECLINE raise."""
     settings = get_settings()
     if not settings.insurance_enabled:
         raise InsuranceDisabled("insurance_enabled is False")
@@ -177,19 +183,14 @@ async def bind(req: BindRequest) -> InsurancePremiumRecord:
     if blocking is not None:
         raise GuardrailRefused(blocking.name, blocking.reason or blocking.rule_fired or "blocked", trail)
 
-    quote_req = InsuranceQuoteRequest(
-        agent_address=req.agent_address,
-        amount=req.amount,
-        currency=req.currency,
-        score_band=req.score_band,
-        active_lines=req.active_lines,
-        collateral=req.collateral,
-        txn=req.txn,
-        job_id=req.job_id,
-    )
-    q = quote(quote_req)
-    if q.decision is not QuoteDecision.OFFER:
+    # The caller binds the exact quote it was shown (integrity-anchored by its
+    # receipt_hash); only an OFFER settles a premium.
+    q = req.quote
+    if q.decision is not QuoteDecision.offer:
         raise CoverUnavailable(q.decision.value, q.reason or "cover not offered")
+
+    # Track the agent posterior under the band the quote was priced at.
+    get_or_seed_risk(req.agent_address, req.score_band)
 
     premium = Decimal(q.premium)
     # Settle the premium on-ledger into the first-loss pool. Vault mode uses an

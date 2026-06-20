@@ -608,26 +608,6 @@ export interface PremiumQuote {
   receiptHash: string;
 }
 
-export interface PoolStatus {
-  enabled: boolean;
-  currency: string;
-  deposited: string;
-  walletBalance: string;
-  availableCapacity: string;
-  premiumsCollected: string;
-  claimsPaid: string;
-}
-
-export interface AgentRiskState {
-  agentAddress: string;
-  scoreBand: string;
-  alpha: number;
-  beta: number;
-  pd: number;
-  credibility: number;
-  updatedAt: string;
-}
-
 export interface TxnContext {
   category: string;
   tenorBand: string;

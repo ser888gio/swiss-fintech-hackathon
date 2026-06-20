@@ -39,15 +39,15 @@ const CPTY_BANDS = ["low", "standard", "elevated", "high"];
 
 function PoolPanel({ pool }: { pool: PoolStatus | null }) {
   if (!pool) return <p className="muted">Loading pool status…</p>;
-  if (!pool.enabled) return <p className="muted">Insurance disabled — set INSURANCE_ENABLED=true to activate.</p>;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem" }}>
       {[
-        ["Available capacity", `${money(pool.availableCapacity)} ${pool.currency}`],
-        ["Deposited", `${money(pool.deposited)} ${pool.currency}`],
-        ["Wallet balance", `${money(pool.walletBalance)} ${pool.currency}`],
+        ["First-loss capital", `${money(pool.firstLoss)} ${pool.currency}`],
+        ["Capacity ratio", `${(pool.capacityRatio * 100).toFixed(1)}%`],
+        ["LP capital", `${money(pool.lpCapital)} ${pool.currency}`],
+        ["Vault balance", `${money(pool.vaultBalance)} ${pool.currency}`],
         ["Premiums collected", `${money(pool.premiumsCollected)} ${pool.currency}`],
-        ["Claims paid", `${money(pool.claimsPaid)} ${pool.currency}`],
+        ["Payouts made", `${money(pool.payoutsMade)} ${pool.currency}`],
       ].map(([label, value]) => (
         <div key={label}>
           <span className="eyebrow">{label}</span>
@@ -281,15 +281,24 @@ function AgentRiskPanel() {
   const [risk, setRisk] = useState<AgentRiskState | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
 
   const lookup = async () => {
     setBusy(true);
     setError(null);
     setRisk(null);
+    setNotFound(false);
     try {
-      setRisk(await api.getAgentRisk(address));
+      setRisk(await api.getAgentRisk(address.trim()));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      // The API 404s ("no risk posterior") until an agent is first priced —
+      // that is an empty state, not an error.
+      if (msg.startsWith("404") || msg.includes("no risk posterior")) {
+        setNotFound(true);
+      } else {
+        setError(msg);
+      }
     } finally {
       setBusy(false);
     }
@@ -315,10 +324,17 @@ function AgentRiskPanel() {
           {busy ? "…" : "Lookup"}
         </button>
       </div>
+      {notFound && (
+        <p className="muted">
+          No risk history for this agent yet. Its Beta prior (α/β) starts from the
+          score-band prior and updates as the agent is priced and its payments settle
+          or default.
+        </p>
+      )}
       {risk && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem" }}>
           {[
-            ["Score band", risk.scoreBand],
+            ["Score band", risk.scoreBand ?? "—"],
             ["PD", `${(risk.pd * 100).toFixed(3)}%`],
             ["Credibility", `${(risk.credibility * 100).toFixed(1)}%`],
             ["α (successes)", risk.alpha.toFixed(3)],
