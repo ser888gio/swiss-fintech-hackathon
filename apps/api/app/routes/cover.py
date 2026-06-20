@@ -12,6 +12,7 @@ from ..cover import tool as cover_tool
 from ..schemas import (
     CoverBindRequest,
     CoverClaimEvidence,
+    CoverDemoUnderpaymentRequest,
     CoverPolicy,
     CoverPayout,
     CoverPoolStatus,
@@ -109,7 +110,7 @@ async def cover_agent_risk(address: str):
 # ── Demo 4.1 — deterministic underpayment claim ───────────────────────────────
 
 @router.post("/demo/underpayment", status_code=201)
-async def demo_underpayment() -> dict:
+async def demo_underpayment(req: CoverDemoUnderpaymentRequest) -> dict:
     """Seed and run the demo 4.1 scenario end-to-end.
 
     1. Buys a cover policy (if none exists for the demo agent).
@@ -122,6 +123,8 @@ async def demo_underpayment() -> dict:
     """
     _require_cover()
     settings = get_settings()
+    if req.paid_amount >= req.invoice_amount:
+        raise HTTPException(status_code=422, detail="paidAmount must be less than invoiceAmount")
 
     demo_agent = settings.treasury_wallet_address or "rDEMO_AGENT"
     demo_merchant = "rDEMO_MERCHANT_00000000000000000"
@@ -172,10 +175,10 @@ async def demo_underpayment() -> dict:
         "receiverCountry": "DE",
         "receiverEntityType": ReceiverEntityType.company,
         "purpose": "supplier_invoice",
-        "amount": 480.0,
+        "amount": float(req.paid_amount),
         "currency": "RLUSD",
         "reference": f"INV-DEMO-{payment_id[:8]}",
-        "expectedAmount": 500.0,
+        "expectedAmount": float(req.invoice_amount),
         "expectedRecipient": demo_merchant,
     })
 
@@ -185,7 +188,9 @@ async def demo_underpayment() -> dict:
         intent=intent,
         status=PaymentStatus.settled,
         tx_hash=f"DEMO{payment_id.replace('-', '')[:60]}",
-        audit_explanation="Demo: agent hallucinated $480 against a $500 invoice.",
+        audit_explanation=(
+            f"Demo: agent paid ${req.paid_amount} against a ${req.invoice_amount} invoice."
+        ),
         created_at=now,
         updated_at=now,
     )
@@ -201,8 +206,8 @@ async def demo_underpayment() -> dict:
         "scenario": "demo_4_1_underpayment",
         "settlement_mode": "simulation",
         "description": (
-            "Agent hallucinated $480 against a $500 invoice. "
-            "Payment auto-settled (below $500 threshold — no Firefly needed). "
+            f"Agent paid ${req.paid_amount} against a ${req.invoice_amount} invoice. "
+            "The deterministic reconciler detected the underpayment. "
             f"Cover pool topped up the merchant by ${payout.amount_paid}."
         ),
         "payment": payment.model_dump(mode="json"),

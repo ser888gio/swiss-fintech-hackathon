@@ -780,6 +780,11 @@ export interface CoverClaimEvidence {
   paymentId: string;
 }
 
+export interface CoverDemoUnderpaymentRequest {
+  invoiceAmount: string;
+  paidAmount: string;
+}
+
 export interface CoverPayout {
   id: string;
   policyId: string;

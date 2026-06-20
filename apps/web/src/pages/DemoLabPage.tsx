@@ -52,10 +52,12 @@ function GuardrailTrail({ result }: { result: DemoAttackResult }) {
 
 type VizState = "running" | "blocked" | "escalated" | "settled";
 
-function AttackViz({ state, result, gateLabel }: {
+function AttackViz({ state, result, gateLabel, outboundLabel = "payment intent", settlementLabel = "policy result" }: {
   state: RunState;
   result?: DemoAttackResult;
   gateLabel: string;
+  outboundLabel?: string;
+  settlementLabel?: string;
 }) {
   const isAnimating = state === "running" || state === "replaying";
   if (state === "ready" || state === "error") return null;
@@ -80,14 +82,14 @@ function AttackViz({ state, result, gateLabel }: {
         <strong>Treasury</strong>
       </div>
       <div className="attack-viz-track">
-        <div className="attack-viz-packet" />
+        <div className="attack-viz-packet" data-label={outboundLabel} />
       </div>
       <div className="attack-viz-gate">
         <span>guard</span>
         <strong>{activeGateLabel}</strong>
       </div>
       <div className="attack-viz-track attack-viz-track--return">
-        <div className="attack-viz-packet" />
+        <div className="attack-viz-packet" data-label={settlementLabel} />
         <div className="attack-viz-response">{responseLabel}</div>
       </div>
       <div className="attack-viz-node">
@@ -106,10 +108,16 @@ export function DemoLabPage() {
   const [results, setResults] = useState<Record<string, DemoAttackResult>>({});
   const [agentRun, setAgentRun] = useState<TreasuryAgentRun | null>(null);
   const [coverResult, setCoverResult] = useState<{ description: string; amount: string; narration: string | null } | null>(null);
+  const [invoiceAmount, setInvoiceAmount] = useState("500");
+  const [paidAmount, setPaidAmount] = useState("480");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const completed = useMemo(() => Object.values(states).filter((state) => state === "passed" || state === "attention").length, [states]);
   const total = SECURITY_SCENARIOS.length + 2;
+  const invoiceValue = Number(invoiceAmount);
+  const paidValue = Number(paidAmount);
+  const coverAmountsValid = invoiceValue > 0 && paidValue > 0 && paidValue < invoiceValue;
+  const coveredLoss = coverAmountsValid ? invoiceValue - paidValue : 0;
 
   const setRunning = (id: string) => {
     setStates((current) => ({ ...current, [id]: "running" }));
@@ -155,7 +163,7 @@ export function DemoLabPage() {
   const runCover = async () => {
     setRunning("cover");
     try {
-      const [result] = await Promise.all([api.coverRunDemo41(), sleep(5000)]);
+      const [result] = await Promise.all([api.coverRunDemo41(invoiceAmount, paidAmount), sleep(5000)]);
       setCoverResult({ description: result.description, amount: result.payout.amountPaid, narration: result.narration });
       setFinalStates((current) => ({ ...current, cover: "passed" }));
       setStates((current) => ({ ...current, cover: "passed" }));
@@ -199,7 +207,7 @@ export function DemoLabPage() {
             <button className="demo-run" type="button" onClick={runAutonomousPayment} disabled={states.autonomous === "running" || states.autonomous === "replaying"}>
               {states.autonomous === "running" ? "Agent is evaluating…" : agentRun ? "Run another cycle" : "Run autonomous cycle"}
             </button>
-            <AttackViz state={states.autonomous ?? "ready"} result={agentRun ? { outcome: "settled", guardrailTrail: [], depthReached: 4, pointsEarned: 0, attackId: "", scenarioName: "", teamName: "", verdict: "", timestamp: "" } : undefined} gateLabel="x402 · Policy" />
+            <AttackViz state={states.autonomous ?? "ready"} result={agentRun ? { outcome: "settled", guardrailTrail: [], depthReached: 4, pointsEarned: 0, attackId: "", scenarioName: "", teamName: "", verdict: "", timestamp: "" } : undefined} gateLabel="x402 · Policy" outboundLabel="service goal" settlementLabel="x402 payment" />
             {(states.autonomous === "passed" || states.autonomous === "attention") && agentRun && (
               <button className="demo-replay" type="button" onClick={() => replayViz("autonomous")}>↺ Replay simulation</button>
             )}
@@ -271,10 +279,17 @@ export function DemoLabPage() {
           <div className="demo-feature-copy">
             <ResultPill state={states.cover ?? "ready"} />
             <h3>Underpayment hallucination</h3>
-            <div className="demo-equation"><div><span>Invoice</span><strong>500</strong></div><b>−</b><div><span>Paid</span><strong>480</strong></div><b>=</b><div className="demo-loss"><span>Covered loss</span><strong>20 RLUSD</strong></div></div>
+            <div className="demo-equation">
+              <label><span>Invoice</span><input aria-label="Invoice amount" type="number" min="0.01" step="0.01" value={invoiceAmount} onChange={(event) => setInvoiceAmount(event.target.value)} /></label>
+              <b>−</b>
+              <label><span>Paid</span><input aria-label="Paid amount" type="number" min="0.01" step="0.01" value={paidAmount} onChange={(event) => setPaidAmount(event.target.value)} /></label>
+              <b>=</b>
+              <div className="demo-loss"><span>Covered loss</span><strong>{coveredLoss.toFixed(2)} RLUSD</strong></div>
+            </div>
+            {!coverAmountsValid && <p className="demo-input-hint">Paid must be greater than zero and less than the invoice.</p>}
             <p>The claim endpoint derives all financial facts server-side, applies eligibility and capacity rules, and tops up the merchant.</p>
-            <button className="demo-run" type="button" onClick={runCover} disabled={states.cover === "running" || states.cover === "replaying"}>{states.cover === "running" ? "Reconciling…" : coverResult ? "Run another claim" : "Simulate & settle claim"}</button>
-            <AttackViz state={states.cover ?? "ready"} result={coverResult ? { outcome: "settled", guardrailTrail: [], depthReached: 4, pointsEarned: 0, attackId: "", scenarioName: "", teamName: "", verdict: "", timestamp: "" } : undefined} gateLabel="Reconciler" />
+            <button className="demo-run" type="button" onClick={runCover} disabled={!coverAmountsValid || states.cover === "running" || states.cover === "replaying"}>{states.cover === "running" ? "Reconciling…" : coverResult ? "Run another claim" : "Simulate & settle claim"}</button>
+            <AttackViz state={states.cover ?? "ready"} result={coverResult ? { outcome: "settled", guardrailTrail: [], depthReached: 4, pointsEarned: 0, attackId: "", scenarioName: "", teamName: "", verdict: "", timestamp: "" } : undefined} gateLabel="Reconciler" outboundLabel="claim facts" settlementLabel="RLUSD payout" />
             {(states.cover === "passed" || states.cover === "attention") && coverResult && (
               <button className="demo-replay" type="button" onClick={() => replayViz("cover")}>↺ Replay simulation</button>
             )}

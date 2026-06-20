@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -1010,6 +1011,11 @@ class CoverClaimEvidence(CamelModel):
 
     policy_id: str
     payment_id: str                     # must be a settled payment in the store
+
+
+class CoverDemoUnderpaymentRequest(CamelModel):
+    invoice_amount: Decimal = Field(default=Decimal("500"), gt=0)
+    paid_amount: Decimal = Field(default=Decimal("480"), gt=0)
 
 
 class CoverPayout(CamelModel):
