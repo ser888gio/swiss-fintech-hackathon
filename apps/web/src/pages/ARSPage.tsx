@@ -345,7 +345,7 @@ function X402Panel({ onLog }: { onLog: (l: LogLine) => void }) {
   return (
     <section className="queue ars-panel" aria-label="x402 service payment">
       <div className="section-heading">
-        <span className="eyebrow">x402 · Testnet RLUSD</span>
+        <span className="eyebrow">x402 · configured XRPL asset</span>
         <strong>Pay-at-need — agent pays for a service per request</strong>
       </div>
       <p className="muted" style={{ marginBottom: "1rem" }}>

@@ -84,7 +84,7 @@ def issue_demo_requirement(service_url: str, settings) -> X402PaymentRequirement
         pay_to=pay_to,
         asset_currency=_demo_currency(settings),
         asset_issuer=settings.token_issuer_address,
-        network=settings.xrpl_network,
+        network=getattr(settings, "x402_network", "") or settings.xrpl_network,
         amount=settings.x402_demo_price,
         invoice_id=_demo_invoice_id,
         source_tag=settings.x402_source_tag,
@@ -110,7 +110,8 @@ async def verify_demo_proof(proof_header: str, settings) -> str:
 
     from xrpl.models.requests import Tx
 
-    async with xrpl_client.async_client(settings.xrpl_endpoint) as client:
+    endpoint = getattr(settings, "x402_xrpl_endpoint", "") or settings.xrpl_endpoint
+    async with xrpl_client.async_client(endpoint) as client:
         response = await client.request(Tx(transaction=tx_hash))
     if not response.is_successful():
         raise X402Error("payment transaction was not found on XRPL Testnet")
@@ -338,9 +339,10 @@ def _validate_requirement(req: X402PaymentRequirement, settings) -> None:
         raise X402Rejected("challenge amount must be positive")
     if settings.token_issuer_address and req.asset_issuer != settings.token_issuer_address:
         raise X402Rejected("challenge issuer does not match configured token issuer")
-    if req.network.lower() != settings.xrpl_network.lower():
+    expected_network = getattr(settings, "x402_network", "") or settings.xrpl_network
+    if req.network.lower() != expected_network.lower():
         raise X402Rejected(
-            f"challenge network '{req.network}' does not match '{settings.xrpl_network}'"
+            f"challenge network '{req.network}' does not match '{expected_network}'"
         )
 
 
@@ -376,9 +378,10 @@ async def _real_settle(req: X402PaymentRequirement, settings) -> _SettleResult:
             memo_data=memo_data.encode().hex().upper(),
         )],
     )
-    result = await ledger.submit(tx, wallet)
+    endpoint = getattr(settings, "x402_xrpl_endpoint", "") or settings.xrpl_endpoint
+    result = await ledger.submit(tx, wallet, endpoint=endpoint)
     tx_hash = result["hash"]
-    explorer_url = xrpl_client.explorer_tx_url_for(tx_hash, settings.xrpl_endpoint)
+    explorer_url = xrpl_client.explorer_tx_url_for(tx_hash, endpoint)
     return _SettleResult(tx_hash=tx_hash, explorer_url=explorer_url)
 
 

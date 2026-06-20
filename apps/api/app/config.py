@@ -155,6 +155,8 @@ class Settings(BaseSettings):
     # any challenge that requests a currency or facilitator not in these lists.
     # Agent spend scope (G4): caps per single x402 call and rolling 24-hour window.
     x402_enabled: bool = True
+    x402_xrpl_endpoint: str = ""              # empty = main XRPL endpoint
+    x402_network: str = ""                    # empty = main XRPL network id
     x402_facilitator_url: str = "https://xrpl-facilitator-testnet.t54.ai"
     x402_allowed_assets: str = "RLUSD"          # comma-separated currency codes
     x402_allowed_facilitators: str = "https://xrpl-facilitator-testnet.t54.ai"  # comma-sep URLs
