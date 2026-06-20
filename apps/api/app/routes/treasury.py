@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -23,6 +24,7 @@ from ..schemas import (
     MPTAttestationRecord,
     MPTAuthorizeRequest,
     MPTStatus,
+    PaymentStatus,
     PoolStatus,
     PremiumQuote,
     Receivable,
@@ -30,18 +32,21 @@ from ..schemas import (
     TreasuryAgentRun,
     TreasuryGoal,
     TreasuryGoalCreate,
+    TreasurySummary,
     VaultDepositRequest,
     VaultOpRecord,
     VaultStatus,
     VaultWithdrawRequest,
     X402Settlement,
 )
-from .. import xrpl_client
+from .. import store, xrpl_client
 from ..tools import delegation as delegation_tool
 from ..tools import insurance as insurance_tool
 from ..tools import mptoken as mptoken_tool
+from ..tools import routing as routing_tool
 from ..tools import trade_finance as tf_tool
 from ..tools import vault as vault_tool
+from ..tools import wallet as wallet_tool
 from ..tools import x402 as x402_tool
 
 router = APIRouter(prefix="/treasury")
@@ -462,6 +467,54 @@ async def insurance_agent_risk(address: str) -> AgentRiskState:
     if state is None:
         raise HTTPException(status_code=404, detail="no risk posterior for this agent yet")
     return state
+
+
+@router.get("/summary", response_model=TreasurySummary)
+async def treasury_summary() -> TreasurySummary:
+    """Aggregated treasury position: blended USD balance + reserved funds."""
+    # Wallet balances
+    try:
+        overview = await wallet_tool.get_overview()
+        active_networks = [n for n in overview.networks if n.active]
+    except Exception:
+        active_networks = []
+
+    stable_usd = Decimal("0")
+    xrp_native = Decimal("0")
+    for network in active_networks:
+        xrp_native += Decimal(network.xrp_balance or "0")
+        for token in network.token_balances:
+            if token.currency.upper() in ("RLUSD", "USD"):
+                stable_usd += Decimal(token.value or "0")
+
+    try:
+        xrp_usd = Decimal(str(await routing_tool.convert_to_usd(float(xrp_native), "XRP")))
+    except Exception:
+        xrp_usd = xrp_native * Decimal("0.52")
+
+    vault_state = vault_tool.get_vault_state()
+    settings = get_settings()
+    vault_usd = Decimal("0")
+    if settings.token_currency.upper() in ("RLUSD", "USD"):
+        vault_usd = Decimal(str(vault_state.get("wallet_balance", 0)))
+
+    reserved_usd = sum(
+        (Decimal(str(p.intent.amount)) for p in store.list_payments()
+         if p.status == PaymentStatus.pending_approval),
+        Decimal("0"),
+    )
+
+    total_usd = stable_usd + xrp_usd + vault_usd
+    return TreasurySummary(
+        total_usd=str(round(total_usd, 2)),
+        stable_usd=str(round(stable_usd, 2)),
+        xrp_native=str(round(xrp_native, 6)),
+        xrp_usd=str(round(xrp_usd, 2)),
+        vault_usd=str(round(vault_usd, 2)),
+        reserved_usd=str(round(reserved_usd, 2)),
+        networks=[n.network for n in active_networks],
+        fetched_at=datetime.now(timezone.utc),
+    )
 
 
 def _current_vault_id() -> str:

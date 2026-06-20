@@ -1055,3 +1055,17 @@ class AuditEventSchema(CamelModel):
     prior_event_hash: str
     event_hash: str
     signature: str
+
+
+# ── Treasury summary (aggregated position for the operator dashboard) ─────────
+
+class TreasurySummary(CamelModel):
+    """Blended treasury position in USD for the operator dashboard hero row."""
+    total_usd: str            # stableUsd + xrpUsd + vaultUsd (Decimal string)
+    stable_usd: str           # sum of RLUSD/USD token balances at 1:1 (Decimal string)
+    xrp_native: str           # raw XRP balance across active networks (Decimal string)
+    xrp_usd: str              # XRP converted to USD via live rate / fallback (Decimal string)
+    vault_usd: str            # XLS-65 vault wallet balance if RLUSD (Decimal string)
+    reserved_usd: str         # sum of intent.amount for pending_approval payments (Decimal string)
+    networks: list[str]       # active network labels
+    fetched_at: datetime

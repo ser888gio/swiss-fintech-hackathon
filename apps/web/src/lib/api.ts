@@ -43,6 +43,7 @@ import type {
   TreasuryAgentRun,
   TreasuryGoal,
   TreasuryGoalCreate,
+  TreasurySummary,
   VaultOpRecord,
   VaultStatus,
   WalletOverview,
@@ -124,6 +125,8 @@ export const api = {
     request<CredentialRecord>(`/credentials/${id}/verify`, { method: "POST" }),
   verifySubject: (subject: string) =>
     request<CredentialStatus>(`/credentials/verify/${subject}`),
+
+  getTreasurySummary: () => request<TreasurySummary>("/treasury/summary"),
 
   // Autonomous treasury agent.
   listTreasuryGoals: () => request<TreasuryGoal[]>("/treasury/goals"),

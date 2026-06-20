@@ -1,6 +1,17 @@
 // Shared types for the web dashboard and the Firefly bridge.
 // Mirrored by apps/api/app/schemas.py (Pydantic) — keep the two in sync by hand.
 
+export interface TreasurySummary {
+  totalUsd: string;      // blended USD total (stableUsd + xrpUsd + vaultUsd)
+  stableUsd: string;     // RLUSD/USD token holdings at 1:1
+  xrpNative: string;     // raw XRP balance
+  xrpUsd: string;        // XRP converted to USD
+  vaultUsd: string;      // XLS-65 vault wallet balance
+  reservedUsd: string;   // sum of pending_approval payment amounts
+  networks: string[];    // active network labels
+  fetchedAt: string;     // ISO datetime
+}
+
 export type PaymentStatus =
   | "routing"
   | "settled"
