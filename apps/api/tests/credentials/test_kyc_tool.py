@@ -1,7 +1,8 @@
 from types import SimpleNamespace
 
 from app.schemas import CredentialStatus, PaymentIntent
-from app.tools import compliance, credentials
+from app.tools import compliance
+from app.credentials.kyc import tool as credentials
 
 
 def _settings(**overrides):

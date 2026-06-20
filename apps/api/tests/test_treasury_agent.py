@@ -104,7 +104,7 @@ def _patch_settings(monkeypatch, **overrides):
     import app.agents.orchestrator as orch
     import app.tools.routing as routing
     import app.tools.compliance as compliance
-    import app.tools.credentials as creds
+    import app.credentials.kyc.tool as creds
     import app.tools.audit as audit
     import app.tools.mptoken as mpt
     monkeypatch.setattr(ta, "get_settings", lambda: s)

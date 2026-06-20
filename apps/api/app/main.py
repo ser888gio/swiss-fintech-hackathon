@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import db, store
 from .config import get_settings
 from .insurance import store as insurance_store
-from .routes import credentials, health, insurance, kyc, payments, treasury
+from .routes import credentials, health, insurance, kyc, payments, redteam, treasury
 
 
 @asynccontextmanager
@@ -57,3 +57,4 @@ app.include_router(credentials.router)
 app.include_router(treasury.router)
 app.include_router(insurance.router)
 app.include_router(kyc.router)
+app.include_router(redteam.router)

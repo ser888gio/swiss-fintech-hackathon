@@ -28,7 +28,8 @@ from ..schemas import (
     CredentialRecord,
     CredentialRecordStatus,
 )
-from ..tools import compliance, credentials
+from ..tools import compliance
+from .kyc import tool as credentials
 
 
 async def issue(request: CredentialIssueRequest) -> CredentialRecord:

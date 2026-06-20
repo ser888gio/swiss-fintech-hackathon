@@ -8,14 +8,14 @@ inside the agent, never the LLM.
 from fastapi import APIRouter, HTTPException
 
 from .. import store
-from ..agents import credential_agent
+from ..credentials import agent as credential_agent
+from ..credentials.kyc import tool as credentials_tool
 from ..schemas import (
     CredentialIssueRequest,
     CredentialLogEntry,
     CredentialRecord,
     CredentialStatus,
 )
-from ..tools import credentials as credentials_tool
 
 router = APIRouter(prefix="/credentials")
 
