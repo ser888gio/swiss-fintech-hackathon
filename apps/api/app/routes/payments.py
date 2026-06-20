@@ -28,6 +28,15 @@ async def create_payment(intent: PaymentIntent) -> Payment:
     except (httpx.HTTPError, KeyError, ValueError) as exc:
         raise HTTPException(status_code=502, detail="FX quote unavailable") from exc
     except Exception as exc:  # never surface a raw 500 (no CORS header) to the browser
+        err = str(exc)
+        if "tecNO_DST" in err:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Destination account does not exist on XRPL. "
+                    "Fund it on the configured XRPL network first."
+                ),
+            ) from exc
         raise HTTPException(status_code=502, detail=f"Payment processing failed: {exc}") from exc
 
 
@@ -176,12 +185,12 @@ async def _validate_destination_exists(address: str) -> None:
                 ),
             ) from exc
         return
-    if response.result.get("error") == "actNotFound":
+    if not response.is_successful() or response.result.get("error") in ("actNotFound", "actMalformed"):
         raise HTTPException(
             status_code=422,
             detail=(
                 "Destination account does not exist on the configured XRPL network. "
-                "Use an account funded on that same network."
+                "Fund it on that same network before retrying."
             ),
         )
 

@@ -228,7 +228,7 @@ async def _fund_child_wallet(
         account=wallet.address,
         destination=child_address,
         amount=xrpl_client.to_wire_amount(amount, currency, settings),
-        source_tag=settings.delegation_default_max_per_tx_usd,  # Starter Kit tag
+        source_tag=settings.delegation_source_tag,
         memos=[Memo(
             memo_type="delegation/v1".encode().hex().upper(),
             memo_data=memo_data.encode().hex().upper(),

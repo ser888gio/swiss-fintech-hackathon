@@ -273,6 +273,8 @@ async def pay_supplier_early(invoice_id: str) -> Receivable:
         raise HTTPException(status_code=402, detail=f"Requires hardware approval: {exc.reason}")
     except vault_tool.VaultNotConfigured as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    except tf_tool.InsufficientVaultLiquidity as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 

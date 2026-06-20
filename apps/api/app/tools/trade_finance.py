@@ -131,6 +131,11 @@ async def pay_supplier_early(
         else:
             effective_vault_id = effective_vault_id or "mock-vault"
         withdrawal = await vault_tool.withdraw(effective_vault_id, float(face))
+        if Decimal(str(withdrawal.amount)) < face:
+            raise InsufficientVaultLiquidity(
+                f"vault released {withdrawal.amount:.6f} {settings.token_currency}; "
+                f"{face:.6f} is required before the supplier can be paid"
+            )
 
         rec = _update(rec, status=ReceivableStatus.credit_drawn, draw_tx_hash=withdrawal.tx_hash, draw_explorer_url=withdrawal.explorer_url)
 
@@ -379,4 +384,7 @@ class ReceivableNotFound(TradeFinanceError):
     pass
 
 class InvalidReceivableState(TradeFinanceError):
+    pass
+
+class InsufficientVaultLiquidity(TradeFinanceError):
     pass

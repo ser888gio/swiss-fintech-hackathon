@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     # can push the payment to hardware approval — code decides, never the LLM).
     # `credential_issuer_seed` lets the treasury act as the issuer for
     # CredentialCreate; never commit a real seed.
-    credential_kyc_enabled: bool = True
+    credential_kyc_enabled: bool = False
     credential_type: str = "KYC"
     credential_issuer_address: str = ""
     credential_issuer_seed: str = ""
@@ -181,6 +181,7 @@ class Settings(BaseSettings):
     delegation_default_max_total_usd: float = 1_000.0
     delegation_default_max_per_tx_usd: float = 100.0
     delegation_default_max_per_day_usd: float = 250.0
+    delegation_source_tag: int = 20260530
 
     # ARS Trade Finance (on-chain credit, XLS-65 vault-backed early payment).
     # discount_rate_default is the fraction deducted from face value when paying

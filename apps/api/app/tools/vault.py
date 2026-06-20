@@ -129,14 +129,33 @@ async def create_vault(asset_currency: str, asset_issuer: str) -> VaultCreateRes
 
 # ── VaultDeposit ──────────────────────────────────────────────────────────────
 
+def _should_mock_vault(settings, vault_id: str) -> bool:
+    """True when vault operations must use the in-memory mock path.
+
+    This covers three cases:
+    1. use_mock_xrpl=True  — full offline demo mode
+    2. No valid vault_id   — XLS-65 not configured (e.g. Testnet deployment)
+    3. vault_id is truthy but invalid hex — guard against env-var typos
+    """
+    if settings.use_mock_xrpl:
+        return True
+    try:
+        require_vault_id(vault_id)
+        return False
+    except VaultNotConfigured:
+        return True
+
+
 async def deposit(vault_id: str, amount: float) -> VaultOpResult:
     """VaultDeposit — add tokens to the vault; receive vault shares (MPTokens).
 
     The actual shares minted depend on the vault's exchange rate; in mock
     mode 100 tokens = 1 share (illustrative ratio only).
+    Falls back to mock automatically when XLS-65 is not available on the
+    current network (e.g. Testnet where Devnet-only amendments are absent).
     """
     settings = get_settings()
-    if settings.use_mock_xrpl:
+    if _should_mock_vault(settings, vault_id):
         actual = min(amount, _state["wallet_balance"])
         shares = actual / 100.0  # 100 tokens → 1 share (mock rate)
         tx_hash = xrpl_client.mock_tx_hash("vault_deposit", f"{vault_id}:{actual}")
@@ -191,9 +210,11 @@ async def withdraw(vault_id: str, amount: float) -> VaultOpResult:
 
     Clamps to the amount currently deposited in mock mode so the state stays
     consistent. In real mode the vault enforces the share balance on-ledger.
+    Falls back to mock automatically when XLS-65 is not available on the
+    current network (e.g. Testnet where Devnet-only amendments are absent).
     """
     settings = get_settings()
-    if settings.use_mock_xrpl:
+    if _should_mock_vault(settings, vault_id):
         actual = min(amount, _state["deposited"])
         shares = actual / 100.0
         tx_hash = xrpl_client.mock_tx_hash("vault_withdraw", f"{vault_id}:{actual}")

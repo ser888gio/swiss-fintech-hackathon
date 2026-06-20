@@ -398,7 +398,7 @@ const DEFAULT_GRANT: DelegationGrantCreate = {
   maxTotal: "500.000000",
   maxPerTx: "50.000000",
   maxPerDay: "200.000000",
-  currency: "RLUSD",
+  currency: "USD",
 };
 
 function DelegationPanel({ onLog }: { onLog: (l: LogLine) => void }) {
