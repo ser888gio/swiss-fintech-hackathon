@@ -92,7 +92,7 @@ export function SanctionsPage() {
   }, [geoFeatures]);
 
   return (
-    <section className="send-flow" aria-label="Sanctions &amp; Watchlist">
+    <section className="send-flow" style={{ gridTemplateColumns: "1fr" }} aria-label="Sanctions &amp; Watchlist">
       <div style={{ padding: "0.55rem 0.75rem", marginBottom: "1rem", borderBottom: "1px solid var(--border)", color: "var(--muted)", fontSize: "0.82rem", lineHeight: 1.5 }}>
         <strong style={{ color: "var(--paper)" }}>Sanctions &amp; Watchlist</strong> — illustrative reference data based on FATF, OFAC, EU, and UN public lists. Not a live sanctions feed. The treasury agent enforces a curated deterministic policy subset of these lists on every payment.
       </div>
@@ -121,14 +121,21 @@ export function SanctionsPage() {
 
         {globeError ? (
           <div style={{ width: "100%", padding: "2rem", textAlign: "center", color: "var(--muted)", border: "1px solid var(--border)", borderRadius: 8 }}>
-            Globe unavailable (network required for CDN assets). Country lists below remain accurate.
+            Globe unavailable (CDN network access required). Country lists below remain accurate.
           </div>
         ) : (
-          <div
-            ref={globeRef}
-            style={{ width: "100%", height: 520, borderRadius: 12, overflow: "hidden", background: "#05070e" }}
-            aria-label="World globe highlighting sanctioned and high-risk countries"
-          />
+          <div style={{ position: "relative", width: "100%", height: 520, borderRadius: 12, overflow: "hidden", background: "#05070e" }}>
+            {!geoFeatures && (
+              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: "0.85rem" }}>
+                Loading globe…
+              </div>
+            )}
+            <div
+              ref={globeRef}
+              style={{ width: "100%", height: "100%" }}
+              aria-label="World globe highlighting sanctioned and high-risk countries"
+            />
+          </div>
         )}
       </div>
 
