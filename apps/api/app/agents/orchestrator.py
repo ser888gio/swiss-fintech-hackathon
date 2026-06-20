@@ -376,7 +376,10 @@ async def process_service_payment(
     spent_today = store.agent_payments_sum(
         agent_key, since, requirement.asset_currency
     )
-    cred = await credentials.verify_kyc(effective_agent)
+    from ..credentials.kya.tool import verify_agent_kya
+    from ..credentials.kya.uri import AgentScope as KyaScope
+
+    cred = await verify_agent_kya(effective_agent, required_scope=KyaScope.x402)
     trail: list[GuardrailResult] = []
     kya_ok = cred.verified if settings.credential_kyc_enabled else True
     trail.append(GuardrailResult(
@@ -612,7 +615,21 @@ async def collect_repayment(
 async def process_delegation_fund(create: DelegationGrantCreate) -> "delegation_tool.DelegationGrant":
     """Grant delegation and fund the sub-agent. Runs G1 on the parent."""
     settings = get_settings()
-    cred = await credentials.verify_kyc(create.parent_address)
+    treasury_address = settings.treasury_wallet_address.strip()
+    if not treasury_address and settings.treasury_wallet_seed:
+        from ..tools.wallet import connected_address
+        treasury_address = connected_address()
+    if create.parent_address != treasury_address:
+        raise GuardrailBlocked(
+            "delegation_parent_mismatch",
+            "parent_address must be the configured treasury agent",
+            [],
+        )
+
+    from ..credentials.kya.tool import verify_agent_kya
+    from ..credentials.kya.uri import AgentScope as KyaScope
+
+    cred = await verify_agent_kya(create.parent_address, required_scope=KyaScope.delegation)
 
     result = evaluate_guardrails(
         context_kind="delegation_fund",

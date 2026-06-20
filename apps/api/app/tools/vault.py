@@ -22,6 +22,7 @@ created by `VaultCreate`. Pass this as `vault_id` to Deposit/Withdraw.
 from __future__ import annotations
 
 import hashlib
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -45,6 +46,22 @@ _state: dict = {
 # Approximate APY for narration (XLS-66 lending rate is dynamic; this is
 # illustrative only and NEVER drives any financial decision).
 _MOCK_APY_PCT = 4.5
+_VAULT_ID_RE = re.compile(r"^[0-9A-Fa-f]{64}$")
+
+
+class VaultNotConfigured(ValueError):
+    """Raised before xrpl-py when real mode has no usable Vault ledger index."""
+
+
+def require_vault_id(vault_id: str | None) -> str:
+    """Return a normalized XLS-65 VaultID or fail with setup guidance."""
+    value = (vault_id or "").strip()
+    if not _VAULT_ID_RE.fullmatch(value):
+        raise VaultNotConfigured(
+            "A real XLS-65 vault is not configured. Create one on the vault "
+            "network, then set VAULT_ID to its 64-character hex LedgerIndex."
+        )
+    return value.upper()
 
 
 @dataclass
@@ -138,6 +155,8 @@ async def deposit(vault_id: str, amount: float) -> VaultOpResult:
             timestamp=timestamp,
         )
 
+    vault_id = require_vault_id(vault_id)
+
     from xrpl.models.transactions import VaultDeposit
 
     ledger = Ledger(settings)
@@ -191,6 +210,8 @@ async def withdraw(vault_id: str, amount: float) -> VaultOpResult:
             explorer_url=None,
             timestamp=timestamp,
         )
+
+    vault_id = require_vault_id(vault_id)
 
     from xrpl.models.transactions import VaultWithdraw
 

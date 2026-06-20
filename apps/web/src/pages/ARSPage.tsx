@@ -309,7 +309,7 @@ function TradeFinancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
 
 function X402Panel({ onLog }: { onLog: (l: LogLine) => void }) {
   const [serviceUrl, setServiceUrl] = useState(
-    import.meta.env.VITE_X402_SERVICE_URL ?? "http://localhost:8000/treasury/x402/demo-resource",
+    import.meta.env.VITE_X402_SERVICE_URL ?? "/treasury/x402/demo-resource",
   );
   const [serviceType, setServiceType] = useState("data_lookup");
   const [busy, setBusy] = useState(false);
@@ -354,7 +354,7 @@ function X402Panel({ onLog }: { onLog: (l: LogLine) => void }) {
       </p>
 
       <label><span>Service URL</span>
-        <input name="service-url" type="url" autoComplete="off" value={serviceUrl} onChange={(e) => setServiceUrl(e.target.value)} spellCheck={false}
+        <input name="service-url" type="text" autoComplete="off" value={serviceUrl} onChange={(e) => setServiceUrl(e.target.value)} spellCheck={false}
           style={{ width: "100%" }} disabled={busy} />
       </label>
       <label style={{ marginTop: "0.5rem" }}><span>Service type</span>
@@ -393,8 +393,8 @@ function X402Panel({ onLog }: { onLog: (l: LogLine) => void }) {
 // ── Delegation panel ───────────────────────────────────────────────────────────
 
 const DEFAULT_GRANT: DelegationGrantCreate = {
-  parentAddress: "rTREASURYAGENT000000000000000000",
-  childAddress: "rSUBAGENTWALLET00000000000000000",
+  parentAddress: "",
+  childAddress: "",
   maxTotal: "500.000000",
   maxPerTx: "50.000000",
   maxPerDay: "200.000000",
@@ -413,6 +413,12 @@ function DelegationPanel({ onLog }: { onLog: (l: LogLine) => void }) {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  useEffect(() => {
+    void api.getWallet().then((wallet) => {
+      setForm((current) => ({ ...current, parentAddress: wallet.address }));
+    }).catch(() => { /* wallet setup error is surfaced when the form is submitted */ });
+  }, []);
 
   const setBusyKey = (key: string, val: boolean) =>
     setBusy((p) => ({ ...p, [key]: val }));

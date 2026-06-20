@@ -153,7 +153,10 @@ async def find_payment_paths(
 
 
 async def lookup_accepted_credential(
-    subject: str, issuer: str, credential_type_hex_value: str
+    subject: str,
+    issuer: str,
+    credential_type_hex_value: str,
+    endpoint: str | None = None,
 ) -> dict | None:
     """Return the subject's accepted credential matching issuer + type, or None.
 
@@ -162,7 +165,7 @@ async def lookup_accepted_credential(
     """
     from xrpl.models.requests import AccountObjects
 
-    async with async_client() as client:
+    async with async_client(endpoint) as client:
         response = await client.request(
             AccountObjects(account=subject, type="credential")
         )

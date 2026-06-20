@@ -15,6 +15,7 @@ router = APIRouter(prefix="/payments")
 @router.post("", response_model=Payment)
 async def create_payment(intent: PaymentIntent) -> Payment:
     _validate_destination(intent.to)
+    await _validate_destination_exists(intent.to)
     try:
         return _public_payment(await orchestrator.process_payment(intent))
     except HTTPException:
@@ -149,6 +150,39 @@ def _validate_destination(address: str) -> None:
     if not valid:
         raise HTTPException(
             status_code=422, detail=f"Invalid destination XRPL address: {address!r}"
+        )
+
+
+async def _validate_destination_exists(address: str) -> None:
+    """Fail before signing when a destination is absent on the active network."""
+    settings = get_settings()
+    if settings.use_mock_xrpl:
+        return
+    from xrpl.models.requests import AccountInfo
+    from .. import xrpl_client
+
+    try:
+        async with xrpl_client.async_client(settings.xrpl_endpoint) as client:
+            response = await client.request(AccountInfo(account=address, ledger_index="validated"))
+    except Exception as exc:
+        # Connectivity failures are handled by the normal transaction path; do
+        # not turn a best-effort preflight into a new availability dependency.
+        if "actNotFound" in str(exc):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Destination account does not exist on the configured XRPL network. "
+                    "Use an account funded on that same network."
+                ),
+            ) from exc
+        return
+    if response.result.get("error") == "actNotFound":
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Destination account does not exist on the configured XRPL network. "
+                "Use an account funded on that same network."
+            ),
         )
 
 

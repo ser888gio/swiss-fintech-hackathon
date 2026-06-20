@@ -271,6 +271,8 @@ async def pay_supplier_early(invoice_id: str) -> Receivable:
         raise HTTPException(status_code=403, detail=f"Guardrail {exc.guardrail} blocked: {exc.reason}")
     except orchestrator.GuardrailEscalation as exc:
         raise HTTPException(status_code=402, detail=f"Requires hardware approval: {exc.reason}")
+    except vault_tool.VaultNotConfigured as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
@@ -328,20 +330,43 @@ class ServicePaymentRequest(BaseModel):
 
 
 @router.post("/service-payment", response_model=X402Settlement, status_code=201)
-async def trigger_service_payment(req: ServicePaymentRequest) -> X402Settlement:
+async def trigger_service_payment(req: ServicePaymentRequest, request: Request) -> X402Settlement:
     """Pay for an external service via x402 (G1+G4 guardrailed)."""
     settings = get_settings()
     if not settings.x402_enabled:
         raise HTTPException(status_code=403, detail="x402_enabled is False")
+    service_url = _resolve_service_url(req.service_url, request)
     try:
         result = await orchestrator.process_service_payment(
-            req.service_url, service_type=req.service_type
+            service_url, service_type=req.service_type
         )
         return result
     except orchestrator.GuardrailBlocked as exc:
         raise HTTPException(status_code=403, detail=f"Guardrail {exc.guardrail} blocked: {exc.reason}")
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+
+
+def _resolve_service_url(service_url: str, request: Request) -> str:
+    """Resolve only our demo resource against the API origin.
+
+    A browser's localhost is not the deployed API's localhost. Accepting the
+    old localhost default remains backward-compatible while preventing Railway
+    from attempting a loopback connection to a server that is not there.
+    """
+    from urllib.parse import urlparse
+
+    value = service_url.strip()
+    parsed = urlparse(value)
+    demo_path = "/treasury/x402/demo-resource"
+    local_hosts = {"localhost", "127.0.0.1", "::1"}
+    if value == demo_path or (parsed.hostname in local_hosts and parsed.path == demo_path):
+        # Railway terminates TLS before Uvicorn, so request.base_url can be
+        # internal HTTP even though the public endpoint is HTTPS.
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
+        host = request.headers.get("x-forwarded-host", request.headers.get("host", request.url.netloc))
+        return f"{scheme}://{host}".rstrip("/") + demo_path
+    return value
 
 
 # ── Delegation ────────────────────────────────────────────────────────────────

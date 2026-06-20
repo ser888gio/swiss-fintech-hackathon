@@ -22,6 +22,7 @@ so the payment flow works without a separate /kyc/kya/issue call in demos.
 
 from __future__ import annotations
 
+from ... import xrpl_client
 from ...config import get_settings
 from ...schemas import AgentIdentityStatus, KYAIssueResponse
 from . import uri as kya_uri
@@ -91,17 +92,30 @@ async def issue_kya_credential(
             status="accepted",
         )
 
-    # Real mode: reuse the same Ledger helper as KYC credential issuance.
-    from ... import xrpl_client
     from ...ledger import Ledger
+    from xrpl.models.transactions import CredentialAccept, CredentialCreate
+    from xrpl.utils import str_to_hex
 
-    ledger = Ledger(xrpl_client.get_client(), settings)
-    tx_hash = await ledger.issue_credential(
-        issuer_seed=settings.credential_issuer_seed,
-        subject=agent_address,
-        credential_type=credential_type,
-        uri=uri_str,
+    endpoint = settings.credential_xrpl_endpoint or settings.xrpl_endpoint
+    ledger = Ledger(settings)
+    issuer_wallet = ledger.wallet(settings.credential_issuer_seed)
+    subject_seed = (
+        settings.treasury_wallet_seed
+        if agent_address == settings.treasury_wallet_address
+        else settings.credential_subject_seed
     )
+    subject_wallet = ledger.wallet(subject_seed)
+    await ledger.submit(CredentialCreate(
+        account=issuer_wallet.address,
+        subject=agent_address,
+        credential_type=xrpl_client.credential_type_hex(credential_type),
+        uri=str_to_hex(uri_str).upper(),
+    ), issuer_wallet, endpoint=endpoint)
+    accepted = await ledger.submit(CredentialAccept(
+        account=subject_wallet.address,
+        issuer=issuer,
+        credential_type=xrpl_client.credential_type_hex(credential_type),
+    ), subject_wallet, endpoint=endpoint)
     return KYAIssueResponse(
         agent_address=agent_address,
         issuer=issuer,
@@ -115,7 +129,7 @@ async def issue_kya_credential(
             "issued_on": identity.issued_on,
         },
         mock=False,
-        status="issued",
+        status="accepted" if accepted else "issued",
     )
 
 
@@ -139,17 +153,29 @@ async def verify_agent_kya(
         _auto_seed_mock(settings, issuer)
         return _mock_verify_kya(agent_address, issuer, credential_type, required_scope)
 
-    # Real mode: look up the on-ledger credential URI.
+    # Real mode: use the same xrpl-py AccountObjects lookup as KYC. Keeping KYA
+    # on this shared boundary avoids a second, incompatible Ledger API.
     try:
         from ... import xrpl_client
-        from ...ledger import Ledger
+        from xrpl.utils import hex_to_str
 
-        ledger = Ledger(xrpl_client.get_client(), settings)
-        uri_str = await ledger.get_credential_uri(
-            subject=agent_address,
-            issuer=issuer,
-            credential_type=credential_type,
+        obj = await xrpl_client.lookup_accepted_credential(
+            agent_address,
+            issuer,
+            xrpl_client.credential_type_hex(credential_type),
+            settings.credential_xrpl_endpoint or settings.xrpl_endpoint,
         )
+        if obj is None:
+            return AgentIdentityStatus(
+                checked=True,
+                verified=False,
+                agent_address=agent_address,
+                issuer=issuer,
+                credential_type=credential_type,
+                reason="No accepted KYA credential from the trusted issuer",
+            )
+        uri_value = obj.get("URI")
+        uri_str = hex_to_str(uri_value) if uri_value else None
         identity = kya_uri.parse_kya_uri(uri_str)
         return _build_status(
             agent_address=agent_address,

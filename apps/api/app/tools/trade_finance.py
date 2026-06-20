@@ -125,7 +125,11 @@ async def pay_supplier_early(
 
     try:
         # VaultWithdraw: draw face value from the credit pool
-        effective_vault_id = vault_id or settings.vault_id or "mock-vault"
+        effective_vault_id = vault_id or settings.vault_id
+        if not settings.use_mock_xrpl:
+            effective_vault_id = vault_tool.require_vault_id(effective_vault_id)
+        else:
+            effective_vault_id = effective_vault_id or "mock-vault"
         withdrawal = await vault_tool.withdraw(effective_vault_id, float(face))
 
         rec = _update(rec, status=ReceivableStatus.credit_drawn, draw_tx_hash=withdrawal.tx_hash, draw_explorer_url=withdrawal.explorer_url)
@@ -201,7 +205,11 @@ async def collect_repayment(
     rec = _update(rec, status=ReceivableStatus.repayment_received, repayment_tx_hash=repayment_tx_hash)
 
     # VaultDeposit: replenish the pool
-    effective_vault_id = settings.vault_id or "mock-vault"
+    effective_vault_id = settings.vault_id
+    if not settings.use_mock_xrpl:
+        effective_vault_id = vault_tool.require_vault_id(effective_vault_id)
+    else:
+        effective_vault_id = effective_vault_id or "mock-vault"
     deposit = await vault_tool.deposit(effective_vault_id, float(face))
 
     # XLS-66 LoanRepay (if this draw used one)

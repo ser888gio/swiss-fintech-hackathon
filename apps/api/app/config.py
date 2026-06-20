@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     release_wallet_seed: str = ""
     token_issuer_address: str = ""
     token_currency: str = "USD"
+    # Agent identity credentials may live on an amendment-enabled network that
+    # differs from the settlement ledger (for example Devnet KYA + Testnet pay).
+    credential_xrpl_endpoint: str = ""
 
     policy_threshold_usd: float = 500.0
     policy_compliance_flag_score: int = 60

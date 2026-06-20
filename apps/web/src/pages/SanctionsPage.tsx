@@ -106,7 +106,7 @@ export function SanctionsPage() {
   return (
     <section className="send-flow" style={{ gridTemplateColumns: "1fr" }} aria-label="Sanctions &amp; Watchlist">
       <div style={{ padding: "0.55rem 0.75rem", marginBottom: "1rem", borderBottom: "1px solid var(--border)", color: "var(--muted)", fontSize: "0.82rem", lineHeight: 1.5 }}>
-        <strong style={{ color: "var(--paper)" }}>Sanctions &amp; Watchlist</strong> — illustrative reference data based on FATF, OFAC, EU, and UN public lists. Not a live sanctions feed. The treasury agent enforces a curated deterministic policy subset on every payment.
+        <strong style={{ color: "var(--paper)" }}>Sanctions &amp; Watchlist</strong> — illustrative reference data based on FATF, OFAC, EU, and UN public lists. Not a live sanctions feed. The treasury agent enforces a curated deterministic policy subset on every payment. The agent is forbidden to deal with sanctioned persons, companies or countries.
       </div>
 
       <div className="send-topbar">

@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from . import db, store
 from .config import get_settings
-from .routes import credentials, health, merchants, payments, redteam, treasury, wallet
+from .routes import credentials, health, kyc, merchants, payments, redteam, treasury, wallet
 from .routes import cover as cover_routes
 from .routes.agents import router as agents_router, load_agents_from_db
 
@@ -61,6 +61,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(payments.router)
 app.include_router(credentials.router)
+app.include_router(kyc.router)
 app.include_router(treasury.router)
 app.include_router(wallet.router)
 app.include_router(agents_router)

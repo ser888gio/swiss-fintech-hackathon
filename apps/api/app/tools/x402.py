@@ -54,17 +54,35 @@ def reset_mock_state() -> None:
     _demo_last_verified = None
 
 
+def _demo_pay_to(settings) -> str:
+    return getattr(settings, "x402_demo_pay_to", "") or getattr(
+        settings, "x402_repair_yard_pay_to", ""
+    )
+
+
+def _demo_currency(settings) -> str:
+    configured = getattr(settings, "x402_allowed_assets", "")
+    return next(
+        (value.strip() for value in configured.split(",") if value.strip()),
+        getattr(settings, "token_currency", "RLUSD"),
+    )
+
+
 def issue_demo_requirement(service_url: str, settings) -> X402PaymentRequirement:
     """Issue one exact RLUSD challenge for the built-in Testnet demo merchant."""
     global _demo_invoice_id
-    if not settings.x402_demo_pay_to:
-        raise X402Error("x402_demo_pay_to is not configured")
+    pay_to = _demo_pay_to(settings)
+    if not pay_to:
+        raise X402Error(
+            "no demo merchant is configured; set X402_DEMO_PAY_TO or "
+            "X402_REPAIR_YARD_PAY_TO"
+        )
     _demo_invoice_id = f"ars-demo-{uuid.uuid4()}"
     return X402PaymentRequirement(
         service_url=service_url,
         facilitator_url=settings.x402_facilitator_url,
-        pay_to=settings.x402_demo_pay_to,
-        asset_currency=settings.token_currency,
+        pay_to=pay_to,
+        asset_currency=_demo_currency(settings),
         asset_issuer=settings.token_issuer_address,
         network=settings.xrpl_network,
         amount=settings.x402_demo_price,
@@ -102,13 +120,13 @@ async def verify_demo_proof(proof_header: str, settings) -> str:
     meta = result.get("meta") or {}
     # XRPL API v2 renames Payment.Amount to DeliverMax in transaction responses.
     amount = tx.get("Amount") or tx.get("DeliverMax") or {}
-    expected_currency = xrpl_client.currency_code(settings.token_currency).upper()
+    expected_currency = xrpl_client.currency_code(_demo_currency(settings)).upper()
     checks = {
         "validated": result.get("validated") is True,
         "tesSUCCESS": meta.get("TransactionResult") == "tesSUCCESS",
         "payment": tx.get("TransactionType") == "Payment",
         "payer": tx.get("Account") == _agent_address(settings),
-        "destination": tx.get("Destination") == settings.x402_demo_pay_to,
+        "destination": tx.get("Destination") == _demo_pay_to(settings),
         "currency": isinstance(amount, dict)
         and str(amount.get("currency", "")).upper() == expected_currency,
         "issuer": isinstance(amount, dict)
