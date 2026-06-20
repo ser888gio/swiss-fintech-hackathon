@@ -644,7 +644,7 @@ export interface PoolStatus {
 
 export interface AgentRiskState {
   agentAddress: string;
-  scoreBand: string;
+  scoreBand: string | null;
   alpha: number;
   beta: number;
   pd: number;
@@ -690,7 +690,7 @@ export interface ClaimRequest {
   collateralAvailable?: string;
   amlScore?: number;
   sanctioned?: boolean;
-  receiptHash?: string;
+  receiptHash?: string | null;
 }
 
 // Capital Provider (LP)

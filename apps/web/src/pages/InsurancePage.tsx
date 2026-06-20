@@ -42,11 +42,12 @@ function PoolPanel({ pool }: { pool: PoolStatus | null }) {
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem" }}>
       {[
-        ["Available capacity", `${money(pool.firstLoss)} ${pool.currency}`],
+        ["First-loss capital", `${money(pool.firstLoss)} ${pool.currency}`],
+        ["Capacity ratio", `${(pool.capacityRatio * 100).toFixed(1)}%`],
         ["LP capital", `${money(pool.lpCapital)} ${pool.currency}`],
         ["Vault balance", `${money(pool.vaultBalance)} ${pool.currency}`],
         ["Premiums collected", `${money(pool.premiumsCollected)} ${pool.currency}`],
-        ["Claims paid", `${money(pool.payoutsMade)} ${pool.currency}`],
+        ["Payouts made", `${money(pool.payoutsMade)} ${pool.currency}`],
       ].map(([label, value]) => (
         <div key={label}>
           <span className="eyebrow">{label}</span>

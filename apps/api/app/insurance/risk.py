@@ -49,6 +49,7 @@ class AgentRisk:
     a0: float
     b0: float
     last_ts: float  # epoch seconds of the last update
+    score_band: str = "STANDARD"  # certified band the prior was seeded from
 
 
 @dataclass(frozen=True)
@@ -68,18 +69,29 @@ def _now_ts() -> float:
     return datetime.now(timezone.utc).timestamp()
 
 
+def _to_ts(value: float | datetime) -> float:
+    """Normalize a timestamp (epoch seconds or aware datetime) to epoch seconds.
+
+    Callers (tests, the orchestrator, persistence) pass datetimes; the recency
+    decay math is in seconds. Accept both so a datetime never reaches arithmetic.
+    """
+    if isinstance(value, datetime):
+        return value.timestamp()
+    return float(value)
+
+
 def _clamp(x: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, x))
 
 
-def from_band(score_band: str | None, now: float | None = None) -> AgentRisk:
+def from_band(score_band: str | None, now: float | datetime | None = None) -> AgentRisk:
     """Seed a fresh posterior from the certified ScoreBand prior (cold start)."""
     band = (score_band or DEFAULT_BAND).upper()
     prior = BAND_PRIORS.get(band, BAND_PRIORS[DEFAULT_BAND])
     a0 = prior.p0 * prior.n0
     b0 = (1.0 - prior.p0) * prior.n0
-    ts = now if now is not None else _now_ts()
-    return AgentRisk(alpha=a0, beta=b0, n0=prior.n0, a0=a0, b0=b0, last_ts=ts)
+    ts = _to_ts(now) if now is not None else _now_ts()
+    return AgentRisk(alpha=a0, beta=b0, n0=prior.n0, a0=a0, b0=b0, last_ts=ts, score_band=band)
 
 
 def credibility(r: AgentRisk) -> float:
@@ -114,7 +126,7 @@ def update(
     *,
     defaulted: bool,
     exposure_weight: float,
-    now: float | None = None,
+    now: float | datetime | None = None,
     tau_days: float = TAU_DAYS,
 ) -> AgentRisk:
     """Apply one outcome to the posterior (spec §6).
@@ -124,8 +136,9 @@ def update(
     2. Exposure-weighted outcome: a default on a large ticket moves PD more than
        a trivial one (weight clamped to keep the loop stable).
     """
-    now = now if now is not None else _now_ts()
-    decay = exp(-((now - r.last_ts) / 86400.0) / tau_days) if tau_days > 0 else 1.0
+    now_ts = _to_ts(now) if now is not None else _now_ts()
+    last_ts = _to_ts(r.last_ts)
+    decay = exp(-((now_ts - last_ts) / 86400.0) / tau_days) if tau_days > 0 else 1.0
     a = r.a0 + (r.alpha - r.a0) * decay
     b = r.b0 + (r.beta - r.b0) * decay
     w = _clamp(exposure_weight, EXPOSURE_WEIGHT_MIN, EXPOSURE_WEIGHT_MAX)
@@ -133,4 +146,4 @@ def update(
         a += w
     else:
         b += w
-    return AgentRisk(alpha=a, beta=b, n0=r.n0, a0=r.a0, b0=r.b0, last_ts=now)
+    return AgentRisk(alpha=a, beta=b, n0=r.n0, a0=r.a0, b0=r.b0, last_ts=now_ts, score_band=r.score_band)

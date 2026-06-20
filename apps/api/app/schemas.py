@@ -813,6 +813,7 @@ class InsurancePayoutRecord(CamelModel):
     currency: str
     slash_tx_hash: str | None = None
     pool_draw_tx_hash: str | None = None
+    explorer_url: str | None = None         # on-ledger explorer link for the pool draw
     reputation_mpt_protected: bool = True   # principal score NOT burned on insured default
     guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
     created_at: datetime

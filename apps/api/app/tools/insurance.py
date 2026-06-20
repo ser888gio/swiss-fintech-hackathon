@@ -148,16 +148,22 @@ def get_or_seed_risk(agent_address: str, score_band: str | None) -> AgentRisk:
 # ── Quote (pure pricing, no settlement) ───────────────────────────────────────
 
 def quote(req: InsuranceQuoteRequest) -> PremiumQuote:
-    """Price a cover request via the deterministic envelope. No I/O side effects."""
+    """Price a cover request via the deterministic envelope. No I/O side effects.
+
+    The transaction shape, amount and active cover lines all travel inside
+    `txn_context` (canonical schema); the request itself carries only the agent
+    and its certified score band.
+    """
     settings = get_settings()
     r = get_or_seed_risk(req.agent_address, req.score_band)
+    txn = req.txn_context
     ctx = QuoteContext(
         agent_address=req.agent_address,
         eligible=settings.insurance_enabled,
-        txn=_txn_features(req.txn),
-        active_lines=tuple(l.value for l in req.active_lines),
-        ead=Decimal(req.amount),
-        collateral=Decimal(req.collateral),
+        txn=_txn_features(txn),
+        active_lines=tuple(line.value for line in txn.active_lines),
+        ead=Decimal(txn.amount),
+        collateral=Decimal("0"),
         score_band=req.score_band or _bands.get(req.agent_address),
     )
     return engine.price(ctx, r, _pool_state(settings), _price_policy(settings))
@@ -166,7 +172,7 @@ def quote(req: InsuranceQuoteRequest) -> PremiumQuote:
 # ── Bind (settle the premium into the Insurance Vault) ────────────────────────
 
 async def bind(req: BindRequest) -> InsurancePremiumRecord:
-    """Re-quote then settle the premium. Only an OFFER binds; REVIEW/DECLINE raise."""
+    """Settle the bound quote's premium. Only an OFFER binds; REVIEW/DECLINE raise."""
     settings = get_settings()
     if not settings.insurance_enabled:
         raise InsuranceDisabled("insurance_enabled is False")
@@ -177,19 +183,14 @@ async def bind(req: BindRequest) -> InsurancePremiumRecord:
     if blocking is not None:
         raise GuardrailRefused(blocking.name, blocking.reason or blocking.rule_fired or "blocked", trail)
 
-    quote_req = InsuranceQuoteRequest(
-        agent_address=req.agent_address,
-        amount=req.amount,
-        currency=req.currency,
-        score_band=req.score_band,
-        active_lines=req.active_lines,
-        collateral=req.collateral,
-        txn=req.txn,
-        job_id=req.job_id,
-    )
-    q = quote(quote_req)
-    if q.decision is not QuoteDecision.OFFER:
+    # The caller binds the exact quote it was shown (integrity-anchored by its
+    # receipt_hash); only an OFFER settles a premium.
+    q = req.quote
+    if q.decision is not QuoteDecision.offer:
         raise CoverUnavailable(q.decision.value, q.reason or "cover not offered")
+
+    # Track the agent posterior under the band the quote was priced at.
+    get_or_seed_risk(req.agent_address, req.score_band)
 
     premium = Decimal(q.premium)
     # Settle the premium on-ledger into the first-loss pool. Vault mode uses an
@@ -206,7 +207,7 @@ async def bind(req: BindRequest) -> InsurancePremiumRecord:
         currency=settings.token_currency,   # actual on-ledger settlement asset
         tx_hash=tx_hash,
         explorer_url=explorer_url,
-        score_band=q.score_band,
+        score_band=req.score_band,
         guardrail_trail=trail,
         created_at=now,
     )
@@ -240,9 +241,11 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
     if not settings.insurance_enabled:
         raise InsuranceDisabled("insurance_enabled is False")
 
-    lp = LINE_PARAMS[req.line.value]
-    loss = Decimal(req.loss)
-    collateral = Decimal(req.collateral)
+    # Canonical claims cover the merchant-default peril: claim_amount is the loss,
+    # collateral_available is recovered first.
+    lp = LINE_PARAMS["merchant_default"]
+    loss = Decimal(req.claim_amount)
+    collateral = Decimal(req.collateral_available)
 
     # Recovery first (collateral), then the pool covers the residual shortfall.
     collateral_recovery = min(collateral, loss).quantize(_Q2, rounding=ROUND_HALF_UP)
@@ -253,11 +256,13 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
 
     # Build the full payout guardrail trail: per-party (G1/G2), the decide(PAYOUT)
     # policy gate, and the collusion guard — then enforce the hard blocks.
-    trail, party_block = await _party_guardrails(agent_address=req.agent_address, counterparty=req.merchant)
+    trail, party_block = await _party_guardrails(
+        agent_address=req.agent_address, counterparty=req.merchant, counterparty_name=req.merchant_name
+    )
     decision = policy_engine.evaluate(
         float(payout),
-        aml_score=0,
-        sanctioned=False,
+        aml_score=req.aml_score,
+        sanctioned=req.sanctioned,
         threshold_usd=settings.policy_threshold_usd,
         flag_score=settings.policy_compliance_flag_score,
     )
@@ -319,7 +324,7 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
         {
             "job_id": req.job_id,
             "merchant": req.merchant,
-            "line": req.line.value,
+            "line": "merchant_default",
             "collateral_slashed": record.collateral_slashed,
             "pool_drawn": record.pool_drawn,
             "total_paid": record.total_paid,
@@ -362,7 +367,7 @@ def get_agent_risk_state(agent_address: str) -> AgentRiskState | None:
         return None
     return AgentRiskState(
         agent_address=agent_address,
-        score_band=_bands.get(agent_address),
+        score_band=_bands.get(agent_address) or "STANDARD",
         alpha=r.alpha,
         beta=r.beta,
         pd=risk.pd_agent(r),

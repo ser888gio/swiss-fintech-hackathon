@@ -604,8 +604,8 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
         scoreBand,
         txnContext: {
           category,
-          tenorBand: "short",
-          cptyBand: "standard",
+          tenorBand: "lt_30d",
+          cptyBand: "known",
           amount,
           activeLines: lines,
         },

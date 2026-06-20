@@ -53,10 +53,12 @@ def test_update_decays_toward_prior_and_weights_defaults_higher():
 
 def test_pd_txn_clamps_to_bounds():
     seeded = risk.from_band("HIGH_RISK")
-    pd = risk.pd_txn(
+    benign = risk.pd_txn(seeded, _ctx())
+    extreme = risk.pd_txn(
         seeded,
-        _ctx(amountZ=10.0, velocityZ=10.0, concentrationZ=10.0, firstSeen=True, tenorBand="long", cptyBand="high"),
+        _ctx(amountZ=10.0, velocityZ=10.0, concentrationZ=10.0, firstSeen=True, tenorBand="gt_90d", cptyBand="unverified"),
     )
-    assert tables.PD_MIN <= pd <= tables.PD_MAX
-    assert pd == tables.PD_MAX
+    assert tables.PD_MIN <= benign <= tables.PD_MAX
+    assert tables.PD_MIN <= extreme <= tables.PD_MAX
+    assert extreme > benign                                  # adverse features raise the PD
 

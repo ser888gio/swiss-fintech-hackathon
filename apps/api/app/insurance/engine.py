@@ -120,14 +120,23 @@ def price(ctx: QuoteContext, r: AgentRisk, pool: PoolState, P: PricePolicy) -> P
     """
     if not ctx.eligible:
         return PremiumQuote(
-            decision=QuoteDecision.DECLINE,
+            decision=QuoteDecision.decline,
             premium="0",
-            currency=pool.currency,
             lines={},
             pd=0.0,
             credibility=0.0,
-            score_band=ctx.score_band,
             reason="ineligible",
+            receipt_hash=_receipt_hash(ctx, Decimal("0"), 0.0, 0.0, {}),
+        )
+
+    if not ctx.active_lines:
+        return PremiumQuote(
+            decision=QuoteDecision.decline,
+            premium="0",
+            lines={},
+            pd=0.0,
+            credibility=0.0,
+            reason="no active cover lines",
             receipt_hash=_receipt_hash(ctx, Decimal("0"), 0.0, 0.0, {}),
         )
 
@@ -153,25 +162,21 @@ def price(ctx: QuoteContext, r: AgentRisk, pool: PoolState, P: PricePolicy) -> P
 
     if breaches_capacity(ctx, pool, P):
         return PremiumQuote(
-            decision=QuoteDecision.REVIEW,
+            decision=QuoteDecision.review,
             premium=str(premium),
-            currency=pool.currency,
             lines=line_premiums,
             pd=pd,
             credibility=z,
-            score_band=ctx.score_band,
             reason="insufficient pool capacity for exposure",
             receipt_hash=receipt,
         )
 
     return PremiumQuote(
-        decision=QuoteDecision.OFFER,
+        decision=QuoteDecision.offer,
         premium=str(premium),
-        currency=pool.currency,
         lines=line_premiums,
         pd=pd,
         credibility=z,
-        score_band=ctx.score_band,
-        reason=None,
+        reason="cover offered",
         receipt_hash=receipt,
     )

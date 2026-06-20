@@ -9,7 +9,8 @@ from app.schemas import (
     CapitalDepositRequest,
     CapitalWithdrawRequest,
     ClaimRequest,
-    CoverLine,
+    InsuranceQuoteRequest,
+    TxnContext,
 )
 from app.tools import insurance as ins
 
@@ -21,6 +22,26 @@ def _reset_state():
     ins.reset_mock_state()
     yield
     ins.reset_mock_state()
+
+
+def _quote_req(agent: str, amount: str = "5000") -> InsuranceQuoteRequest:
+    return InsuranceQuoteRequest(
+        agent_address=agent,
+        score_band="STANDARD",
+        txn_context=TxnContext(
+            category="supplier_payment",
+            tenor_band="lt_30d",
+            cpty_band="known",
+            first_seen=False,
+            amount=amount,
+            active_lines=["merchant_default"],
+        ),
+    )
+
+
+def _bind_req(agent: str, job_id: str, amount: str = "5000") -> BindRequest:
+    q = ins.quote(_quote_req(agent, amount))
+    return BindRequest(agent_address=agent, job_id=job_id, score_band="STANDARD", currency="USD", quote=q)
 
 
 async def test_lp_deposit_grows_pool_and_gives_full_share():
@@ -50,7 +71,7 @@ async def test_lp_withdraw_is_clamped_to_held():
 
 
 async def test_bind_carries_a_passing_guardrail_trail():
-    rec = await ins.bind(BindRequest(agent_address="rGOODAGENT", job_id="j1", amount="5000", score_band="STANDARD"))
+    rec = await ins.bind(_bind_req("rGOODAGENT", "j1"))
     names = {g.name for g in rec.guardrail_trail}
     assert {"G1_kya", "G2_sanctions"} <= names
     assert all(g.passed for g in rec.guardrail_trail)
@@ -58,7 +79,7 @@ async def test_bind_carries_a_passing_guardrail_trail():
 
 async def test_sanctioned_agent_cannot_bind_cover():
     with pytest.raises(ins.GuardrailRefused):
-        await ins.bind(BindRequest(agent_address=SANCTIONED, job_id="j2", amount="5000", score_band="STANDARD"))
+        await ins.bind(_bind_req(SANCTIONED, "j2"))
 
 
 async def test_sanctioned_lp_cannot_add_capital():
@@ -67,10 +88,10 @@ async def test_sanctioned_lp_cannot_add_capital():
 
 
 async def test_payout_trail_includes_party_gate_and_collusion():
-    await ins.bind(BindRequest(agent_address="rGOODAGENT", job_id="j1", amount="10000", score_band="STANDARD"))
+    await ins.bind(_bind_req("rGOODAGENT", "j1", amount="10000"))
     payout = await ins.settle_claim(ClaimRequest(
         job_id="j1", agent_address="rGOODAGENT", merchant="rMERCH",
-        line=CoverLine.merchant_default, loss="5000", collateral="0",
+        claim_amount="5000", collateral_available="0",
     ))
     names = {g.name for g in payout.guardrail_trail}
     assert {"G1_kya", "G2_sanctions", "G6_payout", "G2b_collusion"} <= names

@@ -53,7 +53,7 @@ def reset_store():
 @pytest.mark.anyio
 async def test_cover_required_auto_binds_before_settle(monkeypatch):
     from app.tools import audit, compliance, credentials, execution, routing
-    from app.insurance import binding as insurance_binding
+    from app.tools import insurance as insurance_tool
 
     async def fake_route(intent, currency):
         return RouteQuote(source_amount=1500, dest_amount=1500, rate=1.0, path_summary="1:1", estimated_fee=0)
@@ -80,7 +80,7 @@ async def test_cover_required_auto_binds_before_settle(monkeypatch):
 
     calls: list[str] = []
 
-    async def fake_quote(request):
+    def fake_quote(request):
         calls.append("quote")
         return PremiumQuote(
             decision=QuoteDecision.offer,
@@ -109,8 +109,8 @@ async def test_cover_required_auto_binds_before_settle(monkeypatch):
             created_at=datetime.now(timezone.utc),
         )
 
-    monkeypatch.setattr(insurance_binding, "quote", fake_quote)
-    monkeypatch.setattr(insurance_binding, "bind", fake_bind)
+    monkeypatch.setattr(insurance_tool, "quote", fake_quote)
+    monkeypatch.setattr(insurance_tool, "bind", fake_bind)
 
     payment = await orchestrator.process_payment(_intent(coverRequired=True))
 
@@ -122,7 +122,7 @@ async def test_cover_required_auto_binds_before_settle(monkeypatch):
 @pytest.mark.anyio
 async def test_cover_disabled_leaves_existing_flow_unchanged(monkeypatch):
     from app.tools import audit, compliance, credentials, execution, routing
-    from app.insurance import binding as insurance_binding
+    from app.tools import insurance as insurance_tool
 
     async def fake_route(intent, currency):
         return RouteQuote(source_amount=500, dest_amount=500, rate=1.0, path_summary="1:1", estimated_fee=0)
@@ -147,10 +147,10 @@ async def test_cover_disabled_leaves_existing_flow_unchanged(monkeypatch):
     monkeypatch.setattr(audit, "write_audit", fake_audit)
     monkeypatch.setattr(execution, "execute_payment", fake_execute)
 
-    async def should_not_run(_request):
+    def should_not_run(_request):
         raise AssertionError("insurance quote should not run")
 
-    monkeypatch.setattr(insurance_binding, "quote", should_not_run)
+    monkeypatch.setattr(insurance_tool, "quote", should_not_run)
 
     payment = await orchestrator.process_payment(_intent())
 
