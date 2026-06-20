@@ -32,6 +32,30 @@ The command writes the treasury seed directly to the ignored root `.env` and
 prints only the public address. Use separate, isolated faucet-funded accounts
 for receivers and credential issuers; never copy a seed into chat or logs.
 
+### Provision both networks at once (existing wallets)
+
+`smoke_xrpl.py fund` **generates a new wallet** and rewrites `TREASURY_WALLET_SEED`.
+Once you already have agent wallets, use the multi-network provisioner instead —
+it funds the wallets you *already* have (treasury + credential subject) on **both**
+Testnet and Devnet, never minting a new seed, and is idempotent (skips an account
+already above the 20 XRP floor):
+
+```bash
+# From apps/api (venv active)
+python scripts/provision_agent_xrpl.py status            # read-only funding matrix
+python scripts/provision_agent_xrpl.py provision         # fund existing wallets on both nets
+python scripts/provision_agent_xrpl.py provision --rlusd # + Testnet RLUSD trust line (x402 asset)
+python scripts/provision_agent_xrpl.py verify            # live SourceTag-tagged payment per net
+```
+
+An XRPL address derives from the keypair, not the network, so the same treasury
+address can be funded independently on Testnet and Devnet. Every transaction the
+provisioner signs carries `SourceTag 20260530` (the XRPL AI Starter Kit attribution
+tag — see [track agent behavior](https://xrpl.org/docs/agents/track-agent-behavior))
+and an `agent/v1` audit memo. The public faucets are IP-rate-limited; the script
+retries `429`s with backoff, but if a network is in a penalty box, wait a few
+minutes of quiet and re-run — `provision` is safe to repeat.
+
 ## 3. Configure the root `.env`
 
 ```bash
