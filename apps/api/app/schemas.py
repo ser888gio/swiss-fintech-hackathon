@@ -134,6 +134,77 @@ class CredentialStatus(CamelModel):
     verification_steps: VerificationSteps | None = None
 
 
+# ── KYA (Know Your Agent) schemas ────────────────────────────────────────────
+
+class AgentIdentityStatus(CamelModel):
+    """Result of a KYA credential lookup for an AI agent wallet.
+
+    Parallels CredentialStatus (KYC) but targets agent wallets. `verified` is
+    True only when the agent holds an accepted, non-expired KYA credential from
+    the trusted issuer. `scope_ok` indicates whether the agent's declared scopes
+    cover the requested action.
+    """
+
+    checked: bool
+    verified: bool
+    agent_address: str | None = None
+    issuer: str | None = None
+    credential_type: str | None = None
+    # Decoded agent identity from the credential URI field.
+    agent_type: str | None = None
+    principal: str | None = None
+    scopes: list[str] = Field(default_factory=list)
+    issued_on: str | None = None
+    ref: str | None = None
+    scope_ok: bool = True
+    scope_reason: str = ""
+    reason: str
+
+
+class AgentScopeStatus(CamelModel):
+    """Whether a specific scope is authorized for this agent (used in API responses)."""
+
+    scope: str
+    authorized: bool
+    reason: str = ""
+
+
+class KYAIssueRequest(CamelModel):
+    """Request to issue a KYA credential to an AI agent wallet."""
+
+    agent_address: str
+    agent_type: str = "orchestrator"   # orchestrator | sub_agent | monitor | api_gateway
+    principal: str = ""                # controlling XRPL address
+    scopes: list[str] = Field(default_factory=list)
+    ref: str = ""
+    credential_type: str = "KYA"
+
+
+class KYAIssueResponse(CamelModel):
+    """Response from the KYA credential issuance endpoint."""
+
+    agent_address: str
+    issuer: str | None = None
+    credential_type: str
+    uri: str
+    identity: dict
+    mock: bool = False
+    status: str
+
+
+class KYAVerifyResponse(CamelModel):
+    """Response from the KYA credential verification endpoint."""
+
+    agent_address: str
+    verified: bool
+    agent_type: str | None = None
+    principal: str | None = None
+    scopes: list[str] = Field(default_factory=list)
+    scope_ok: bool = True
+    scope_reason: str = ""
+    reason: str
+
+
 class CredentialRecordStatus(str, Enum):
     """Lifecycle of a credential issued by the credential-issuing agent.
 

@@ -25,7 +25,8 @@ from ..schemas import (
     ReceiverEntityType,
     SanctionsMatch,
 )
-from . import plaid_monitor, public_intel, risk_model
+from . import public_intel, risk_model
+from ..credentials.plaid import monitor as plaid_monitor
 
 # Demo sanctions list. Used for local demos and as a graceful provider fallback.
 SANCTIONED_ACCOUNTS = {"rSANCTIONED000000000000000000000000", "ACME-SHELL-CO"}

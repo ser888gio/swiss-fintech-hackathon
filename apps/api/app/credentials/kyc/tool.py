@@ -19,11 +19,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from .. import xrpl_client
-from ..config import get_settings
-from ..ledger import Ledger
-from ..schemas import CredentialStatus, VerificationSteps, VerificationStepStatus
-from . import credential_uri
+from ... import xrpl_client
+from ...config import get_settings
+from ...ledger import Ledger
+from ...schemas import CredentialStatus, VerificationSteps, VerificationStepStatus
+from . import uri as credential_uri
 
 # Demo subjects treated as un-KYC'd in mock mode, so the credential gate can be
 # demonstrated offline. Everyone else is considered verified in the mock.

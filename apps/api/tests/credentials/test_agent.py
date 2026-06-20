@@ -1,9 +1,9 @@
 from types import SimpleNamespace
 
 from app import store
-from app.agents import credential_agent
+from app.credentials import agent as credential_agent
+from app.credentials.kyc import tool as credentials
 from app.schemas import CredentialIssueRequest, CredentialRecordStatus
-from app.tools import credentials
 
 
 def _settings(**overrides):

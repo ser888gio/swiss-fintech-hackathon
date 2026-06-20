@@ -21,8 +21,9 @@ from types import SimpleNamespace
 import pytest
 
 from app.agents import orchestrator
+from app.credentials.kyc import tool as credentials
 from app.schemas import PaymentIntent, PaymentStatus
-from app.tools import audit, compliance, credentials, routing
+from app.tools import audit, compliance, routing
 
 
 # ── Settings fixture ──────────────────────────────────────────────────────────
@@ -34,6 +35,9 @@ def _settings(**overrides):
         "token_currency": "USD",
         "token_issuer_address": "",
         "treasury_wallet_seed": "",
+        "treasury_wallet_address": "",
+        "xrpl_network": "xrpl:1",
+        "testnet_settlement_scale": 1.0,
         # Credential gate — ON by default for Phase 2.1
         "credential_kyc_enabled": True,
         "credential_type": "KYC",
@@ -53,14 +57,30 @@ def _settings(**overrides):
         "opensanctions_dataset": "sanctions",
         "opensanctions_match_threshold": 0.85,
         "public_intel_enabled": False,
+        # Plaid (disabled in tests)
+        "plaid_client_id": "",
+        "plaid_secret": "",
+        "plaid_env": "sandbox",
+        "plaid_watchlist_program_id_individual": "",
+        "plaid_watchlist_program_id_entity": "",
+        # Insurance (disabled in tests)
+        "insurance_enabled": False,
+        "insurance_cover_required_above_usd": 10_000.0,
         # Misc
         "openai_api_key": "",
         "openai_model": "gpt-4o",
         "firefly_public_key": "",
+        "demo_mode": False,
         # Agent
         "agent_max_amount_usd": 50_000.0,
         "agent_enabled": True,
         "agent_sender_country": "CH",
+        # Feature flags
+        "x402_enabled": False,
+        "delegation_enabled": False,
+        "trade_finance_enabled": False,
+        "mpt_enabled": False,
+        "vault_enabled": False,
     }
     data.update(overrides)
     return SimpleNamespace(**data)
