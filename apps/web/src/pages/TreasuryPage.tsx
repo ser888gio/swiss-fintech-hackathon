@@ -10,7 +10,9 @@ type BusyKey = "goal" | "run" | "vault" | "mpt";
 const DEFAULT_GOAL: TreasuryGoalCreate = {
   name: "Monthly supplier payment",
   beneficiaryName: "Acme Supplies AG",
-  beneficiaryAddress: "rwjNyXSKQ5Rt6StJHHPzdHY5KA8UqYjBuC", // funded Testnet counterparty (holds KYC → auto-settles)
+  // Funded Devnet counterparty (activated account → payment lands; no tecNO_DST).
+  // Replace with your own funded beneficiary when you change networks.
+  beneficiaryAddress: "rBBHb3oX4JxoGRU28X94iDRiZUPU8Xu7ur",
   beneficiaryCountry: "US",
   receiverEntityType: "company",
   amount: 1000,

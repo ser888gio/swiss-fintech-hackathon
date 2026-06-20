@@ -11,12 +11,13 @@ const STATUS_LABEL: Record<CredentialRecord["status"], string> = {
   failed: "Failed",
 };
 
-// Real funded Testnet counterparties (repo-root .env). The credential-issuing
-// agent signs CredentialCreate with CREDENTIAL_ISSUER_SEED and CredentialAccept
-// with CREDENTIAL_SUBJECT_SEED, so auto-accept works for the "NEW" subject whose
-// seed is configured. The sanctioned entry is refused in code by NAME.
+// The credential-issuing agent signs CredentialCreate with CREDENTIAL_ISSUER_SEED
+// and CredentialAccept with CREDENTIAL_SUBJECT_SEED — so auto-accept only works
+// for the subject whose seed is configured. The first entry is that subject (the
+// funded Devnet account) so issue+accept completes on-ledger. The sanctioned
+// entry is refused in code by NAME.
 const SUBJECTS = [
-  { label: "Acme Supplies AG — KYC present", name: "Acme Supplies AG", account: "rwjNyXSKQ5Rt6StJHHPzdHY5KA8UqYjBuC" },
+  { label: "Demo Merchant — KYC auto-accepts", name: "Demo Merchant", account: "rBBHb3oX4JxoGRU28X94iDRiZUPU8Xu7ur" },
   { label: "Globex Trading Ltd — triggers KYC gate", name: "Globex Trading Ltd", account: "rnt6pfdVx7cRsSrzm38783o7H4unfkpRqv" },
   { label: "Sanctioned party — issuance refused", name: "ACME Shell Co", account: "rDabdgRBdnms9zkbNtaLaVwqJuSbxjgroC" },
 ];

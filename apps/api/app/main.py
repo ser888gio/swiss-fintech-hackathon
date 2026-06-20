@@ -1,7 +1,9 @@
+import re
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from . import db, store
 from .config import get_settings
@@ -45,3 +47,32 @@ app.include_router(health.router)
 app.include_router(payments.router)
 app.include_router(credentials.router)
 app.include_router(treasury.router)
+
+
+def _cors_headers(request: Request) -> dict[str, str]:
+    """CORS headers for an allowed origin (mirrors the CORSMiddleware policy)."""
+    origin = request.headers.get("origin")
+    if not origin:
+        return {}
+    allowed = origin in cors_origins or (
+        bool(settings.cors_origin_regex) and re.fullmatch(settings.cors_origin_regex, origin) is not None
+    )
+    if not allowed:
+        return {}
+    return {"Access-Control-Allow-Origin": origin, "Vary": "Origin"}
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Return 500s *with* CORS headers.
+
+    Starlette's ServerErrorMiddleware sits outside the CORS middleware, so an
+    unhandled exception would otherwise reach the browser without an
+    Access-Control-Allow-Origin header — surfacing as an opaque CORS error
+    instead of the real failure. Adding the header here makes errors visible.
+    """
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+        headers=_cors_headers(request),
+    )

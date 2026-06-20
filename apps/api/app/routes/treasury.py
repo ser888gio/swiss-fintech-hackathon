@@ -114,6 +114,13 @@ async def create_vault() -> VaultOpRecord:
     be stored in VAULT_ID for subsequent deposit/withdraw calls.
     """
     settings = get_settings()
+    # XLS-65 vaults hold an *issued* asset; XRP is not valid as a vault asset.
+    if not settings.use_mock_xrpl and settings.token_currency.upper() == "XRP":
+        raise HTTPException(
+            status_code=400,
+            detail="The XLS-65 vault requires an issued currency (e.g. RLUSD), not XRP. "
+                   "Set TOKEN_CURRENCY to an issued token to use the vault.",
+        )
     result = await vault_tool.create_vault(
         asset_currency=settings.token_currency,
         asset_issuer=settings.token_issuer_address or "rMOCK_ISSUER",
