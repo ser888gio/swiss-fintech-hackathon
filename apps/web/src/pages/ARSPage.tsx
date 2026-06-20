@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import type {
+  AgentRiskState,
+  CoverLine,
   DelegationGrant,
   DelegationGrantCreate,
   GuardrailResult,
+  InsurancePremiumRecord,
+  PoolStatus,
+  PremiumQuote,
   Receivable,
   ReceivableCreate,
   X402Settlement,
@@ -500,6 +505,262 @@ function DelegationPanel({ onLog }: { onLog: (l: LogLine) => void }) {
   );
 }
 
+// ── Insurance panel (Pillar 3) ─────────────────────────────────────────────────
+
+const ALL_LINES: CoverLine[] = ["merchant_default", "lender_credit", "principal_score", "mandate_breach"];
+const SCORE_BANDS = ["ELITE", "HIGH", "STANDARD", "HIGH_RISK"];
+
+function decisionClass(decision: string): string {
+  if (decision === "OFFER") return "status-settled";
+  if (decision === "REVIEW") return "status-routing";
+  return "status-blocked";
+}
+
+function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
+  const [agent, setAgent] = useState("rAGENT0000000000000000000000000000");
+  const [amount, setAmount] = useState("20000");
+  const [scoreBand, setScoreBand] = useState("STANDARD");
+  const [category, setCategory] = useState("merchant_payment");
+  const [lines, setLines] = useState<CoverLine[]>(["merchant_default"]);
+  const [quote, setQuote] = useState<PremiumQuote | null>(null);
+  const [premiums, setPremiums] = useState<InsurancePremiumRecord[]>([]);
+  const [pool, setPool] = useState<PoolStatus | null>(null);
+  const [riskState, setRiskState] = useState<AgentRiskState | null>(null);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<string | null>(null);
+  const now = () => new Date().toISOString().slice(11, 19);
+  const setBusyKey = (k: string, v: boolean) => setBusy((p) => ({ ...p, [k]: v }));
+
+  const refresh = useCallback(async () => {
+    try {
+      const [pr, pl] = await Promise.all([api.listInsurancePremiums(), api.getInsurancePool()]);
+      setPremiums(pr);
+      setPool(pl);
+    } catch {
+      /* feature may be disabled */
+    }
+  }, []);
+
+  const refreshRisk = useCallback(async (address: string) => {
+    try {
+      setRiskState(await api.getAgentRisk(address));
+    } catch {
+      setRiskState(null);
+    }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const toggleLine = (line: CoverLine) =>
+    setLines((p) => (p.includes(line) ? p.filter((l) => l !== line) : [...p, line]));
+
+  const getQuote = async () => {
+    setBusyKey("quote", true);
+    setError(null);
+    onLog({ ts: now(), kind: "info", text: `Quoting cover for ${agent.slice(0, 10)}… on ${amount} (${scoreBand})` });
+    try {
+      const q = await api.quoteInsurance({
+        agentAddress: agent,
+        amount,
+        scoreBand,
+        activeLines: lines,
+        txn: { category },
+      });
+      setQuote(q);
+      onLog({
+        ts: now(),
+        kind: q.decision === "OFFER" ? "success" : "error",
+        text: `Quote ${q.decision} — premium ${q.premium} ${q.currency} · PD ${(q.pd * 100).toFixed(2)}% · Z ${(q.credibility * 100).toFixed(0)}%`,
+        txHash: q.receiptHash,
+      });
+      await refreshRisk(agent);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      onLog({ ts: now(), kind: "error", text: `Quote failed: ${msg}` });
+    } finally {
+      setBusyKey("quote", false);
+    }
+  };
+
+  const bind = async () => {
+    if (!quote || quote.decision !== "OFFER") return;
+    setBusyKey("bind", true);
+    const jobId = `job-${Date.now()}`;
+    try {
+      const rec = await api.bindInsurance({
+        agentAddress: agent,
+        jobId,
+        amount,
+        scoreBand,
+        activeLines: lines,
+      });
+      onLog({
+        ts: now(),
+        kind: "success",
+        text: `Premium bound — ${rec.premiumAmount} ${rec.currency} → Insurance Vault (job ${jobId.slice(-6)})`,
+        txHash: rec.txHash ?? undefined,
+        explorerUrl: rec.explorerUrl ?? undefined,
+      });
+      await refresh();
+    } catch (e) {
+      onLog({ ts: now(), kind: "error", text: `Bind failed: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setBusyKey("bind", false);
+    }
+  };
+
+  const simulateClaim = async () => {
+    setBusyKey("claim", true);
+    const jobId = `claim-${Date.now()}`;
+    onLog({ ts: now(), kind: "info", text: `Simulating a covered default for ${agent.slice(0, 10)}…` });
+    try {
+      const payout = await api.claimInsurance({
+        jobId,
+        agentAddress: agent,
+        merchant: "rMERCHANT000000000000000000000000",
+        line: lines[0] ?? "merchant_default",
+        loss: amount,
+        collateral: "0",
+      });
+      onLog({
+        ts: now(),
+        kind: "success",
+        text: `Payout — pool drew ${payout.poolDrawn} ${payout.currency}, merchant paid ${payout.totalPaid}. Principal score protected.`,
+        txHash: payout.poolDrawTxHash ?? undefined,
+      });
+      await Promise.all([refresh(), refreshRisk(agent)]);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      onLog({ ts: now(), kind: "error", text: `Claim refused: ${msg}` });
+    } finally {
+      setBusyKey("claim", false);
+    }
+  };
+
+  return (
+    <section className="queue ars-panel" aria-label="Insurance pricing & risk engine">
+      <div className="section-heading">
+        <span className="eyebrow">Pillar 3 · Agent-default insurance</span>
+        <strong>Pricing & Risk Engine — dynamic premium for agent-default cover</strong>
+      </div>
+      <p className="muted" style={{ marginBottom: "1rem" }}>
+        A statistical core (Beta-posterior PD × relative-risk table) prices the risk; a deterministic,
+        signed envelope bounds, loads and receipts the premium. The price moves with the agent because
+        the posterior does — a default reprices every future quote.
+      </p>
+
+      {error && <p className="error">{error}</p>}
+
+      <div className="ars-form-grid">
+        <label><span>Agent address</span>
+          <input value={agent} onChange={(e) => setAgent(e.target.value)} spellCheck={false} />
+        </label>
+        <label><span>Transaction amount</span>
+          <input value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </label>
+        <label><span>Score band</span>
+          <select value={scoreBand} onChange={(e) => setScoreBand(e.target.value)}>
+            {SCORE_BANDS.map((b) => <option key={b} value={b}>{b}</option>)}
+          </select>
+        </label>
+        <label><span>Category</span>
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="merchant_payment">merchant_payment</option>
+            <option value="supplier_payment">supplier_payment</option>
+            <option value="loan_repayment">loan_repayment</option>
+          </select>
+        </label>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", margin: "0.5rem 0 1rem" }}>
+        {ALL_LINES.map((line) => (
+          <label key={line} style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.8rem" }}>
+            <input type="checkbox" checked={lines.includes(line)} onChange={() => toggleLine(line)} />
+            {line}
+          </label>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <button className="primary-action" type="button" disabled={busy.quote || lines.length === 0} onClick={() => void getQuote()}>
+          {busy.quote ? "Pricing…" : "Get quote"}
+        </button>
+        {quote?.decision === "OFFER" && (
+          <button className="primary-action" type="button" disabled={busy.bind} onClick={() => void bind()}>
+            {busy.bind ? "Binding…" : "Bind premium"}
+          </button>
+        )}
+        <button className="text-action" type="button" disabled={busy.claim} onClick={() => void simulateClaim()}>
+          {busy.claim ? "Settling…" : "Simulate default → claim"}
+        </button>
+      </div>
+
+      {quote && (
+        <div className="ars-tx-card" style={{ marginTop: "1rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <span className={`dashboard-status ${decisionClass(quote.decision)}`}>{quote.decision}</span>
+            <strong>{quote.premium} {quote.currency}</strong>
+            {quote.reason && <span className="muted" style={{ fontSize: "0.75rem" }}>· {quote.reason}</span>}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginTop: "0.5rem" }}>
+            <div><p className="muted">PD</p><strong>{(quote.pd * 100).toFixed(2)}%</strong></div>
+            <div><p className="muted">Credibility Z</p><strong>{(quote.credibility * 100).toFixed(0)}%</strong></div>
+            <div><p className="muted">Band</p><strong>{quote.scoreBand ?? "—"}</strong></div>
+          </div>
+          <div style={{ marginTop: "0.5rem" }}>
+            {Object.entries(quote.lines).map(([line, prem]) => (
+              <p key={line} className="muted" style={{ margin: "0.15rem 0", fontSize: "0.74rem" }}>
+                {line}: <strong>{prem}</strong>
+              </p>
+            ))}
+          </div>
+          <p className="muted" style={{ fontSize: "0.68rem", marginTop: "0.4rem" }}>
+            receipt {quote.receiptHash.slice(0, 16)}…
+          </p>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "1.25rem", marginTop: "1rem" }}>
+        {pool && (
+          <div>
+            <p className="muted" style={{ fontSize: "0.72rem", margin: 0 }}>Pool first-loss capital</p>
+            <strong>{Number(pool.firstLoss).toLocaleString()} {pool.currency}</strong>
+            <p className="muted" style={{ fontSize: "0.7rem", margin: "0.2rem 0 0" }}>
+              +{Number(pool.premiumsCollected).toLocaleString()} premiums · −{Number(pool.payoutsMade).toLocaleString()} payouts
+            </p>
+            <p className="muted" style={{ fontSize: "0.7rem", margin: "0.1rem 0 0" }}>
+              XLS-65 vault balance: {Number(pool.vaultBalance).toLocaleString()} {pool.currency}
+            </p>
+          </div>
+        )}
+        {riskState && (
+          <div>
+            <p className="muted" style={{ fontSize: "0.72rem", margin: 0 }}>Agent posterior ({riskState.scoreBand ?? "—"})</p>
+            <strong>PD {(riskState.pd * 100).toFixed(2)}%</strong>
+            <p className="muted" style={{ fontSize: "0.7rem", margin: "0.2rem 0 0" }}>
+              Z {(riskState.credibility * 100).toFixed(0)}% · α {riskState.alpha.toFixed(2)} / β {riskState.beta.toFixed(2)}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {premiums.length > 0 && (
+        <ul className="credential-log" style={{ marginTop: "1rem" }}>
+          {premiums.slice(0, 6).map((p) => (
+            <li key={p.id} className="decision-row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong>{p.premiumAmount} {p.currency}</strong>{" "}
+                <span className="muted" style={{ fontSize: "0.72rem" }}>· {p.scoreBand ?? "—"} · job {p.jobId.slice(-8)}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function ARSPage() {
@@ -526,6 +787,7 @@ export function ARSPage() {
         </p>
 
         <TradeFinancePanel onLog={addLog} />
+        <InsurancePanel onLog={addLog} />
         <X402Panel onLog={addLog} />
         <DelegationPanel onLog={addLog} />
       </div>

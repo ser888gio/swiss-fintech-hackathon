@@ -263,3 +263,25 @@ class InsurancePayoutRecord(Base):
     pool_draw_tx_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     reputation_mpt_protected: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class AgentRiskRecord(Base):
+    """An agent's persisted default-propensity posterior — Beta(alpha, beta).
+
+    Keyed by agent address. Reprices every cover the agent buys; updated on each
+    settle/default outcome by the insurance experience-rating loop (spec §6).
+    """
+
+    __tablename__ = "agent_risk"
+
+    agent_address: Mapped[str] = mapped_column(String, primary_key=True)
+    score_band: Mapped[str | None] = mapped_column(String, nullable=True)
+    alpha: Mapped[float] = mapped_column(Float)
+    beta: Mapped[float] = mapped_column(Float)
+    n0: Mapped[float] = mapped_column(Float)
+    a0: Mapped[float] = mapped_column(Float)
+    b0: Mapped[float] = mapped_column(Float)
+    last_ts: Mapped[float] = mapped_column(Float)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )

@@ -8,11 +8,19 @@ from fastapi import APIRouter, HTTPException
 from ..agents import orchestrator, treasury_agent
 from ..config import get_settings
 from ..schemas import (
+    AgentRiskState,
+    BindRequest,
+    ClaimRequest,
     DelegationGrant,
     DelegationGrantCreate,
+    InsurancePayoutRecord,
+    InsurancePremiumRecord,
+    InsuranceQuoteRequest,
     MPTAttestationRecord,
     MPTAuthorizeRequest,
     MPTStatus,
+    PoolStatus,
+    PremiumQuote,
     Receivable,
     ReceivableCreate,
     TreasuryAgentRun,
@@ -26,6 +34,7 @@ from ..schemas import (
 )
 from .. import xrpl_client
 from ..tools import delegation as delegation_tool
+from ..tools import insurance as insurance_tool
 from ..tools import mptoken as mptoken_tool
 from ..tools import trade_finance as tf_tool
 from ..tools import vault as vault_tool
@@ -315,6 +324,67 @@ async def revoke_delegation(grant_id: str) -> DelegationGrant:
         return delegation_tool.revoke_delegation(grant_id)
     except delegation_tool.DelegationNotFound:
         raise HTTPException(status_code=404, detail="grant not found")
+
+
+# ── Insurance — pricing & risk engine (Pillar 3) ──────────────────────────────
+
+def _require_insurance() -> None:
+    if not get_settings().insurance_enabled:
+        raise HTTPException(status_code=403, detail="insurance_enabled is False")
+
+
+@router.post("/insurance/quote", response_model=PremiumQuote)
+async def insurance_quote(req: InsuranceQuoteRequest) -> PremiumQuote:
+    """Price a cover request (OFFER / REVIEW / DECLINE). No settlement."""
+    _require_insurance()
+    return insurance_tool.quote(req)
+
+
+@router.post("/insurance/bind", response_model=InsurancePremiumRecord, status_code=201)
+async def insurance_bind(req: BindRequest) -> InsurancePremiumRecord:
+    """Bind (pay) the premium into the Insurance Vault. Only an OFFER binds."""
+    _require_insurance()
+    try:
+        return await insurance_tool.bind(req)
+    except insurance_tool.CoverUnavailable as exc:
+        raise HTTPException(status_code=409, detail=f"cover {exc.decision}: {exc.reason}")
+    except insurance_tool.InsuranceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/insurance/premiums", response_model=list[InsurancePremiumRecord])
+async def list_insurance_premiums() -> list[InsurancePremiumRecord]:
+    return insurance_tool.list_premiums()
+
+
+@router.post("/insurance/claim", response_model=InsurancePayoutRecord, status_code=201)
+async def insurance_claim(req: ClaimRequest) -> InsurancePayoutRecord:
+    """File a claim on a covered default — runs the payout waterfall (spec §8)."""
+    _require_insurance()
+    try:
+        return await insurance_tool.settle_claim(req)
+    except insurance_tool.PayoutRefused as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except insurance_tool.InsuranceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/insurance/payouts", response_model=list[InsurancePayoutRecord])
+async def list_insurance_payouts() -> list[InsurancePayoutRecord]:
+    return insurance_tool.list_payouts()
+
+
+@router.get("/insurance/pool", response_model=PoolStatus)
+async def insurance_pool() -> PoolStatus:
+    return insurance_tool.get_pool_status()
+
+
+@router.get("/insurance/agents/{address}/risk", response_model=AgentRiskState)
+async def insurance_agent_risk(address: str) -> AgentRiskState:
+    state = insurance_tool.get_agent_risk_state(address)
+    if state is None:
+        raise HTTPException(status_code=404, detail="no risk posterior for this agent yet")
+    return state
 
 
 def _current_vault_id() -> str:

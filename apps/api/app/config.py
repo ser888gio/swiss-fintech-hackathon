@@ -150,6 +150,24 @@ class Settings(BaseSettings):
     lending_loan_broker_address: str = ""  # LoanBroker account on Devnet
     lending_source_tag: int = 20260530
 
+    # ARS Insurance (Pillar 3) — agent-default insurance pricing & risk engine.
+    # A statistical core estimates PD; a deterministic envelope bounds, loads and
+    # signs the premium (spec). insurance_pool_first_loss_usd seeds the Insurance
+    # Vault's first-loss capital; premiums add to it and payouts draw it down.
+    # cover_required_above_usd is the default amount above which a counterparty's
+    # cover_required condition fires. The loading knobs override the table defaults.
+    insurance_enabled: bool = True
+    insurance_pool_first_loss_usd: float = 250_000.0
+    insurance_premium_cap_usd: float = 5_000.0
+    insurance_capital_per_exposure: float = 0.15
+    insurance_lambda_expense: float = 0.05
+    insurance_lambda_capital: float = 0.08
+    insurance_lambda_risk_max: float = 0.30
+    insurance_tau_days: float = 120.0
+    insurance_cover_required_above_usd: float = 10_000.0
+    insurance_vault_address: str = ""      # Insurance Vault payee; empty → mock
+    insurance_source_tag: int = 20260530
+
     # XLS-33 MPTokens — COMPLY compliance-attestation issuance.
     # Disabled by default. XLS-33 is available on Testnet and Devnet.
     # mpt_xrpl_endpoint defaults to xrpl_endpoint when empty.

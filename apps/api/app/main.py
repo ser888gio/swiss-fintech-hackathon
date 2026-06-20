@@ -13,6 +13,8 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     if await db.init_db(settings.database_url):
         await store.load_from_db()
+        from .tools import insurance as insurance_tool
+        await insurance_tool.load_from_db()
     yield
 
 

@@ -19,8 +19,11 @@ from .. import store
 from ..config import get_settings
 from ..policy import engine
 from ..policy.scope import AgentScope, evaluate_scope
+from ..insurance import engine as insurance_engine
 from ..schemas import (
     AgentLogEntry,
+    BindRequest,
+    CoverLine,
     DelegationGrantCreate,
     GuardrailResult,
     Payment,
@@ -32,6 +35,7 @@ from ..schemas import (
 )
 from ..tools import audit, compliance, credentials, execution, firefly, receipt, routing
 from ..tools import delegation as delegation_tool
+from ..tools import insurance as insurance_tool
 from ..tools import trade_finance as tf_tool
 from ..tools import x402 as x402_tool
 
@@ -105,15 +109,70 @@ async def process_payment(intent: PaymentIntent) -> Payment:
         receipt_hash=receipt.compute_decision_hash(payment),
     )
 
+    # ARS Insurance (Pillar 3): cover-requirement gate (spec §3). When a
+    # counterparty mandates cover and the agent is unbound, auto-bind a premium
+    # before settling. No-op unless intent.cover_required is set, so the locked
+    # payment path (and its tests) are unchanged.
+    cover_bound = await _maybe_bind_cover(payment, intent, amount_usd)
+
     if decision.blocked:
         await _block(payment)
     elif decision.requires_approval:
         await _escalate(payment, route, intent, memo)
     else:
         await _settle(payment, route, intent, memo)
+        if cover_bound:
+            # A covered transaction that settles cleanly is a success signal —
+            # nudge the agent's default posterior down (spec §6).
+            _record_cover_success(intent, amount_usd)
 
     payment.updated_at = _now()
     return store.save(payment)
+
+
+async def _maybe_bind_cover(payment: Payment, intent: PaymentIntent, amount_usd: float) -> bool:
+    """Auto-bind agent-default cover when a counterparty mandates it (spec §3).
+
+    Returns True iff a premium was bound. Any failure is logged and the payment
+    proceeds — the cover gate never blocks the underlying decision here.
+    """
+    settings = get_settings()
+    # getattr keeps the gate inert under tests that patch get_settings with a
+    # minimal namespace (no insurance_* keys) — the locked payment path is unchanged.
+    if not getattr(settings, "insurance_enabled", False):
+        return False
+    requirement = insurance_engine.cover_requirement(
+        intent.cover_required, amount_usd, intent.cover_required_above_usd
+    )
+    if requirement != "REQUIRED":
+        return False
+    try:
+        record = await insurance_tool.bind(BindRequest(
+            agent_address=intent.from_account,
+            job_id=payment.id,
+            amount=str(intent.amount),
+            currency=intent.currency,
+            active_lines=[CoverLine.merchant_default],
+        ))
+        _log(
+            payment.id,
+            f"Cover required → premium {record.premium_amount} {record.currency} bound "
+            f"(job {payment.id[:8]}…).",
+        )
+        return True
+    except insurance_tool.CoverUnavailable as exc:
+        _log(payment.id, f"Cover required but {exc.decision} ({exc.reason}); proceeding without cover.")
+        return False
+    except Exception as exc:  # noqa: BLE001 — cover never blocks the payment path
+        _log(payment.id, f"Cover binding failed ({exc}); proceeding without cover.")
+        return False
+
+
+def _record_cover_success(intent: PaymentIntent, amount_usd: float) -> None:
+    settings = get_settings()
+    ref = settings.policy_threshold_usd or 10_000.0
+    weight = max(0.25, min(4.0, amount_usd / ref))
+    insurance_tool.record_outcome(intent.from_account, defaulted=False, exposure_weight=weight)
 
 
 async def _settle(payment: Payment, route, intent: PaymentIntent, memo: "execution.ComplianceMemo") -> None:

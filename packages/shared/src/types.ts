@@ -21,6 +21,9 @@ export interface PaymentIntent {
   amount: number;
   currency: string;
   reference: string;
+  // ARS Insurance (Pillar 3) cover-requirement gate (spec §3). Optional/default-off.
+  coverRequired?: boolean;
+  coverRequiredAboveUsd?: number | null;
 }
 
 export interface QuoteRequest {
@@ -480,6 +483,89 @@ export interface InsurancePayoutRecord {
   poolDrawTxHash: string | null;
   reputationMptProtected: boolean;
   createdAt: string;
+}
+
+// ── ARS Insurance — pricing & risk engine (Pillar 3) ─────────────────────────
+
+export type CoverLine =
+  | "merchant_default"
+  | "lender_credit"
+  | "principal_score"
+  | "mandate_breach";
+
+export type QuoteDecision = "OFFER" | "REVIEW" | "DECLINE";
+
+export interface TxnContext {
+  category: string;
+  tenorBand: string;
+  cptyBand: string;
+  firstSeen: boolean;
+  amountZ: number;
+  velocityZ: number;
+  concentrationZ: number;
+}
+
+export interface InsuranceQuoteRequest {
+  agentAddress: string;
+  amount: string;              // Decimal string — transaction EAD
+  currency?: string;
+  scoreBand?: string | null;
+  activeLines?: CoverLine[];
+  collateral?: string;
+  txn?: Partial<TxnContext>;
+  jobId?: string | null;
+}
+
+export interface PremiumQuote {
+  decision: QuoteDecision;
+  premium: string;             // Decimal string
+  currency: string;
+  lines: Record<string, string>;  // per-line premium, Decimal strings
+  pd: number;
+  credibility: number;         // Z ∈ [0, 1]
+  scoreBand: string | null;
+  reason: string | null;
+  receiptHash: string;
+}
+
+export interface BindRequest {
+  agentAddress: string;
+  jobId: string;
+  amount: string;
+  currency?: string;
+  scoreBand?: string | null;
+  activeLines?: CoverLine[];
+  collateral?: string;
+  txn?: Partial<TxnContext>;
+}
+
+export interface ClaimRequest {
+  jobId: string;
+  agentAddress: string;
+  merchant: string;
+  line?: CoverLine;
+  loss: string;
+  currency?: string;
+  collateral?: string;
+}
+
+export interface AgentRiskState {
+  agentAddress: string;
+  scoreBand: string | null;
+  alpha: number;
+  beta: number;
+  pd: number;
+  credibility: number;
+  updatedAt: string;
+}
+
+export interface PoolStatus {
+  firstLoss: string;
+  currency: string;
+  premiumsCollected: string;
+  payoutsMade: string;
+  capacityRatio: number;
+  vaultBalance: string;        // on-ledger XLS-65 vault balance
 }
 
 // ── ARS Audit Log Event ──────────────────────────────────────────────────────

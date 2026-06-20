@@ -1,17 +1,25 @@
 import type {
   AgentLogEntry,
+  AgentRiskState,
   ApprovalChallenge,
+  BindRequest,
+  ClaimRequest,
   CredentialIssueRequest,
   CredentialLogEntry,
   CredentialRecord,
   CredentialStatus,
   DelegationGrant,
   DelegationGrantCreate,
+  InsurancePayoutRecord,
+  InsurancePremiumRecord,
+  InsuranceQuoteRequest,
   MPTAttestationRecord,
   MPTAuthorizeRequest,
   MPTStatus,
   Payment,
   PaymentIntent,
+  PoolStatus,
+  PremiumQuote,
   QuoteRequest,
   Receivable,
   ReceivableCreate,
@@ -155,4 +163,20 @@ export const api = {
     request<DelegationGrant>("/treasury/delegations", { method: "POST", body: JSON.stringify(create) }),
   revokeDelegation: (grantId: string) =>
     request<DelegationGrant>(`/treasury/delegations/${grantId}`, { method: "DELETE" }),
+
+  // Insurance — pricing & risk engine (Pillar 3).
+  quoteInsurance: (req: InsuranceQuoteRequest) =>
+    request<PremiumQuote>("/treasury/insurance/quote", { method: "POST", body: JSON.stringify(req) }),
+  bindInsurance: (req: BindRequest) =>
+    request<InsurancePremiumRecord>("/treasury/insurance/bind", { method: "POST", body: JSON.stringify(req) }),
+  listInsurancePremiums: () =>
+    request<InsurancePremiumRecord[]>("/treasury/insurance/premiums"),
+  claimInsurance: (req: ClaimRequest) =>
+    request<InsurancePayoutRecord>("/treasury/insurance/claim", { method: "POST", body: JSON.stringify(req) }),
+  listInsurancePayouts: () =>
+    request<InsurancePayoutRecord[]>("/treasury/insurance/payouts"),
+  getInsurancePool: () =>
+    request<PoolStatus>("/treasury/insurance/pool"),
+  getAgentRisk: (address: string) =>
+    request<AgentRiskState>(`/treasury/insurance/agents/${address}/risk`),
 };
