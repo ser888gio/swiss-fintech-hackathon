@@ -17,14 +17,16 @@ from decimal import Decimal
 
 from .. import store
 from ..config import get_settings
+from ..insurance import binding as insurance_binding
+from ..insurance import engine as insurance_engine
 from ..policy import engine
 from ..policy.scope import AgentScope, evaluate_scope
-from ..insurance import engine as insurance_engine
 from ..schemas import (
     AgentLogEntry,
     BindRequest,
     CoverLine,
     DelegationGrantCreate,
+    InsuranceQuoteRequest,
     GuardrailResult,
     Payment,
     PaymentIntent,
@@ -35,7 +37,6 @@ from ..schemas import (
 )
 from ..tools import audit, compliance, credentials, execution, firefly, receipt, routing
 from ..tools import delegation as delegation_tool
-from ..tools import insurance as insurance_tool
 from ..tools import trade_finance as tf_tool
 from ..tools import x402 as x402_tool
 
@@ -109,11 +110,66 @@ async def process_payment(intent: PaymentIntent) -> Payment:
         receipt_hash=receipt.compute_decision_hash(payment),
     )
 
-    # ARS Insurance (Pillar 3): cover-requirement gate (spec §3). When a
-    # counterparty mandates cover and the agent is unbound, auto-bind a premium
-    # before settling. No-op unless intent.cover_required is set, so the locked
-    # payment path (and its tests) are unchanged.
-    cover_bound = await _maybe_bind_cover(payment, intent, amount_usd)
+    if settings.insurance_enabled and insurance_engine.cover_gate(
+        intent,
+        has_cover=False,
+        default_threshold_usd=settings.insurance_cover_required_above_usd,
+    ) == "REQUIRED":
+        quote_request = InsuranceQuoteRequest(
+            agent_address=intent.from_account,
+            score_band="STANDARD",
+            txn_context={
+                "category": intent.purpose,
+                "tenorBand": "short",
+                "cptyBand": "standard" if intent.receiver_entity_type.value == "company" else "elevated",
+                "firstSeen": False,
+                "amount": f"{amount_usd:.6f}",
+                "amountZ": min(amount_usd / max(settings.policy_threshold_usd, 1.0), 3.0),
+                "velocityZ": 0.0,
+                "concentrationZ": 0.0,
+                "activeLines": [CoverLine.merchant_default],
+            },
+        )
+        quote = await insurance_binding.quote(quote_request)
+        payment.cover = quote
+        if quote.decision.value == "DECLINE":
+            payment.policy_decision = decision.model_copy(
+                update={
+                    "blocked": True,
+                    "requires_approval": False,
+                    "block_reason": quote.reason,
+                    "reasons": list(decision.reasons) + [quote.reason],
+                    "rule_fired": "insurance_decline",
+                }
+            )
+            await _block(payment)
+            payment.updated_at = _now()
+            return store.save(payment)
+        if quote.decision.value == "REVIEW":
+            payment.policy_decision = decision.model_copy(
+                update={
+                    "requires_approval": True,
+                    "reasons": list(decision.reasons) + [quote.reason],
+                    "rule_fired": decision.rule_fired or "insurance_review",
+                }
+            )
+        else:
+            premium = await insurance_binding.bind(
+                BindRequest(
+                    job_id=payment_id,
+                    agent_address=intent.from_account,
+                    score_band=quote_request.score_band,
+                    currency=settings.token_currency,
+                    quote=quote,
+                )
+            )
+            _log(
+                payment_id,
+                (
+                    f"Insurance auto-bound: premium {premium.premium_amount} {premium.currency} "
+                    f"({quote.receipt_hash[:12]}...)."
+                ),
+            )
 
     if decision.blocked:
         await _block(payment)
@@ -121,58 +177,9 @@ async def process_payment(intent: PaymentIntent) -> Payment:
         await _escalate(payment, route, intent, memo)
     else:
         await _settle(payment, route, intent, memo)
-        if cover_bound:
-            # A covered transaction that settles cleanly is a success signal —
-            # nudge the agent's default posterior down (spec §6).
-            _record_cover_success(intent, amount_usd)
 
     payment.updated_at = _now()
     return store.save(payment)
-
-
-async def _maybe_bind_cover(payment: Payment, intent: PaymentIntent, amount_usd: float) -> bool:
-    """Auto-bind agent-default cover when a counterparty mandates it (spec §3).
-
-    Returns True iff a premium was bound. Any failure is logged and the payment
-    proceeds — the cover gate never blocks the underlying decision here.
-    """
-    settings = get_settings()
-    # getattr keeps the gate inert under tests that patch get_settings with a
-    # minimal namespace (no insurance_* keys) — the locked payment path is unchanged.
-    if not getattr(settings, "insurance_enabled", False):
-        return False
-    requirement = insurance_engine.cover_requirement(
-        intent.cover_required, amount_usd, intent.cover_required_above_usd
-    )
-    if requirement != "REQUIRED":
-        return False
-    try:
-        record = await insurance_tool.bind(BindRequest(
-            agent_address=intent.from_account,
-            job_id=payment.id,
-            amount=str(intent.amount),
-            currency=intent.currency,
-            active_lines=[CoverLine.merchant_default],
-        ))
-        _log(
-            payment.id,
-            f"Cover required → premium {record.premium_amount} {record.currency} bound "
-            f"(job {payment.id[:8]}…).",
-        )
-        return True
-    except insurance_tool.CoverUnavailable as exc:
-        _log(payment.id, f"Cover required but {exc.decision} ({exc.reason}); proceeding without cover.")
-        return False
-    except Exception as exc:  # noqa: BLE001 — cover never blocks the payment path
-        _log(payment.id, f"Cover binding failed ({exc}); proceeding without cover.")
-        return False
-
-
-def _record_cover_success(intent: PaymentIntent, amount_usd: float) -> None:
-    settings = get_settings()
-    ref = settings.policy_threshold_usd or 10_000.0
-    weight = max(0.25, min(4.0, amount_usd / ref))
-    insurance_tool.record_outcome(intent.from_account, defaulted=False, exposure_weight=weight)
 
 
 async def _settle(payment: Payment, route, intent: PaymentIntent, memo: "execution.ComplianceMemo") -> None:

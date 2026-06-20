@@ -16,7 +16,6 @@ from .config import get_settings
 
 TESTNET_EXPLORER = "https://testnet.xrpl.org"
 DEVNET_EXPLORER = "https://devnet.xrpl.org"
-MAINNET_EXPLORER = "https://livenet.xrpl.org"
 # Cross-check explorer. xrpscan has no Testnet view, so bithomp's Testnet
 # instance is used as the second source for the verification matrix.
 BITHOMP_TESTNET_EXPLORER = "https://test.bithomp.com"
@@ -26,36 +25,32 @@ BITHOMP_TESTNET_EXPLORER = "https://test.bithomp.com"
 LSF_ACCEPTED = 0x00010000
 
 
-def _explorer_base(endpoint: str | None) -> str:
-    """Map an XRPL endpoint to its block explorer (devnet/testnet/mainnet).
+def _is_devnet() -> bool:
+    return "devnet" in get_settings().xrpl_endpoint
 
-    Checked devnet-first because both devnet and testnet hosts contain
-    'rippletest.net'. An unrecognized (e.g. xrplcluster.com) endpoint is treated
-    as mainnet — so explorer links stay correct on the path to production.
-    """
-    ep = endpoint or ""
-    if "devnet" in ep:
-        return DEVNET_EXPLORER
-    if any(token in ep for token in ("altnet", "testnet", "rippletest")):
-        return TESTNET_EXPLORER
-    return MAINNET_EXPLORER
+
+def _explorer_base() -> str:
+    return DEVNET_EXPLORER if _is_devnet() else TESTNET_EXPLORER
 
 
 def explorer_tx_url(tx_hash: str) -> str:
-    """Network-aware tx explorer link for the currently configured endpoint."""
-    return f"{_explorer_base(get_settings().xrpl_endpoint)}/transactions/{tx_hash}"
+    return f"{_explorer_base()}/transactions/{tx_hash}"
 
 
 def explorer_account_url(address: str) -> str:
-    return f"{_explorer_base(get_settings().xrpl_endpoint)}/accounts/{address}"
+    return f"{_explorer_base()}/accounts/{address}"
 
 
 def bithomp_tx_url(tx_hash: str) -> str:
-    """Second explorer link for a transaction (cross-check source)."""
+    """Second explorer link — Bithomp Testnet only; returns None on Devnet (no Bithomp equivalent)."""
+    if _is_devnet():
+        return None  # type: ignore[return-value]
     return f"{BITHOMP_TESTNET_EXPLORER}/explorer/{tx_hash}"
 
 
 def bithomp_account_url(address: str) -> str:
+    if _is_devnet():
+        return None  # type: ignore[return-value]
     return f"{BITHOMP_TESTNET_EXPLORER}/explorer/{address}"
 
 
@@ -67,8 +62,10 @@ def async_client(endpoint: str | None = None):
 
 
 def explorer_tx_url_for(tx_hash: str, endpoint: str) -> str:
-    """Return the right block-explorer link for an explicit endpoint."""
-    return f"{_explorer_base(endpoint)}/transactions/{tx_hash}"
+    """Return the right block-explorer link based on the XRPL endpoint in use."""
+    if "devnet" in endpoint:
+        return f"{DEVNET_EXPLORER}/transactions/{tx_hash}"
+    return explorer_tx_url(tx_hash)
 
 
 def network_label(endpoint: str, *, use_mock: bool) -> str:
@@ -83,6 +80,20 @@ def mock_tx_hash(kind: str, key: str) -> str:
     return hashlib.sha256(f"{kind}:{key}".encode()).hexdigest().upper()
 
 
+def currency_code(currency: str) -> str:
+    """Normalise a currency code to XRPL wire form.
+
+    Standard ISO-style 3-char codes (USD, EUR) pass through unchanged. Longer
+    codes such as RLUSD must be sent as a 40-char hex string — xrpl-py's binary
+    codec rejects anything else — so "RLUSD" becomes 524C555344 + zero padding.
+    """
+    from xrpl.utils import str_to_hex
+
+    if len(currency) <= 3:
+        return currency
+    return str_to_hex(currency).upper().ljust(40, "0")
+
+
 def token_amount(currency: str, value, settings):
     """Build an XRPL amount: drops for XRP, IssuedCurrencyAmount for a token."""
     if currency.upper() == "XRP":
@@ -92,7 +103,7 @@ def token_amount(currency: str, value, settings):
     from xrpl.models.amounts import IssuedCurrencyAmount
 
     return IssuedCurrencyAmount(
-        currency=currency, issuer=settings.token_issuer_address, value=str(value)
+        currency=currency_code(currency), issuer=settings.token_issuer_address, value=str(value)
     )
 
 

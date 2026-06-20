@@ -251,10 +251,9 @@ def _store_grant(grant: DelegationGrant) -> None:
 def _schedule_persist(grant: DelegationGrant) -> None:
     import asyncio
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.create_task(_persist_grant(grant))
-            return
+        asyncio.get_running_loop()
+        asyncio.create_task(_persist_grant(grant))
+        return
     except RuntimeError:
         pass
 

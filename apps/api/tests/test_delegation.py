@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
+from fastapi import HTTPException
 
 from app.schemas import DelegationGrant, DelegationGrantCreate
 from app.tools.delegation import (
@@ -26,6 +27,26 @@ from app.tools.delegation import (
 )
 
 
+@pytest.mark.asyncio
+async def test_route_rejects_blank_delegation_addresses() -> None:
+    from app.routes.treasury import create_delegation
+
+    create = DelegationGrantCreate(
+        parent_address="   ",
+        child_address="",
+        max_total="500.000000",
+        max_per_tx="50.000000",
+        max_per_day="200.000000",
+        currency="RLUSD",
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await create_delegation(create)
+
+    assert exc_info.value.status_code == 400
+    assert "must not be blank" in str(exc_info.value.detail)
+
+
 _NOW = datetime(2026, 6, 19, 12, 0, 0, tzinfo=timezone.utc)
 
 
@@ -34,9 +55,9 @@ def _make_grant(**overrides) -> DelegationGrant:
         id="grant-1",
         parent_address="rPARENT0000000000000000000000000000",
         child_address="rCHILD00000000000000000000000000000",
-        max_total="1000.000000",
+        max_total="500",
         max_per_tx="100.000000",
-        max_per_day="250.000000",
+        max_per_day="250",
         currency="RLUSD",
         allowed_service_hosts=None,
         allowed_service_types=None,

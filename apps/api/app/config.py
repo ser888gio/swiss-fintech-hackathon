@@ -69,7 +69,7 @@ class Settings(BaseSettings):
 
     # XRPL network identifier included in the approval payload to prevent
     # testnet signatures from being replayed on mainnet.
-    xrpl_network: str = "xrpl:testnet"
+    xrpl_network: str = "xrpl:1"
 
     # XRPL address of the treasury wallet that owns the escrows. Included in
     # the approval payload so the device commits to the exact escrow owner.
@@ -119,13 +119,16 @@ class Settings(BaseSettings):
     # any challenge that requests a currency or facilitator not in these lists.
     # Agent spend scope (G4): caps per single x402 call and rolling 24-hour window.
     x402_enabled: bool = False
-    x402_facilitator_url: str = "https://xrpl-x402.t54.ai"
+    x402_facilitator_url: str = "https://xrpl-facilitator-testnet.t54.ai"
     x402_allowed_assets: str = "RLUSD"          # comma-separated currency codes
-    x402_allowed_facilitators: str = "https://xrpl-x402.t54.ai"  # comma-sep URLs
+    x402_allowed_facilitators: str = "https://xrpl-facilitator-testnet.t54.ai"  # comma-sep URLs
     x402_scope_max_per_tx_usd: float = 50.0     # G4 per-transaction cap
     x402_scope_max_per_day_usd: float = 500.0   # G4 rolling 24h cap
     x402_allowed_service_hosts: str = ""        # comma-sep; empty = any host allowed
     x402_source_tag: int = 20260530             # Starter Kit convention
+    x402_demo_enabled: bool = False             # local/test merchant resource only
+    x402_demo_pay_to: str = ""                  # trust-lined Testnet recipient
+    x402_demo_price: str = "1.000000"           # exact RLUSD amount
 
     # ARS Agent-to-Agent Delegation (G5). When enabled, the orchestrator accepts
     # grant_delegation / sub-agent payment calls. delegation_default_max_total is
@@ -141,6 +144,15 @@ class Settings(BaseSettings):
     trade_finance_enabled: bool = False
     trade_finance_discount_rate_default: float = 0.02
     trade_finance_source_tag: int = 20260530
+
+    # ARS Insurance pricing engine.
+    insurance_enabled: bool = True
+    insurance_premium_cap: float = 5000.0
+    insurance_lambda_expense: float = 0.12
+    insurance_lambda_capital: float = 0.08
+    insurance_lambda_risk_max: float = 0.22
+    insurance_tau_days: float = 30.0
+    insurance_cover_required_above_usd: float | None = None
 
     # ARS XLS-66 Lending (LoanBroker / LoanSet / LoanCreate / LoanRepay).
     # Amendment-gated — Devnet only at build time. If the amendment check fails
@@ -198,8 +210,8 @@ class Settings(BaseSettings):
     )
 
     # Railway preview/prod service hosts plus Cloudflare Pages (*.pages.dev).
-    # Keep explicit origins above for the main demo URL; this catches
-    # regenerated Railway/Pages domains during rehearsals.
+    # Local loopback origins are added separately in main.py so local .env
+    # overrides cannot disable Vite development on a fallback port.
     cors_origin_regex: str = r"https://.*\.(up\.railway\.app|railway\.app|pages\.dev)"
 
     # Injected by Railway. When the web service URL changes, include it without

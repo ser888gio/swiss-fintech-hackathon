@@ -124,7 +124,7 @@ def test_cap_enforced_at_6dp_precision():
     # Spend of exactly cap+epsilon (7dp) should be blocked.
     scope = AgentScope(
         max_per_transaction=Decimal("100.000000"),
-        max_per_day=Decimal("1000.000000"),
+        max_per_day=Decimal("500"),
     )
     # After quantize to 6dp, 100.0000004 → 100.000000 → allowed
     result = evaluate_scope(Decimal("100.0000004"), scope, Decimal("0"))

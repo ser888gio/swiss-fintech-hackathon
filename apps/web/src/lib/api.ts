@@ -167,9 +167,10 @@ export const api = {
   revokeDelegation: (grantId: string) =>
     request<DelegationGrant>(`/treasury/delegations/${grantId}`, { method: "DELETE" }),
 
-  // Insurance — pricing & risk engine (Pillar 3).
+  // Insurance pricing & risk engine.
+  getInsurancePool: () => request<PoolStatus>("/insurance/pool"),
   quoteInsurance: (req: InsuranceQuoteRequest) =>
-    request<PremiumQuote>("/treasury/insurance/quote", { method: "POST", body: JSON.stringify(req) }),
+    request<PremiumQuote>("/insurance/quote", { method: "POST", body: JSON.stringify(req) }),
   bindInsurance: (req: BindRequest) =>
     request<InsurancePremiumRecord>("/treasury/insurance/bind", { method: "POST", body: JSON.stringify(req) }),
   listInsurancePremiums: () =>

@@ -61,7 +61,7 @@ class Ledger:
             return {"currency": currency, "issuer": self._s.token_issuer_address, "value": str(value)}
         from xrpl.models.amounts import IssuedCurrencyAmount
         return IssuedCurrencyAmount(
-            currency=currency, issuer=self._s.token_issuer_address, value=str(value)
+            currency=xrpl_client.currency_code(currency), issuer=self._s.token_issuer_address, value=str(value)
         )
 
     async def submit(self, tx: Any, wallet: Any, endpoint: str | None = None) -> dict:

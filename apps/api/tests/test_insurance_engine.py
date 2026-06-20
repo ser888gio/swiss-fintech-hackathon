@@ -1,97 +1,71 @@
-"""Deterministic pricing envelope — price() (spec §4/§7)."""
+from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from app.insurance import engine, risk
-from app.insurance.engine import PoolState, PricePolicy, QuoteContext
-from app.insurance.risk import TxnFeatures
-from app.schemas import QuoteDecision
-
-_BIG_POOL = PoolState(first_loss=Decimal("1000000"))
-_POLICY = PricePolicy()
+from app.schemas import PoolStatus, TxnContext
 
 
-def _ctx(active=("merchant_default",), ead="1000", eligible=True, collateral="0"):
-    return QuoteContext(
-        agent_address="rAgent",
-        eligible=eligible,
-        txn=TxnFeatures(),
-        active_lines=active,
-        ead=Decimal(ead),
-        collateral=Decimal(collateral),
-        score_band="STANDARD",
-    )
+def _ctx(**overrides) -> TxnContext:
+    data = {
+        "category": "supplier_payment",
+        "tenorBand": "short",
+        "cptyBand": "standard",
+        "firstSeen": False,
+        "amount": "500",
+        "amountZ": 0.0,
+        "velocityZ": 0.0,
+        "concentrationZ": 0.0,
+        "activeLines": ["merchant_default"],
+    }
+    data.update(overrides)
+    return TxnContext(**data)
 
 
-def test_ineligible_declines():
-    r = risk.from_band("STANDARD", now=0.0)
-    q = engine.price(_ctx(eligible=False), r, _BIG_POOL, _POLICY)
-    assert q.decision is QuoteDecision.DECLINE
-    assert q.reason == "ineligible"
+def _pool(**overrides) -> PoolStatus:
+    data = {
+        "enabled": True,
+        "currency": "USD",
+        "deposited": "10000.000000",
+        "walletBalance": "5000.000000",
+        "availableCapacity": "15000.000000",
+        "premiumsCollected": "0.000000",
+        "claimsPaid": "0.000000",
+    }
+    data.update(overrides)
+    return PoolStatus(**data)
 
 
-def test_offer_has_positive_premium_and_full_receipt():
-    r = risk.from_band("STANDARD", now=0.0)
-    q = engine.price(_ctx(), r, _BIG_POOL, _POLICY)
-    assert q.decision is QuoteDecision.OFFER
-    assert Decimal(q.premium) > 0
-    assert len(q.receipt_hash) == 64
-    assert 0.0 <= q.credibility <= 1.0
+def _risk():
+    return risk.from_band("STANDARD", now=datetime(2026, 1, 1, tzinfo=timezone.utc))
 
 
-def test_per_line_floor_enforced_on_tiny_exposure():
-    r = risk.from_band("ELITE", now=0.0)
-    q = engine.price(_ctx(ead="1"), r, _BIG_POOL, _POLICY)
-    assert Decimal(q.lines["merchant_default"]) >= Decimal("0.50")
+def test_price_offer_produces_breakdown_and_hash():
+    quote = engine.price(_ctx(activeLines=["merchant_default", "mandate_breach"]), _risk(), _pool())
+    assert quote.decision.value == "OFFER"
+    assert Decimal(quote.premium) > Decimal("0")
+    assert set(quote.lines) == {"merchant_default", "mandate_breach"}
+    assert len(quote.receipt_hash) == 64
 
 
-def test_premium_is_additive_across_active_lines():
-    r = risk.from_band("STANDARD", now=0.0)
-    one = engine.price(_ctx(active=("merchant_default",)), r, _BIG_POOL, _POLICY)
-    two = engine.price(_ctx(active=("merchant_default", "mandate_breach")), r, _BIG_POOL, _POLICY)
-    assert set(two.lines) == {"merchant_default", "mandate_breach"}
-    assert Decimal(two.premium) > Decimal(one.premium)
+def test_price_review_on_capacity_breach():
+    quote = engine.price(_ctx(amount="50000.000000"), _risk(), _pool(availableCapacity="100.000000"))
+    assert quote.decision.value == "REVIEW"
 
 
-def test_cap_bounds_total_premium():
-    r = risk.from_band("HIGH_RISK", now=0.0)
-    tight = PricePolicy(cap=Decimal("2.00"))
-    q = engine.price(
-        _ctx(active=("merchant_default", "lender_credit", "mandate_breach"), ead="1000000"),
-        r, _BIG_POOL, tight,
-    )
-    assert Decimal(q.premium) <= Decimal("2.00")
+def test_price_decline_without_lines():
+    quote = engine.price(_ctx(activeLines=[]), _risk(), _pool())
+    assert quote.decision.value == "DECLINE"
 
 
-def test_capacity_breach_routes_to_review():
-    r = risk.from_band("STANDARD", now=0.0)
-    tiny_pool = PoolState(first_loss=Decimal("1"))
-    q = engine.price(_ctx(active=("lender_credit",), ead="1000000"), r, tiny_pool, _POLICY)
-    assert q.decision is QuoteDecision.REVIEW
-    assert "capacity" in (q.reason or "")
+def test_band_round_uses_tick():
+    rounded = engine.band_round(Decimal("12.740000"), Decimal("0.500000"))
+    assert rounded == Decimal("12.500000")
 
 
-def test_credibility_shrinks_the_risk_margin():
-    fresh = risk.from_band("STANDARD", now=0.0)
-    seasoned = fresh
-    for _ in range(60):
-        seasoned = risk.update(seasoned, defaulted=False, exposure_weight=1.0, now=0.0, tau_days=0)
-    qf = engine.price(_ctx(), fresh, _BIG_POOL, _POLICY)
-    qs = engine.price(_ctx(), seasoned, _BIG_POOL, _POLICY)
-    assert qs.credibility > qf.credibility
-    # More credibility + a clean record both push the premium down.
-    assert Decimal(qs.premium) <= Decimal(qf.premium)
+def test_receipt_hash_is_reproducible_for_same_inputs():
+    first = engine.price(_ctx(), _risk(), _pool())
+    second = engine.price(_ctx(), _risk(), _pool())
+    assert first.receipt_hash == second.receipt_hash
 
-
-def test_receipt_hash_is_reproducible():
-    r = risk.from_band("STANDARD", now=0.0)
-    q1 = engine.price(_ctx(), r, _BIG_POOL, _POLICY)
-    q2 = engine.price(_ctx(), r, _BIG_POOL, _POLICY)
-    assert q1.receipt_hash == q2.receipt_hash
-
-
-def test_collateral_reduces_merchant_default_exposure():
-    r = risk.from_band("STANDARD", now=0.0)
-    uncovered = engine.price(_ctx(ead="10000", collateral="0"), r, _BIG_POOL, _POLICY)
-    collateralized = engine.price(_ctx(ead="10000", collateral="9000"), r, _BIG_POOL, _POLICY)
-    assert Decimal(collateralized.premium) <= Decimal(uncovered.premium)

@@ -30,6 +30,7 @@ class PaymentRecord(Base):
     route_quote: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     compliance: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     policy_decision: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    cover: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String, index=True)
     escrow_sequence: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # XRPL escrow binding — pins the Firefly approval to one on-chain escrow.
@@ -261,28 +262,19 @@ class InsurancePayoutRecord(Base):
     currency: Mapped[str] = mapped_column(String)
     slash_tx_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     pool_draw_tx_hash: Mapped[str | None] = mapped_column(String, nullable=True)
-    explorer_url: Mapped[str | None] = mapped_column(String, nullable=True)
     reputation_mpt_protected: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class AgentRiskRecord(Base):
-    """An agent's persisted default-propensity posterior — Beta(alpha, beta).
-
-    Keyed by agent address. Reprices every cover the agent buys; updated on each
-    settle/default outcome by the insurance experience-rating loop (spec §6).
-    """
-
-    __tablename__ = "agent_risk"
+    __tablename__ = "agent_risks"
 
     agent_address: Mapped[str] = mapped_column(String, primary_key=True)
-    score_band: Mapped[str | None] = mapped_column(String, nullable=True)
+    score_band: Mapped[str] = mapped_column(String, index=True)
     alpha: Mapped[float] = mapped_column(Float)
     beta: Mapped[float] = mapped_column(Float)
-    n0: Mapped[float] = mapped_column(Float)
-    a0: Mapped[float] = mapped_column(Float)
-    b0: Mapped[float] = mapped_column(Float)
-    last_ts: Mapped[float] = mapped_column(Float)
+    pd: Mapped[float] = mapped_column(Float)
+    credibility: Mapped[float] = mapped_column(Float)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
     )

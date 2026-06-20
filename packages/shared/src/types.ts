@@ -21,7 +21,6 @@ export interface PaymentIntent {
   amount: number;
   currency: string;
   reference: string;
-  // ARS Insurance (Pillar 3) cover-requirement gate (spec §3). Optional/default-off.
   coverRequired?: boolean;
   coverRequiredAboveUsd?: number | null;
 }
@@ -179,6 +178,7 @@ export interface Payment {
   explorerUrlSecondary: string | null;
   auditExplanation: string | null;
   receiptHash: string | null;
+  cover: PremiumQuote | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -482,72 +482,81 @@ export interface InsurancePayoutRecord {
   currency: string;
   slashTxHash: string | null;
   poolDrawTxHash: string | null;
-  explorerUrl: string | null;
   reputationMptProtected: boolean;
   guardrailTrail: GuardrailResult[];
   createdAt: string;
 }
 
-// ── ARS Insurance — pricing & risk engine (Pillar 3) ─────────────────────────
-
+export type QuoteDecision = "OFFER" | "REVIEW" | "DECLINE";
 export type CoverLine =
   | "merchant_default"
   | "lender_credit"
   | "principal_score"
   | "mandate_breach";
 
-export type QuoteDecision = "OFFER" | "REVIEW" | "DECLINE";
+export interface PremiumQuote {
+  decision: QuoteDecision;
+  premium: string;       // Decimal string
+  lines: Record<string, string>;
+  pd: number;
+  credibility: number;
+  reason: string;
+  receiptHash: string;
+}
+
+export interface PoolStatus {
+  enabled: boolean;
+  currency: string;
+  deposited: string;
+  walletBalance: string;
+  availableCapacity: string;
+  premiumsCollected: string;
+  claimsPaid: string;
+}
+
+export interface AgentRiskState {
+  agentAddress: string;
+  scoreBand: string;
+  alpha: number;
+  beta: number;
+  pd: number;
+  credibility: number;
+  updatedAt: string;
+}
 
 export interface TxnContext {
   category: string;
   tenorBand: string;
   cptyBand: string;
-  firstSeen: boolean;
-  amountZ: number;
-  velocityZ: number;
-  concentrationZ: number;
+  firstSeen?: boolean;
+  amount: string;          // Decimal string
+  amountZ?: number;
+  velocityZ?: number;
+  concentrationZ?: number;
+  activeLines: CoverLine[];
 }
 
 export interface InsuranceQuoteRequest {
   agentAddress: string;
-  amount: string;              // Decimal string — transaction EAD
-  currency?: string;
-  scoreBand?: string | null;
-  activeLines?: CoverLine[];
-  collateral?: string;
-  txn?: Partial<TxnContext>;
-  jobId?: string | null;
-}
-
-export interface PremiumQuote {
-  decision: QuoteDecision;
-  premium: string;             // Decimal string
-  currency: string;
-  lines: Record<string, string>;  // per-line premium, Decimal strings
-  pd: number;
-  credibility: number;         // Z ∈ [0, 1]
-  scoreBand: string | null;
-  reason: string | null;
-  receiptHash: string;
+  scoreBand?: string;
+  txnContext: TxnContext;
 }
 
 export interface BindRequest {
-  agentAddress: string;
   jobId: string;
-  amount: string;
+  agentAddress: string;
+  scoreBand?: string;
   currency?: string;
-  scoreBand?: string | null;
-  activeLines?: CoverLine[];
-  collateral?: string;
-  txn?: Partial<TxnContext>;
+  quote: PremiumQuote;
 }
 
 export interface ClaimRequest {
   jobId: string;
   agentAddress: string;
   merchant: string;
-  line?: CoverLine;
-  loss: string;
+  merchantName?: string | null;
+  merchantCountry?: string;
+  scoreBand?: string;
   currency?: string;
   collateral?: string;
 }

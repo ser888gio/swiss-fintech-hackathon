@@ -25,17 +25,19 @@ Use the included smoke script (preferred) or the Node funder.
 
 ```bash
 # From apps/api, with deps installed (pip install -r requirements.txt):
-python scripts/smoke_xrpl.py fund            # creates + funds a wallet, prints the seed
+python scripts/smoke_xrpl.py fund            # creates + funds a wallet; seed is written to root .env
 ```
 
-Run it 2–3 times to get a **treasury**, a **receiver**, and (for credentials) an
-**issuer** wallet. Copy the seeds/addresses.
+The command writes the treasury seed directly to the ignored root `.env` and
+prints only the public address. Use separate, isolated faucet-funded accounts
+for receivers and credential issuers; never copy a seed into chat or logs.
 
 ## 3. Configure the root `.env`
 
 ```bash
 USE_MOCK_XRPL=false
 XRPL_ENDPOINT=wss://s.altnet.rippletest.net:51233
+XRPL_NETWORK=xrpl:1
 TREASURY_WALLET_SEED=sEd...          # the agent's funded wallet
 TOKEN_CURRENCY=XRP                   # start with XRP (step 4)
 FIREFLY_PUBLIC_KEY=<hex>             # npm run keygen --workspace apps/firefly-bridge
@@ -79,6 +81,69 @@ To set `TOKEN_CURRENCY=USD`:
 Cross-currency note: `SendMax` + `Paths` are only attached when routing finds a
 real cross-currency path (a same-asset payment with a redundant `SendMax` is
 rejected as `temREDUNDANT`).
+
+## 5a. x402 RLUSD on Testnet
+
+The ARS x402 flow uses the official Testnet RLUSD issuer and submits the
+`Payment` from the Python API with `xrpl-py`. Prepare the treasury account before
+turning real mode on:
+
+```bash
+# Root .env (never commit the seed)
+USE_MOCK_XRPL=false
+XRPL_ENDPOINT=wss://s.altnet.rippletest.net:51233
+TOKEN_ISSUER_ADDRESS=rQhWct2fv4Vc4KRjRgMrxa8xPN9Zx9iLKV
+TOKEN_CURRENCY=RLUSD
+TREASURY_WALLET_SEED=sEd...
+X402_FACILITATOR_URL=https://xrpl-facilitator-testnet.t54.ai
+X402_ALLOWED_FACILITATORS=https://xrpl-facilitator-testnet.t54.ai
+
+# From apps/api
+python scripts/smoke_xrpl.py fund
+python scripts/smoke_xrpl.py trustset RLUSD rQhWct2fv4Vc4KRjRgMrxa8xPN9Zx9iLKV
+```
+
+Send enough Testnet XRP to the treasury for its account reserve, trust-line
+owner reserve, and transaction fees. Then claim Testnet RLUSD for the treasury
+address at [tryrlusd.com](https://tryrlusd.com) and verify both balances:
+
+```bash
+python scripts/smoke_xrpl.py status
+# Token : <positive value> RLUSD (trust line present)
+```
+
+The t54 facilitator is not itself a paid resource. For a self-contained local
+proof, enable the API's merchant endpoint and give it a Testnet account that has
+an RLUSD trust line:
+
+```bash
+X402_DEMO_ENABLED=true
+X402_DEMO_PAY_TO=r...
+X402_DEMO_PRICE=1.000000
+VITE_X402_SERVICE_URL=http://localhost:8000/treasury/x402/demo-resource
+```
+
+The demo endpoint returns 402, then independently queries Testnet before
+releasing content. It verifies `tesSUCCESS`, validation, payer, payee, exact
+RLUSD issuer/currency/amount, source tag, and invoice memo. For an external
+merchant, configure `VITE_X402_SERVICE_URL` to a compatible protected resource;
+the retired t54 `/demo-resource` URL returns 404. The
+[t54 FastAPI merchant guide](https://xrpl-x402.t54.ai/docs/merchant-guides/fastapi)
+shows how to run a local `/hello` endpoint.
+
+Finally, start the API and trigger the ARS x402 payment. A successful real
+settlement returns a non-null `explorerUrl` under
+`https://testnet.xrpl.org/transactions/<hash>`; open it and confirm the validated
+result is `tesSUCCESS`. If the paid service does not return HTTP 402, the API
+returns a clear upstream error and does not present a simulated payment.
+
+### Verified Testnet evidence (2026-06-20)
+
+- Guardrails: G1 KYA passed using an accepted on-ledger credential; G4 scope passed.
+- Settlement: `1.000000 RLUSD`, validated `tesSUCCESS`.
+- Transaction: [`64A147F9…D8126`](https://testnet.xrpl.org/transactions/64A147F973410A467098BBF3A5C2464D4B928D87842B63401A214201246D8126).
+- Merchant proof replay returned HTTP 200 only after the endpoint independently
+  verified the transaction fields and invoice memo against Testnet.
 
 ## 6. Credentials (XLS-70) KYC on a real network
 
