@@ -439,7 +439,7 @@ def issue_merchant_requirement(
         service_url=service_url,
         facilitator_url=settings.x402_facilitator_url,
         pay_to=pay_to,
-        asset_currency="RLUSD",
+        asset_currency=settings.token_currency,
         asset_issuer=settings.token_issuer_address,
         network=settings.xrpl_network,
         amount=price_override or price,

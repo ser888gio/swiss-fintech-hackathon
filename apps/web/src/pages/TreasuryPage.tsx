@@ -791,7 +791,7 @@ export function TreasuryPage() {
             {servicePayments.length === 0 && <span className="muted" style={{ marginLeft: "0.7rem", fontSize: "0.72rem" }}>No service attempts yet.</span>}
             <div style={{ display: "grid", gap: "0.25rem", marginTop: servicePayments.length ? "0.45rem" : 0 }}>
               {servicePayments.slice(0, 12).map((payment) => <div key={payment.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem" }}>
-                <span><strong>{payment.agentId ?? "shared"}</strong> · {payment.amount} {payment.assetCurrency} · {payment.serviceHost}</span>
+                <span><strong>{payment.agentId ?? "shared"}</strong> · {money(payment.amount)} {payment.assetCurrency} · {payment.serviceHost}</span>
                 <span style={{ color: payment.status === "settled" ? "#6ee7b7" : "#f87171", fontWeight: 800 }}>
                   {payment.explorerUrl ? <a href={payment.explorerUrl} target="_blank" rel="noreferrer">{payment.status} ↗</a> : payment.status}
                 </span>

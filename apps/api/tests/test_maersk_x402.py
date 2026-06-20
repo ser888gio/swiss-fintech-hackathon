@@ -229,6 +229,7 @@ async def test_mock_controller_run_persists_five_settlements_and_one_block(monke
         x402_allowed_assets="RLUSD",
         token_issuer_address="rISSUER",
         xrpl_network="xrpl:1",
+        token_currency="RLUSD",
         x402_source_tag=20260601,
     )
     monkeypatch.setattr(agent_routes, "get_settings", lambda: settings)
