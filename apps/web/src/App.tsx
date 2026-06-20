@@ -9,8 +9,9 @@ import { DashboardPage } from "./pages/DashboardPage.js";
 import { InsurancePage } from "./pages/InsurancePage.js";
 import { TransferPage } from "./pages/TransferPage.js";
 import { TreasuryPage } from "./pages/TreasuryPage.js";
+import { WalletPage } from "./pages/WalletPage.js";
 
-type Route = "/" | "/transfer" | "/credentials" | "/treasury" | "/ars" | "/insurance";
+type Route = "/" | "/transfer" | "/credentials" | "/treasury" | "/ars" | "/insurance" | "/wallet";
 
 function currentRoute(): Route {
   if (window.location.pathname === "/transfer") return "/transfer";
@@ -18,6 +19,7 @@ function currentRoute(): Route {
   if (window.location.pathname === "/treasury") return "/treasury";
   if (window.location.pathname === "/ars") return "/ars";
   if (window.location.pathname === "/insurance") return "/insurance";
+  if (window.location.pathname === "/wallet") return "/wallet";
   return "/";
 }
 
@@ -56,6 +58,7 @@ export function App() {
       : path === "/treasury" ? "/treasury"
       : path === "/ars" ? "/ars"
       : path === "/insurance" ? "/insurance"
+      : path === "/wallet" ? "/wallet"
       : "/";
     if (window.location.pathname !== nextRoute) {
       window.history.pushState({}, "", nextRoute);
@@ -176,6 +179,9 @@ export function App() {
             <button className={route === "/treasury" ? "active" : ""} type="button" onClick={() => navigate("/treasury")}>
               Agent
             </button>
+            <button className={route === "/wallet" ? "active" : ""} type="button" onClick={() => navigate("/wallet")}>
+              Shared wallet
+            </button>
             <button className={route === "/insurance" ? "active" : ""} type="button" onClick={() => navigate("/insurance")}>
               Insurance
             </button>
@@ -224,6 +230,7 @@ export function App() {
         {route === "/treasury" && <TreasuryPage />}
         {route === "/ars" && <ARSPage />}
         {route === "/insurance" && <InsurancePage />}
+        {route === "/wallet" && <WalletPage />}
       </section>
 
       {approvingId && (

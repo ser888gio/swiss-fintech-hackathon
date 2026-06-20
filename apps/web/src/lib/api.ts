@@ -32,6 +32,7 @@ import type {
   TreasuryGoalCreate,
   VaultOpRecord,
   VaultStatus,
+  WalletOverview,
   X402Settlement,
 } from "@treasury/shared";
 
@@ -73,6 +74,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  getWallet: () => request<WalletOverview>("/wallet"),
   createPayment: (intent: PaymentIntent) =>
     request<Payment>("/payments", { method: "POST", body: JSON.stringify(intent) }),
   quotePayment: (quote: QuoteRequest) =>

@@ -9,6 +9,44 @@ export type PaymentStatus =
   | "blocked"
   | "failed";
 
+export interface WalletBalance {
+  currency: string;
+  value: string;
+  issuer: string | null;
+}
+
+export interface WalletTransaction {
+  hash: string;
+  transactionType: string;
+  direction: "incoming" | "outgoing" | "self" | "related";
+  counterparty: string | null;
+  amount: WalletBalance | null;
+  feeXrp: string | null;
+  result: string | null;
+  ledgerIndex: number | null;
+  timestamp: string | null;
+  explorerUrl: string;
+}
+
+export interface WalletNetworkSnapshot {
+  network: "testnet" | "devnet";
+  active: boolean;
+  xrpBalance: string;
+  tokenBalances: WalletBalance[];
+  ownerCount: number | null;
+  sequence: number | null;
+  ledgerIndex: number | null;
+  transactions: WalletTransaction[];
+  accountExplorerUrl: string;
+  error: string | null;
+}
+
+export interface WalletOverview {
+  address: string;
+  fetchedAt: string;
+  networks: WalletNetworkSnapshot[];
+}
+
 export interface PaymentIntent {
   from: string;
   to: string;

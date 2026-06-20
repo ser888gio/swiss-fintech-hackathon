@@ -201,3 +201,12 @@ un-credentialed subject escalates — proving the credential gate end-to-end.
 **Suggested path:** prove the XRP loop on Testnet (step 4) first, then layer in the
 USD token (5) and Credentials (6), moving to Devnet only if an amendment is
 missing.
+
+## Shared wallet read model
+
+The shared-wallet page reads `account_info`, `account_lines`, and `account_tx`
+at the validated ledger through `xrpl-py`. Testnet and Devnet are independent:
+the same public address may be funded on one and inactive on the other. Override
+the read-only endpoints with `WALLET_TESTNET_ENDPOINT` and
+`WALLET_DEVNET_ENDPOINT` when needed. These queries never expose or use the
+signing seed in the browser.

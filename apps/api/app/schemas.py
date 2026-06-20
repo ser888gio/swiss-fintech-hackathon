@@ -13,6 +13,44 @@ class CamelModel(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
+class WalletBalance(CamelModel):
+    currency: str
+    value: str
+    issuer: str | None = None
+
+
+class WalletTransaction(CamelModel):
+    hash: str
+    transaction_type: str
+    direction: str
+    counterparty: str | None = None
+    amount: WalletBalance | None = None
+    fee_xrp: str | None = None
+    result: str | None = None
+    ledger_index: int | None = None
+    timestamp: datetime | None = None
+    explorer_url: str
+
+
+class WalletNetworkSnapshot(CamelModel):
+    network: str
+    active: bool
+    xrp_balance: str
+    token_balances: list[WalletBalance]
+    owner_count: int | None = None
+    sequence: int | None = None
+    ledger_index: int | None = None
+    transactions: list[WalletTransaction]
+    account_explorer_url: str
+    error: str | None = None
+
+
+class WalletOverview(CamelModel):
+    address: str
+    fetched_at: datetime
+    networks: list[WalletNetworkSnapshot]
+
+
 class PaymentStatus(str, Enum):
     routing = "routing"
     settled = "settled"

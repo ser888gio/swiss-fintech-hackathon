@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from . import db, store
 from .config import get_settings
 from .insurance import store as insurance_store
-from .routes import credentials, health, insurance, payments, treasury
+from .routes import credentials, health, insurance, payments, treasury, wallet
 
 
 @asynccontextmanager
@@ -58,6 +58,7 @@ app.include_router(health.router)
 app.include_router(payments.router)
 app.include_router(credentials.router)
 app.include_router(treasury.router)
+app.include_router(wallet.router)
 
 
 def _cors_headers(request: Request) -> dict[str, str]:

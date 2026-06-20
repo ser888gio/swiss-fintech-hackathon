@@ -140,6 +140,7 @@ credential checks, Firefly approval verification, or audit trail.
 | **Execution tool** | Deterministic | `app/tools/execution.py` | Direct token Payment, or escrow/lock for large payments. |
 | **Firefly approval tool** | Deterministic | `app/tools/firefly.py` | Builds the approval challenge, verifies the Firefly signature, then triggers release. |
 | **Audit tool** | LLM-assisted | `app/tools/audit.py` | Writes a human-readable explanation of each decision to Postgres. |
+| **Shared wallet tool** | Deterministic, read-only | `app/tools/wallet.py` | Derives only the configured treasury public address server-side and reads its XRP/token balances and validated transaction history from Testnet and Devnet. |
 
 ## The policy boundary (the core innovation)
 
@@ -180,6 +181,7 @@ in `app/schemas.py` and mirror `packages/shared/src/types.ts`.
 - `verify_and_release(payment_id, signature) -> ExecutionResult` — verifies the
   signature against `FIREFLY_PUBLIC_KEY`, then submits EscrowFinish.
 - `write_audit(payment_id, decision_trail) -> None`.
+- `get_overview() -> WalletOverview` — read-only `{ address, fetched_at, networks[] }`, where each network contains its independent funds, recent validated transactions, and explorer links.
 
 ## Hardware veto — chosen approach
 

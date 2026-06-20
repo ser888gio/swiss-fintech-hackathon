@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
 
     xrpl_endpoint: str = "wss://s.altnet.rippletest.net:51233"
+    # Read-only shared-wallet views. The same public account can have unrelated
+    # balances and history on each network, so both ledgers are queried.
+    wallet_testnet_endpoint: str = "wss://s.altnet.rippletest.net:51233"
+    wallet_devnet_endpoint: str = "wss://s.devnet.rippletest.net:51233"
     treasury_wallet_seed: str = ""
     release_wallet_seed: str = ""
     token_issuer_address: str = ""
