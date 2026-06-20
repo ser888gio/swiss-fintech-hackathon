@@ -3,6 +3,10 @@ import type { WalletNetworkSnapshot, WalletOverview, WalletTransaction } from "@
 
 import { api } from "../lib/api.js";
 
+const INTEGER_FORMAT = new Intl.NumberFormat("en-US");
+const DATE_TIME_FORMAT = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+const TIME_FORMAT = new Intl.DateTimeFormat(undefined, { timeStyle: "medium" });
+
 function compact(value: string, left = 8, right = 6) {
   return value.length > left + right + 3 ? `${value.slice(0, left)}…${value.slice(-right)}` : value;
 }
@@ -40,7 +44,7 @@ function NetworkPanel({ snapshot }: { snapshot: WalletNetworkSnapshot }) {
         </div>
         <div className="wallet-ledger-stat">
           <span>Ledger</span>
-          <strong>{snapshot.ledgerIndex?.toLocaleString() ?? "—"}</strong>
+          <strong>{snapshot.ledgerIndex == null ? "—" : INTEGER_FORMAT.format(snapshot.ledgerIndex)}</strong>
         </div>
         <div className="wallet-ledger-stat">
           <span>Owned objects</span>
@@ -70,7 +74,7 @@ function NetworkPanel({ snapshot }: { snapshot: WalletNetworkSnapshot }) {
 
       <div className="wallet-table-wrap">
         <table className="wallet-table">
-          <thead><tr><th>Transaction</th><th>Direction</th><th>Amount</th><th>Result</th><th>Time</th></tr></thead>
+          <thead><tr><th scope="col">Transaction</th><th scope="col">Direction</th><th scope="col">Amount</th><th scope="col">Result</th><th scope="col">Time</th></tr></thead>
           <tbody>
             {snapshot.transactions.map((transaction) => (
               <tr key={transaction.hash}>
@@ -78,7 +82,7 @@ function NetworkPanel({ snapshot }: { snapshot: WalletNetworkSnapshot }) {
                 <td><span className={`wallet-direction ${transaction.direction}`}>{transaction.direction}</span></td>
                 <td>{txAmount(transaction)}</td>
                 <td>{transaction.result ?? "—"}</td>
-                <td>{transaction.timestamp ? new Date(transaction.timestamp).toLocaleString() : "—"}</td>
+                <td>{transaction.timestamp ? DATE_TIME_FORMAT.format(new Date(transaction.timestamp)) : "—"}</td>
               </tr>
             ))}
             {snapshot.transactions.length === 0 && (
@@ -119,12 +123,12 @@ export function WalletPage() {
         </button>
       </header>
 
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
       {wallet && (
         <>
           <div className="wallet-address-bar">
             <div><span>Public XRPL address</span><code>{wallet.address}</code></div>
-            <span>Updated {new Date(wallet.fetchedAt).toLocaleTimeString()}</span>
+            <span>Updated {TIME_FORMAT.format(new Date(wallet.fetchedAt))}</span>
           </div>
           <div className="wallet-networks">
             {wallet.networks.map((snapshot) => <NetworkPanel key={snapshot.network} snapshot={snapshot} />)}

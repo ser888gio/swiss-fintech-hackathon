@@ -1,5 +1,5 @@
 export function hashShort(h: string): string {
-  return `${h.slice(0, 10)}...`;
+  return `${h.slice(0, 10)}…`;
 }
 
 export function money(v: number | string): string {

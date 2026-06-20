@@ -228,22 +228,22 @@ function TradeFinancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
 
       <div className="ars-form-grid">
         <label><span>Invoice ID</span>
-          <input value={form.invoiceId} onChange={field("invoiceId")} spellCheck={false} />
+          <input name="invoice-id" autoComplete="off" value={form.invoiceId} onChange={field("invoiceId")} spellCheck={false} />
         </label>
         <label><span>Face amount (RLUSD)</span>
-          <input value={form.amount} onChange={field("amount")} />
+          <input name="receivable-amount" autoComplete="off" inputMode="decimal" value={form.amount} onChange={field("amount")} />
         </label>
         <label><span>Discount rate</span>
-          <input value={form.discountRate} onChange={field("discountRate")} placeholder="0.020000" />
+          <input name="discount-rate" autoComplete="off" inputMode="decimal" value={form.discountRate} onChange={field("discountRate")} placeholder="e.g. 0.020000…" />
         </label>
         <label><span>Buyer address</span>
-          <input value={form.buyer} onChange={field("buyer")} spellCheck={false} />
+          <input name="buyer-address" autoComplete="off" value={form.buyer} onChange={field("buyer")} spellCheck={false} />
         </label>
         <label><span>Supplier address</span>
-          <input value={form.supplier} onChange={field("supplier")} spellCheck={false} />
+          <input name="supplier-address" autoComplete="off" value={form.supplier} onChange={field("supplier")} spellCheck={false} />
         </label>
         <label><span>Due date (ISO)</span>
-          <input value={form.dueDate.slice(0, 10)} onChange={(e) => setForm((p) => ({ ...p, dueDate: `${e.target.value}T00:00:00Z` }))} type="date" />
+          <input name="due-date" autoComplete="off" value={form.dueDate.slice(0, 10)} onChange={(e) => setForm((p) => ({ ...p, dueDate: `${e.target.value}T00:00:00Z` }))} type="date" />
         </label>
       </div>
 
@@ -354,11 +354,11 @@ function X402Panel({ onLog }: { onLog: (l: LogLine) => void }) {
       </p>
 
       <label><span>Service URL</span>
-        <input value={serviceUrl} onChange={(e) => setServiceUrl(e.target.value)} spellCheck={false}
+        <input name="service-url" type="url" autoComplete="off" value={serviceUrl} onChange={(e) => setServiceUrl(e.target.value)} spellCheck={false}
           style={{ width: "100%" }} disabled={busy} />
       </label>
       <label style={{ marginTop: "0.5rem" }}><span>Service type</span>
-        <input value={serviceType} onChange={(e) => setServiceType(e.target.value)} disabled={busy} />
+        <input name="service-type" autoComplete="off" value={serviceType} onChange={(e) => setServiceType(e.target.value)} disabled={busy} />
       </label>
 
       <button className="primary-action" type="button" disabled={busy} style={{ marginTop: "0.75rem" }}
@@ -474,19 +474,19 @@ function DelegationPanel({ onLog }: { onLog: (l: LogLine) => void }) {
 
       <div className="ars-form-grid">
         <label><span>Parent address</span>
-          <input value={form.parentAddress} onChange={field("parentAddress")} spellCheck={false} />
+          <input name="parent-address" autoComplete="off" value={form.parentAddress} onChange={field("parentAddress")} spellCheck={false} />
         </label>
         <label><span>Child (sub-agent) address</span>
-          <input value={form.childAddress} onChange={field("childAddress")} spellCheck={false} />
+          <input name="child-address" autoComplete="off" value={form.childAddress} onChange={field("childAddress")} spellCheck={false} />
         </label>
         <label><span>Max total</span>
-          <input value={form.maxTotal} onChange={field("maxTotal")} />
+          <input name="max-total" autoComplete="off" inputMode="decimal" value={form.maxTotal} onChange={field("maxTotal")} />
         </label>
         <label><span>Max per tx</span>
-          <input value={form.maxPerTx} onChange={field("maxPerTx")} />
+          <input name="max-per-transaction" autoComplete="off" inputMode="decimal" value={form.maxPerTx} onChange={field("maxPerTx")} />
         </label>
         <label><span>Max per day</span>
-          <input value={form.maxPerDay} onChange={field("maxPerDay")} />
+          <input name="max-per-day" autoComplete="off" inputMode="decimal" value={form.maxPerDay} onChange={field("maxPerDay")} />
         </label>
       </div>
 
@@ -601,16 +601,20 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
     try {
       const q = await api.quoteInsurance({
         agentAddress: agent,
-        amount,
         scoreBand,
-        activeLines: lines,
-        txn: { category },
+        txnContext: {
+          category,
+          tenorBand: "short",
+          cptyBand: "standard",
+          amount,
+          activeLines: lines,
+        },
       });
       setQuote(q);
       onLog({
         ts: now(),
         kind: q.decision === "OFFER" ? "success" : "error",
-        text: `Quote ${q.decision} — premium ${q.premium} ${q.currency} · PD ${(q.pd * 100).toFixed(2)}% · Z ${(q.credibility * 100).toFixed(0)}%`,
+        text: `Quote ${q.decision} — premium ${q.premium} ${pool?.currency ?? "USD"} · PD ${(q.pd * 100).toFixed(2)}% · Z ${(q.credibility * 100).toFixed(0)}%`,
         txHash: q.receiptHash,
       });
       await refreshRisk(agent);
@@ -631,9 +635,9 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
       const rec = await api.bindInsurance({
         agentAddress: agent,
         jobId,
-        amount,
         scoreBand,
-        activeLines: lines,
+        currency: pool?.currency ?? "USD",
+        quote,
       });
       onLog({
         ts: now(),
@@ -660,16 +664,17 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
         jobId,
         agentAddress: agent,
         merchant,
-        line: lines[0] ?? "merchant_default",
-        loss: amount,
-        collateral: "0",
+        scoreBand,
+        currency: pool?.currency ?? "USD",
+        claimAmount: amount,
+        collateralAvailable: "0",
+        receiptHash: quote?.receiptHash,
       });
       onLog({
         ts: now(),
         kind: "success",
         text: `Payout — pool drew ${payout.poolDrawn} ${payout.currency}, merchant paid ${payout.totalPaid}. Principal score protected.`,
         txHash: payout.poolDrawTxHash ?? undefined,
-        explorerUrl: payout.explorerUrl ?? undefined,
         guardrailTrail: payout.guardrailTrail,
       });
       await Promise.all([refresh(), refreshRisk(agent)]);
@@ -744,32 +749,32 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
 
       <div className="ars-form-grid">
         <label><span>Agent address</span>
-          <input value={agent} onChange={(e) => setAgent(e.target.value)} spellCheck={false} />
+          <input name="insured-agent-address" autoComplete="off" value={agent} onChange={(e) => setAgent(e.target.value)} spellCheck={false} />
         </label>
         <label><span>Transaction amount</span>
-          <input value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <input name="insured-transaction-amount" autoComplete="off" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </label>
         <label><span>Score band</span>
-          <select value={scoreBand} onChange={(e) => setScoreBand(e.target.value)}>
+          <select name="insurance-score-band" autoComplete="off" value={scoreBand} onChange={(e) => setScoreBand(e.target.value)}>
             {SCORE_BANDS.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
         </label>
         <label><span>Category</span>
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+          <select name="insurance-category" autoComplete="off" value={category} onChange={(e) => setCategory(e.target.value)}>
             <option value="merchant_payment">merchant_payment</option>
             <option value="supplier_payment">supplier_payment</option>
             <option value="loan_repayment">loan_repayment</option>
           </select>
         </label>
         <label><span>Merchant (payout beneficiary)</span>
-          <input value={merchant} onChange={(e) => setMerchant(e.target.value)} spellCheck={false} />
+          <input name="merchant-address" autoComplete="off" value={merchant} onChange={(e) => setMerchant(e.target.value)} spellCheck={false} />
         </label>
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", margin: "0.5rem 0 1rem" }}>
         {ALL_LINES.map((line) => (
           <label key={line} style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.8rem" }}>
-            <input type="checkbox" checked={lines.includes(line)} onChange={() => toggleLine(line)} />
+            <input name="cover-lines" value={line} type="checkbox" checked={lines.includes(line)} onChange={() => toggleLine(line)} />
             {line}
           </label>
         ))}
@@ -793,13 +798,13 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
         <div className="ars-tx-card" style={{ marginTop: "1rem" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <span className={`dashboard-status ${decisionClass(quote.decision)}`}>{quote.decision}</span>
-            <strong>{quote.premium} {quote.currency}</strong>
+            <strong>{quote.premium} {pool?.currency ?? "USD"}</strong>
             {quote.reason && <span className="muted" style={{ fontSize: "0.75rem" }}>· {quote.reason}</span>}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginTop: "0.5rem" }}>
             <div><p className="muted">PD</p><strong>{(quote.pd * 100).toFixed(2)}%</strong></div>
             <div><p className="muted">Credibility Z</p><strong>{(quote.credibility * 100).toFixed(0)}%</strong></div>
-            <div><p className="muted">Band</p><strong>{quote.scoreBand ?? "—"}</strong></div>
+            <div><p className="muted">Band</p><strong>{scoreBand}</strong></div>
           </div>
           <div style={{ marginTop: "0.5rem" }}>
             {Object.entries(quote.lines).map(([line, prem]) => (
@@ -861,10 +866,10 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
       </div>
       <div className="ars-form-grid">
         <label><span>LP address</span>
-          <input value={lpAddress} onChange={(e) => setLpAddress(e.target.value)} spellCheck={false} />
+          <input name="lp-address" autoComplete="off" value={lpAddress} onChange={(e) => setLpAddress(e.target.value)} spellCheck={false} />
         </label>
         <label><span>Amount</span>
-          <input value={lpAmount} onChange={(e) => setLpAmount(e.target.value)} />
+          <input name="lp-amount" autoComplete="off" inputMode="decimal" value={lpAmount} onChange={(e) => setLpAmount(e.target.value)} />
         </label>
       </div>
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>

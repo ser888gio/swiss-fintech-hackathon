@@ -105,7 +105,7 @@ function PaymentOutcomeCard({ payment, onClaim, claiming }: {
       {isSettled(payment.status) && payment.cover?.decision === "OFFER" && (
         <button type="button" onClick={() => onClaim(payment)} disabled={claiming}
           style={{ padding: "0.25rem 0.75rem", fontSize: "0.75rem", borderRadius: 6, border: "1px solid rgba(248,113,113,0.4)", background: "rgba(248,113,113,0.08)", color: "#f87171", cursor: claiming ? "not-allowed" : "pointer", opacity: claiming ? 0.5 : 1 }}>
-          {claiming ? "Filing claim..." : "Simulate claim (merchant default)"}
+          {claiming ? "Filing claim…" : "Simulate Claim (Merchant Default)"}
         </button>
       )}
     </div>
@@ -205,7 +205,7 @@ function AgentCreateForm({ onCreated, onCancel }: { onCreated: (a: Agent) => voi
   const numField = (key: keyof AgentCreate, label: string, hint?: string) => (
     <label style={{ display: "flex", flexDirection: "column", gap: "0.15rem", fontSize: "0.75rem" }}>
       <span className="muted">{label}{hint ? <span style={{ marginLeft: "0.4rem", opacity: 0.6 }}>({hint})</span> : null}</span>
-      <input value={String(form[key] ?? "")} onChange={set(key)}
+      <input name={String(key)} autoComplete="off" inputMode="decimal" value={String(form[key] ?? "")} onChange={set(key)}
         style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.3rem 0.5rem", fontSize: "0.75rem" }} />
     </label>
   );
@@ -219,20 +219,20 @@ function AgentCreateForm({ onCreated, onCancel }: { onCreated: (a: Agent) => voi
 
       <label style={{ display: "flex", flexDirection: "column", gap: "0.15rem", fontSize: "0.75rem" }}>
         <span className="muted">Display name</span>
-        <input value={form.name} onChange={handleNameChange}
+        <input name="agent-name" autoComplete="off" value={form.name} onChange={handleNameChange}
           style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.3rem 0.5rem", fontSize: "0.75rem" }} />
       </label>
 
       <label style={{ display: "flex", flexDirection: "column", gap: "0.15rem", fontSize: "0.75rem" }}>
         <span className="muted">Agent ID <span style={{ opacity: 0.55 }}>(auto-generated from name)</span></span>
-        <input value={form.id} onChange={set("id")}
+        <input name="agent-id" autoComplete="off" value={form.id} onChange={set("id")} spellCheck={false}
           style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)", borderRadius: 6, color: "rgba(255,255,255,0.5)", padding: "0.3rem 0.5rem", fontSize: "0.75rem", fontFamily: "monospace" }} />
       </label>
 
       <label style={{ display: "flex", flexDirection: "column", gap: "0.15rem", fontSize: "0.75rem" }}>
         <span className="muted">Context <span style={{ opacity: 0.55 }}>(what this agent is responsible for)</span></span>
-        <textarea value={form.description} onChange={set("description")} rows={2}
-          placeholder="e.g. Responsible for paying cloud service providers (AWS, GCP, Azure). Only approved SaaS vendors."
+        <textarea name="agent-description" autoComplete="off" value={form.description} onChange={set("description")} rows={2}
+          placeholder="e.g. Responsible for paying approved cloud service providers…"
           style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.3rem 0.5rem", fontSize: "0.75rem", resize: "vertical", fontFamily: "inherit" }} />
       </label>
 
@@ -241,10 +241,10 @@ function AgentCreateForm({ onCreated, onCancel }: { onCreated: (a: Agent) => voi
         {numField("maxDailySpend", "Max per day (USD)")}
         {numField("requiresApprovalAbove", "Approval above (USD)", "≤ max per tx")}
       </div>
-      {err && <p style={{ color: "#f87171", fontSize: "0.75rem", margin: 0 }}>{err}</p>}
+      {err && <p role="alert" style={{ color: "#f87171", fontSize: "0.75rem", margin: 0 }}>{err}</p>}
       <button type="button" className="primary-action" disabled={saving} onClick={() => void submit()}
         style={{ minHeight: "unset", padding: "0.4rem", fontSize: "0.82rem", borderRadius: 8 }}>
-        {saving ? "Creating..." : "Create agent"}
+        {saving ? "Creating…" : "Create Agent"}
       </button>
     </div>
   );
@@ -313,25 +313,25 @@ function GoalList({ agentId, goals, onRefresh }: { agentId: string; goals: Treas
           ].map(({ key, label }) => (
             <label key={key} style={{ display: "flex", flexDirection: "column", gap: "0.15rem", fontSize: "0.74rem" }}>
               <span className="muted">{label}</span>
-              <input value={String(form[key as keyof TreasuryGoalCreate] ?? "")} onChange={fieldChange(key as keyof TreasuryGoalCreate)}
+              <input name={`goal-${key}`} autoComplete="off" value={String(form[key as keyof TreasuryGoalCreate] ?? "")} onChange={fieldChange(key as keyof TreasuryGoalCreate)}
                 style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.25rem 0.4rem", fontSize: "0.74rem" }} />
             </label>
           ))}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.4rem" }}>
             <label style={{ fontSize: "0.74rem", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
               <span className="muted">Amount</span>
-              <input type="number" value={form.amount} onChange={fieldChange("amount")}
+              <input name="goal-amount" autoComplete="off" inputMode="decimal" type="number" value={form.amount} onChange={fieldChange("amount")}
                 style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.25rem 0.4rem", fontSize: "0.74rem" }} />
             </label>
             <label style={{ fontSize: "0.74rem", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
               <span className="muted">Interval (h)</span>
-              <input type="number" value={form.triggerIntervalHours} onChange={fieldChange("triggerIntervalHours")} step={0.001}
+              <input name="goal-interval" autoComplete="off" inputMode="decimal" type="number" value={form.triggerIntervalHours} onChange={fieldChange("triggerIntervalHours")} step={0.001}
                 style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.25rem 0.4rem", fontSize: "0.74rem" }} />
             </label>
           </div>
           <button type="button" className="primary-action" disabled={adding} onClick={() => void addGoal()}
             style={{ minHeight: "unset", padding: "0.35rem", fontSize: "0.78rem", borderRadius: 8 }}>
-            {adding ? "Adding..." : "Add goal"}
+            {adding ? "Adding…" : "Add Goal"}
           </button>
         </div>
       )}
@@ -415,7 +415,7 @@ function PolicyEditor({ agent, onSaved, onCancel }: { agent: Agent; onSaved: (a:
   const field = (key: keyof AgentUpdate, label: string) => (
     <label style={{ display: "flex", flexDirection: "column", gap: "0.12rem", fontSize: "0.74rem" }}>
       <span className="muted">{label}</span>
-      <input value={String(f[key] ?? "")} onChange={set(key)}
+      <input name={`policy-${String(key)}`} autoComplete="off" inputMode="decimal" value={String(f[key] ?? "")} onChange={set(key)}
         style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.25rem 0.4rem", fontSize: "0.74rem" }} />
     </label>
   );
@@ -433,23 +433,23 @@ function PolicyEditor({ agent, onSaved, onCancel }: { agent: Agent; onSaved: (a:
       </div>
       <label style={{ fontSize: "0.74rem", display: "flex", flexDirection: "column", gap: "0.12rem" }}>
         <span className="muted">Allowed addresses (comma-sep, blank=any)</span>
-        <input value={(f.allowedAddresses ?? []).join(", ")} onChange={setArr("allowedAddresses")}
+        <input name="allowed-addresses" autoComplete="off" value={(f.allowedAddresses ?? []).join(", ")} onChange={setArr("allowedAddresses")} spellCheck={false}
           style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.25rem 0.4rem", fontSize: "0.74rem" }} />
       </label>
       <label style={{ fontSize: "0.74rem", display: "flex", flexDirection: "column", gap: "0.12rem" }}>
         <span className="muted">Blocked addresses (comma-sep)</span>
-        <input value={(f.blockedAddresses ?? []).join(", ")} onChange={setArr("blockedAddresses")}
+        <input name="blocked-addresses" autoComplete="off" value={(f.blockedAddresses ?? []).join(", ")} onChange={setArr("blockedAddresses")} spellCheck={false}
           style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.25rem 0.4rem", fontSize: "0.74rem" }} />
       </label>
       <label style={{ fontSize: "0.74rem", display: "flex", flexDirection: "column", gap: "0.12rem" }}>
         <span className="muted">Allowed categories (comma-sep, blank=any)</span>
-        <input value={(f.allowedCategories ?? []).join(", ")} onChange={setArr("allowedCategories")}
+        <input name="allowed-categories" autoComplete="off" value={(f.allowedCategories ?? []).join(", ")} onChange={setArr("allowedCategories")}
           style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.25rem 0.4rem", fontSize: "0.74rem" }} />
       </label>
-      {err && <p style={{ color: "#f87171", fontSize: "0.74rem", margin: 0 }}>{err}</p>}
+      {err && <p role="alert" style={{ color: "#f87171", fontSize: "0.74rem", margin: 0 }}>{err}</p>}
       <button type="button" className="primary-action" disabled={saving} onClick={() => void save()}
         style={{ minHeight: "unset", padding: "0.4rem", fontSize: "0.8rem", borderRadius: 8 }}>
-        {saving ? "Saving..." : "Save policy"}
+        {saving ? "Saving…" : "Save Policy"}
       </button>
     </div>
   );
@@ -570,7 +570,8 @@ function AgentDetail({ agent, onAgentUpdated, onAgentDeleted }: {
         merchantCountry: payment.intent.receiverCountry,
         scoreBand: "STANDARD",
         currency: payment.intent.currency,
-        collateral: "0.000000",
+        claimAmount: String(payment.intent.amount),
+        collateralAvailable: "0.000000",
       });
       setClaimResults((p) => ({ ...p, [payment.id]: payout }));
       await refresh();

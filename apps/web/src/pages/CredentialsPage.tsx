@@ -120,7 +120,7 @@ export function CredentialsPage() {
           <p className="muted">Deterministic code decides. The LLM only narrates the outcome.</p>
         </div>
 
-        {error && <p className="error">{error}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
 
         <section className="recipient-panel" aria-label="New credential">
           <div className="section-heading">
@@ -129,7 +129,7 @@ export function CredentialsPage() {
           </div>
           <label>
             <span>Saved subject</span>
-            <select value={subjectIndex} onChange={(e) => setSubjectIndex(Number(e.target.value))} disabled={busy}>
+            <select name="saved-subject" autoComplete="off" value={subjectIndex} onChange={(e) => setSubjectIndex(Number(e.target.value))} disabled={busy}>
               {SUBJECTS.map((option, index) => (
                 <option key={option.account} value={index}>
                   {option.label}
@@ -139,25 +139,26 @@ export function CredentialsPage() {
           </label>
           <label>
             <span>Subject name</span>
-            <input value={subjectName} onChange={(e) => setSubjectName(e.target.value)} disabled={busy} />
+            <input name="subject-name" autoComplete="off" value={subjectName} onChange={(e) => setSubjectName(e.target.value)} disabled={busy} />
           </label>
           <label>
             <span>Subject address</span>
-            <input value={subject} onChange={(e) => setSubject(e.target.value)} disabled={busy} spellCheck={false} />
+            <input name="subject-address" autoComplete="off" value={subject} onChange={(e) => setSubject(e.target.value)} disabled={busy} spellCheck={false} />
           </label>
           <div className="recipient-meta">
             <label>
               <span>Credential type</span>
-              <input value={credentialType} onChange={(e) => setCredentialType(e.target.value)} disabled={busy} />
+              <input name="credential-type" autoComplete="off" value={credentialType} onChange={(e) => setCredentialType(e.target.value)} disabled={busy} />
             </label>
             <label>
               <span>VC URI (off-chain)</span>
-              <input value={uri} onChange={(e) => setUri(e.target.value)} disabled={busy} spellCheck={false} />
+              <input name="credential-uri" type="url" autoComplete="off" value={uri} onChange={(e) => setUri(e.target.value)} disabled={busy} spellCheck={false} />
             </label>
           </div>
           <label className="checkbox-label">
             <input
               type="checkbox"
+              name="auto-accept"
               checked={autoAccept}
               onChange={(e) => setAutoAccept(e.target.checked)}
               disabled={busy}
@@ -175,7 +176,7 @@ export function CredentialsPage() {
           disabled={busy || subject.trim().length === 0}
           onClick={() => void submit()}
         >
-          {busy ? "Issuing..." : autoAccept ? "Issue & accept credential" : "Issue credential"}
+          {busy ? "Issuing…" : autoAccept ? "Issue & Accept Credential" : "Issue Credential"}
         </button>
 
         <section className="queue">

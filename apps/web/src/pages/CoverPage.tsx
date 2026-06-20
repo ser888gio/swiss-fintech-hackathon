@@ -227,15 +227,15 @@ export function CoverPage() {
           <div className="form-row" style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "1rem" }}>
             <label className="field-label">
               Cover cap (RLUSD)
-              <input className="field-input" type="number" value={coverCap} onChange={(e) => setCoverCap(e.target.value)} min="100" max="500000" />
+              <input className="field-input" name="cover-cap" autoComplete="off" inputMode="decimal" type="number" value={coverCap} onChange={(e) => setCoverCap(e.target.value)} min="100" max="500000" />
             </label>
             <label className="field-label">
               Per-claim limit (RLUSD)
-              <input className="field-input" type="number" value={perClaim} onChange={(e) => setPerClaim(e.target.value)} min="50" max="50000" />
+              <input className="field-input" name="per-claim-limit" autoComplete="off" inputMode="decimal" type="number" value={perClaim} onChange={(e) => setPerClaim(e.target.value)} min="50" max="50000" />
             </label>
             <label className="field-label">
               Term (days)
-              <input className="field-input" type="number" value={termDays} onChange={(e) => setTermDays(e.target.value)} min="30" max="365" />
+              <input className="field-input" name="term-days" autoComplete="off" inputMode="numeric" type="number" value={termDays} onChange={(e) => setTermDays(e.target.value)} min="30" max="365" />
             </label>
           </div>
           <div style={{ display: "flex", gap: "0.75rem" }}>

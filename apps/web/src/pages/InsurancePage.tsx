@@ -39,15 +39,14 @@ const CPTY_BANDS = ["low", "standard", "elevated", "high"];
 
 function PoolPanel({ pool }: { pool: PoolStatus | null }) {
   if (!pool) return <p className="muted">Loading pool status…</p>;
-  if (!pool.enabled) return <p className="muted">Insurance disabled — set INSURANCE_ENABLED=true to activate.</p>;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem" }}>
       {[
-        ["Available capacity", `${money(pool.availableCapacity)} ${pool.currency}`],
-        ["Deposited", `${money(pool.deposited)} ${pool.currency}`],
-        ["Wallet balance", `${money(pool.walletBalance)} ${pool.currency}`],
+        ["Available capacity", `${money(pool.firstLoss)} ${pool.currency}`],
+        ["LP capital", `${money(pool.lpCapital)} ${pool.currency}`],
+        ["Vault balance", `${money(pool.vaultBalance)} ${pool.currency}`],
         ["Premiums collected", `${money(pool.premiumsCollected)} ${pool.currency}`],
-        ["Claims paid", `${money(pool.claimsPaid)} ${pool.currency}`],
+        ["Claims paid", `${money(pool.payoutsMade)} ${pool.currency}`],
       ].map(([label, value]) => (
         <div key={label}>
           <span className="eyebrow">{label}</span>
@@ -164,31 +163,31 @@ function QuotePanel({ onBound }: { onBound: () => void }) {
 
       <div className="ars-form-grid">
         <label><span>Agent address</span>
-          <input value={form.agentAddress} onChange={field(setForm, "agentAddress")} spellCheck={false} />
+          <input name="agent-address" autoComplete="off" value={form.agentAddress} onChange={field(setForm, "agentAddress")} spellCheck={false} />
         </label>
         <label><span>Amount (USD)</span>
-          <input value={form.amount} onChange={field(setForm, "amount")} />
+          <input name="transaction-amount" autoComplete="off" inputMode="decimal" value={form.amount} onChange={field(setForm, "amount")} />
         </label>
         <label><span>Score band</span>
-          <select value={form.scoreBand} onChange={field(setForm, "scoreBand")}
+          <select name="score-band" autoComplete="off" value={form.scoreBand} onChange={field(setForm, "scoreBand")}
             style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.3rem 0.5rem" }}>
             {SCORE_BANDS.map((b) => <option key={b}>{b}</option>)}
           </select>
         </label>
         <label><span>Category</span>
-          <select value={form.category} onChange={field(setForm, "category")}
+          <select name="transaction-category" autoComplete="off" value={form.category} onChange={field(setForm, "category")}
             style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.3rem 0.5rem" }}>
             {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
           </select>
         </label>
         <label><span>Tenor</span>
-          <select value={form.tenorBand} onChange={field(setForm, "tenorBand")}
+          <select name="tenor-band" autoComplete="off" value={form.tenorBand} onChange={field(setForm, "tenorBand")}
             style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.3rem 0.5rem" }}>
             {TENOR_BANDS.map((t) => <option key={t}>{t}</option>)}
           </select>
         </label>
         <label><span>Counterparty risk</span>
-          <select value={form.cptyBand} onChange={field(setForm, "cptyBand")}
+          <select name="counterparty-band" autoComplete="off" value={form.cptyBand} onChange={field(setForm, "cptyBand")}
             style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.3rem 0.5rem" }}>
             {CPTY_BANDS.map((c) => <option key={c}>{c}</option>)}
           </select>
@@ -197,6 +196,7 @@ function QuotePanel({ onBound }: { onBound: () => void }) {
 
       <label className="checkbox-label" style={{ marginBottom: "0.75rem", marginTop: 0 }}>
         <input
+          name="first-seen"
           type="checkbox"
           checked={form.firstSeen}
           onChange={(e) => setForm((f) => ({ ...f, firstSeen: e.target.checked }))}
@@ -307,7 +307,7 @@ function AgentRiskPanel() {
       </p>
       {error && <p className="error">{error}</p>}
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-        <input value={address} onChange={(e) => setAddress(e.target.value)}
+        <input name="risk-agent-address" autoComplete="off" value={address} onChange={(e) => setAddress(e.target.value)}
           placeholder="XRPL address"
           style={{ flex: 1, background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.3rem 0.6rem", fontSize: "0.8rem" }}
         />

@@ -633,13 +633,13 @@ export interface PremiumQuote {
 }
 
 export interface PoolStatus {
-  enabled: boolean;
+  firstLoss: string;
   currency: string;
-  deposited: string;
-  walletBalance: string;
-  availableCapacity: string;
   premiumsCollected: string;
-  claimsPaid: string;
+  payoutsMade: string;
+  capacityRatio: number;
+  vaultBalance: string;
+  lpCapital: string;
 }
 
 export interface AgentRiskState {
@@ -686,27 +686,11 @@ export interface ClaimRequest {
   merchantCountry?: string;
   scoreBand?: string;
   currency?: string;
-  collateral?: string;
-}
-
-export interface AgentRiskState {
-  agentAddress: string;
-  scoreBand: string | null;
-  alpha: number;
-  beta: number;
-  pd: number;
-  credibility: number;
-  updatedAt: string;
-}
-
-export interface PoolStatus {
-  firstLoss: string;
-  currency: string;
-  premiumsCollected: string;
-  payoutsMade: string;
-  capacityRatio: number;
-  vaultBalance: string;        // on-ledger XLS-65 vault balance
-  lpCapital: string;           // total LP-provided capital
+  claimAmount: string;
+  collateralAvailable?: string;
+  amlScore?: number;
+  sanctioned?: boolean;
+  receiptHash?: string;
 }
 
 // Capital Provider (LP)

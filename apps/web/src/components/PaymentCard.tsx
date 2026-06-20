@@ -107,27 +107,28 @@ export function PaymentCard({
 
       {canResolveKyc && (
         <button
+          type="button"
           className="kyc-resolve"
           disabled={resolvingKyc}
           onClick={() => onResolveKyc?.(payment)}
         >
-          {resolvingKyc ? "Issuing credential..." : "Issue KYC credential & retry"}
+          {resolvingKyc ? "Issuing credential…" : "Issue KYC Credential & Retry"}
         </button>
       )}
 
       {status === "pending_approval" && (
-        <button className="approve" disabled={approving} onClick={() => onApprove(payment)}>
-          {approving ? "Waiting for Firefly..." : "Approve on Firefly"}
+        <button type="button" className="approve" disabled={approving} onClick={() => onApprove(payment)}>
+          {approving ? "Waiting for Firefly…" : "Approve on Firefly"}
         </button>
       )}
 
       {status === "released" && payment.approvalSignature && (
-        <button className="tamper-demo" disabled={tampering} onClick={() => onTamperRetry(payment)}>
-          {tampering ? "Testing..." : "Tamper & retry (DEMO)"}
+        <button type="button" className="tamper-demo" disabled={tampering} onClick={() => onTamperRetry(payment)}>
+          {tampering ? "Testing…" : "Tamper & Retry (Demo)"}
         </button>
       )}
 
-      {tamperError && <p className="tamper-error">{tamperError}</p>}
+      {tamperError && <p className="tamper-error" role="alert">{tamperError}</p>}
 
       {explorerUrl && (
         <a href={explorerUrl} target="_blank" rel="noreferrer">
@@ -142,12 +143,12 @@ export function PaymentCard({
 
       {isTerminal && (
         <div className="receipt-row">
-          <button className="receipt-btn" onClick={() => void downloadReceipt(payment)}>
+          <button type="button" className="receipt-btn" onClick={() => void downloadReceipt(payment)}>
             Download audit report (PDF)
           </button>
           {payment.receiptHash && (
             <code className="receipt-hash" title="SHA-256 of the canonical decision trail">
-              {payment.receiptHash.slice(0, 16)}...
+              {payment.receiptHash.slice(0, 16)}…
             </code>
           )}
         </div>

@@ -151,9 +151,6 @@ export function DashboardPage({ payments, approvingId, resolvingKycId, onApprove
       : new Date();
     return nextFire.getTime() <= Date.now() + sevenDaysMs;
   }), [goals]);
-  const upcomingTotal = upcomingGoals.reduce((sum, g) => sum + g.amount, 0);
-  const upcomingCurrency = upcomingGoals[0]?.currency ?? "USD";
-
   // Autonomous operations stats
   const totalPayments = agentStats?.totalPayments ?? 0;
   const totalBlocked = agentStats?.totalBlocked ?? 0;
@@ -235,7 +232,7 @@ export function DashboardPage({ payments, approvingId, resolvingKycId, onApprove
         </div>
         <div className="hero-actions">
           <button className="dashboard-primary" type="button" onClick={() => onNavigate("/transfer")}>New payment</button>
-          <button className="text-action" type="button" onClick={() => onNavigate("/agents")}>Run agents</button>
+          <button className="text-action" type="button" onClick={() => onNavigate("/treasury")}>Run agents</button>
         </div>
       </section>
 
@@ -255,14 +252,6 @@ export function DashboardPage({ payments, approvingId, resolvingKycId, onApprove
             <small>Reserved (escrowed)</small>
             <strong>{pendingApprovals.length > 0 ? money(reservedTotal, reservedCurrency) : "—"}</strong>
             <em>{pendingApprovals.length > 0 ? `${pendingApprovals.length} payment${pendingApprovals.length !== 1 ? "s" : ""} locked until approval` : "No funds locked"}</em>
-          </span>
-        </button>
-        <button type="button" onClick={() => onNavigate("/agents")} className="trust-metric metric-settled">
-          <span className="metric-icon" aria-hidden="true">✓</span>
-          <span>
-            <small>Due in 7 days</small>
-            <strong>{upcomingGoals.length > 0 ? money(upcomingTotal, upcomingCurrency) : "—"}</strong>
-            <em>{upcomingGoals.length > 0 ? `${upcomingGoals.length} obligation${upcomingGoals.length !== 1 ? "s" : ""} scheduled` : "No obligations due"}</em>
           </span>
         </button>
         <button
@@ -403,7 +392,7 @@ export function DashboardPage({ payments, approvingId, resolvingKycId, onApprove
       <section className="dashboard-panel" aria-label="Upcoming obligations">
         <div className="panel-heading">
           <div><span className="eyebrow">7-day schedule</span><h2>Upcoming obligations</h2></div>
-          <button className="text-action" type="button" onClick={() => onNavigate("/agents")}>Manage goals</button>
+          <button className="text-action" type="button" onClick={() => onNavigate("/treasury")}>Manage goals</button>
         </div>
         {upcomingGoals.length === 0 ? (
           <p className="muted">No obligations due in the next 7 days.</p>
@@ -516,7 +505,7 @@ export function DashboardPage({ payments, approvingId, resolvingKycId, onApprove
         <section className="dashboard-panel" aria-label="Agent mandates">
           <div className="panel-heading">
             <div><span className="eyebrow">Autonomous agents</span><h2>Agent mandates</h2></div>
-            <button className="text-action" type="button" onClick={() => onNavigate("/agents")}>Manage agents</button>
+            <button className="text-action" type="button" onClick={() => onNavigate("/treasury")}>Manage agents</button>
           </div>
           <div className="mandate-cards">
             {activeAgents.slice(0, 3).map(agent => {
@@ -599,8 +588,8 @@ export function DashboardPage({ payments, approvingId, resolvingKycId, onApprove
             <span>Audit trail <strong>current</strong></span>
           </div>
           <div className="control-indicator">
-            <span className={`health-dot ${pool?.enabled ? "online" : ""}`} />
-            <span>Insurance pool <strong>{pool?.enabled ? "active" : "offline"}</strong></span>
+            <span className={`health-dot ${pool && Number(pool.firstLoss) > 0 ? "online" : ""}`} />
+            <span>Insurance pool <strong>{pool && Number(pool.firstLoss) > 0 ? "active" : "offline"}</strong></span>
           </div>
           <div className="control-indicator">
             <span className={`health-dot ${creditRisk === "Low" ? "online" : ""}`} />
@@ -610,19 +599,19 @@ export function DashboardPage({ payments, approvingId, resolvingKycId, onApprove
       </section>
 
       {/* ── Insurance capacity (only if notable) ─────────────────────────── */}
-      {pool && (payouts.length > 0 || !pool.enabled) && (
+      {pool && payouts.length > 0 && (
         <section className="dashboard-panel cover-health" aria-label="Insurance pool">
           <div className="panel-heading">
             <div><span className="eyebrow">Insurance pool</span><h2>Capacity health</h2></div>
-            <span className={`health-dot ${pool.enabled ? "online" : ""}`} />
+            <span className={`health-dot ${Number(pool.firstLoss) > 0 ? "online" : ""}`} />
           </div>
           <div className="capacity-number">
-            <strong>{money(pool.availableCapacity, pool.currency ?? "USD")}</strong>
+            <strong>{money(pool.firstLoss, pool.currency ?? "USD")}</strong>
             <span>available</span>
           </div>
           <dl className="cover-facts">
             <div><dt>Premiums collected</dt><dd>{money(pool.premiumsCollected)}</dd></div>
-            <div><dt>Claims paid</dt><dd>{money(pool.claimsPaid)}</dd></div>
+            <div><dt>Claims paid</dt><dd>{money(pool.payoutsMade)}</dd></div>
           </dl>
           <button className="dashboard-primary" type="button" onClick={() => onNavigate("/insurance")}>Open insurance desk</button>
         </section>

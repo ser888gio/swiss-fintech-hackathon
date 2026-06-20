@@ -67,7 +67,7 @@ function appendDigit(current: string, digit: string) {
 }
 
 function formatRate(route: RouteQuote | null, currency: string) {
-  if (!route) return "Fetching live rate...";
+  if (!route) return "Fetching live rate…";
   if (currency === "XRP") return "Native XRP — settled 1:1, no FX";
   return `1 ${currency} = ${money(route.rate, "USD")}`;
 }
@@ -102,7 +102,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
   const sender = SENDERS[senderIndex];
   const networkFee = Math.max((routeQuote?.destAmount ?? amount) * 0.001, currency === "XRP" ? 0.000012 : 1.21);
   const receiveAmount = routeQuote?.destAmount ?? amount;
-  const recipientSummary = `${recipientCountry} - ${recipientEntityType} - ${recipientWallet.slice(0, 14)}...`;
+  const recipientSummary = `${recipientCountry} · ${recipientEntityType} · ${recipientWallet.slice(0, 14)}…`;
   const canReview = amount > 0 && reference.trim().length > 0 && recipientName.trim().length > 0 && recipientWallet.trim().length > 0 && !disabled;
 
   useEffect(() => {
@@ -138,13 +138,23 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
       }
     }
 
-    void refreshQuote();
+    const initialTimer = window.setTimeout(() => void refreshQuote(), 300);
     const timer = window.setInterval(() => void refreshQuote(), QUOTE_REFRESH_MS);
     return () => {
       cancelled = true;
+      window.clearTimeout(initialTimer);
       window.clearInterval(timer);
     };
   }, [amount, currency]);
+
+  useEffect(() => {
+    if (step !== "review" && step !== "verification") return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !disabled) setStep("input");
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [disabled, step]);
 
   const intent = useMemo<PaymentIntent>(
     () => ({
@@ -245,7 +255,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
         <div className="send-from-to">
           <label>
             <span>From</span>
-            <select value={senderIndex} onChange={(event) => setSenderIndex(Number(event.target.value))} disabled={disabled}>
+            <select name="sender" autoComplete="off" value={senderIndex} onChange={(event) => setSenderIndex(Number(event.target.value))} disabled={disabled}>
               {SENDERS.map((option, index) => (
                 <option key={option.label} value={index}>
                   {option.label} - {option.owner}
@@ -258,7 +268,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
           </span>
           <label>
             <span>To</span>
-            <select value={recipientIndex} onChange={(event) => setRecipientIndex(Number(event.target.value))} disabled={disabled}>
+            <select name="saved-recipient" autoComplete="off" value={recipientIndex} onChange={(event) => setRecipientIndex(Number(event.target.value))} disabled={disabled}>
               {RECIPIENTS.map((option, index) => (
                 <option key={option.account} value={index}>
                   {option.label}
@@ -279,6 +289,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
                 key={option}
                 type="button"
                 className={currency === option ? "active" : ""}
+                aria-pressed={currency === option}
                 onClick={() => setCurrency(option)}
                 disabled={disabled}
               >
@@ -296,20 +307,20 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
           <div className="recipient-fields">
             <label>
               <span>Recipient name</span>
-              <input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} disabled={disabled} />
+              <input name="recipient-name" autoComplete="off" value={recipientName} onChange={(event) => setRecipientName(event.target.value)} disabled={disabled} />
             </label>
             <label className="wallet-field">
               <span>Wallet address</span>
-              <input value={recipientWallet} onChange={(event) => setRecipientWallet(event.target.value)} disabled={disabled} spellCheck={false} />
+              <input name="recipient-wallet" autoComplete="off" value={recipientWallet} onChange={(event) => setRecipientWallet(event.target.value)} disabled={disabled} spellCheck={false} />
             </label>
             <div className="recipient-meta">
               <label>
                 <span>Country</span>
-                <input value={recipientCountry} onChange={(event) => setRecipientCountry(event.target.value)} disabled={disabled} maxLength={2} />
+                <input name="recipient-country" autoComplete="country" value={recipientCountry} onChange={(event) => setRecipientCountry(event.target.value)} disabled={disabled} maxLength={2} />
               </label>
               <label>
                 <span>Type</span>
-                <select value={recipientEntityType} onChange={(event) => setRecipientEntityType(event.target.value as "company" | "individual")} disabled={disabled}>
+                <select name="recipient-type" autoComplete="off" value={recipientEntityType} onChange={(event) => setRecipientEntityType(event.target.value as "company" | "individual")} disabled={disabled}>
                   <option value="company">Company</option>
                   <option value="individual">Individual</option>
                 </select>
@@ -321,11 +332,11 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
         <div className="send-ref-purpose">
           <label className="reference-field">
             <span>Reference</span>
-            <input value={reference} onChange={(event) => setReference(event.target.value)} disabled={disabled} />
+            <input name="payment-reference" autoComplete="off" value={reference} onChange={(event) => setReference(event.target.value)} disabled={disabled} />
           </label>
           <label className="reference-field">
             <span>Purpose</span>
-            <select value={purpose} onChange={(event) => setPurpose(event.target.value)} disabled={disabled}>
+            <select name="payment-purpose" autoComplete="off" value={purpose} onChange={(event) => setPurpose(event.target.value)} disabled={disabled}>
               <option value="supplier_payment">Supplier payment</option>
               <option value="vendor_invoice">Vendor invoice</option>
               <option value="treasury_transfer">Treasury transfer</option>
@@ -360,7 +371,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
             </div>
             <div>
               <span>Wallet</span>
-              <strong>{recipientWallet ? recipientWallet.slice(0, 18) : "Missing"}...</strong>
+              <strong>{recipientWallet ? `${recipientWallet.slice(0, 18)}…` : "Missing"}</strong>
             </div>
           </div>
           {quoteError && <p className="quote-error">Live rate unavailable. The payment will retry the quote on submit.</p>}
@@ -368,7 +379,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
 
         <div className="numpad" aria-label="Amount keypad">
           {NUMPAD.map((key) => (
-            <button key={key} type="button" disabled={disabled} onClick={() => setAmountInput((current) => appendDigit(current, key))}>
+            <button key={key} type="button" aria-label={key === "backspace" ? "Delete last digit" : `Enter ${key}`} disabled={disabled} onClick={() => setAmountInput((current) => appendDigit(current, key))}>
               {key === "backspace" ? "Del" : key}
             </button>
           ))}
@@ -433,7 +444,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
                   Purpose: {purpose.replaceAll("_", " ")}. Reference: {reference}.
                 </p>
                 <button className="send-money-action" type="button" disabled={disabled} onClick={() => void sendPayment()}>
-                  {disabled ? "Processing..." : "Send money"}
+                  {disabled ? "Processing…" : "Send Money"}
                 </button>
               </aside>
             </div>
@@ -448,7 +459,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
             <h2>Verification required</h2>
             <p>Please confirm this transaction on your Firefly.app device. Funds are locked until the signed approval is verified.</p>
             <div className="progress-line" />
-            <p className="muted">Waiting for Firefly.app confirmation in the payment queue...</p>
+            <p className="muted">Waiting for Firefly.app confirmation in the payment queue…</p>
             {kycMissing && (
               <div className="kyc-gate" role="group" aria-label="KYC credential gate">
                 <p>
@@ -461,15 +472,12 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
                   disabled={issuingCredential}
                   onClick={() => void issueCredentialAndRetry()}
                 >
-                  {issuingCredential ? "Issuing credential..." : "Issue KYC credential & retry"}
+                  {issuingCredential ? "Issuing credential…" : "Issue KYC Credential & Retry"}
                 </button>
               </div>
             )}
             <button className="primary-action" type="button" onClick={() => setStep("input")}>
               View queue
-            </button>
-            <button className="secondary-action" type="button">
-              Didn't get a notification?
             </button>
           </div>
         </div>

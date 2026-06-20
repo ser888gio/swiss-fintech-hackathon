@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import type { MouseEvent } from "react";
 import type { Payment, PaymentIntent } from "@treasury/shared";
 
 import { api } from "./lib/api.js";
 import { signOnFirefly } from "./lib/firefly.js";
-import { ARSPage } from "./pages/ARSPage.js";
-import { CoverPage } from "./pages/CoverPage.js";
-import { CredentialsPage } from "./pages/CredentialsPage.js";
 import { DashboardPage } from "./pages/DashboardPage.js";
-import { InsurancePage } from "./pages/InsurancePage.js";
-import { TransferPage } from "./pages/TransferPage.js";
-import { TreasuryPage } from "./pages/TreasuryPage.js";
-import { WalletPage } from "./pages/WalletPage.js";
+
+const ARSPage = lazy(() => import("./pages/ARSPage.js").then((module) => ({ default: module.ARSPage })));
+const CoverPage = lazy(() => import("./pages/CoverPage.js").then((module) => ({ default: module.CoverPage })));
+const CredentialsPage = lazy(() => import("./pages/CredentialsPage.js").then((module) => ({ default: module.CredentialsPage })));
+const InsurancePage = lazy(() => import("./pages/InsurancePage.js").then((module) => ({ default: module.InsurancePage })));
+const TransferPage = lazy(() => import("./pages/TransferPage.js").then((module) => ({ default: module.TransferPage })));
+const TreasuryPage = lazy(() => import("./pages/TreasuryPage.js").then((module) => ({ default: module.TreasuryPage })));
+const WalletPage = lazy(() => import("./pages/WalletPage.js").then((module) => ({ default: module.WalletPage })));
 
 type Route = "/" | "/transfer" | "/credentials" | "/treasury" | "/ars" | "/insurance" | "/wallet" | "/cover";
 
@@ -68,6 +70,12 @@ export function App() {
     }
     setRoute(nextRoute);
   }, []);
+
+  const followLink = useCallback((event: MouseEvent<HTMLAnchorElement>, path: string) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    navigate(path);
+  }, [navigate]);
 
   const submit = useCallback(
     async (intent: PaymentIntent) => {
@@ -165,48 +173,49 @@ export function App() {
   }, []);
 
   return (
-    <main className="app-shell">
+    <div className="app-shell">
+      <a className="skip-link" href="#main-content">Skip to Main Content</a>
       <aside className="app-sidebar">
         <nav className="app-nav" aria-label="Primary">
           <div className="brand-mark">
             <span className="brand-kicker">XRPL Treasury System</span>
-            <button className="brand-title" type="button" onClick={() => navigate("/")}>
+            <a className="brand-title" href="/" onClick={(event) => followLink(event, "/")}>
               Treasury Agent
-            </button>
+            </a>
             <p className="brand-copy">Deterministic payment controls with an AI orchestration layer.</p>
           </div>
           <div className="app-nav-links">
-            <button className={route === "/" ? "active" : ""} type="button" onClick={() => navigate("/")}>
+            <a className={route === "/" ? "active" : ""} href="/" aria-current={route === "/" ? "page" : undefined} onClick={(event) => followLink(event, "/")}>
               Dashboard
-            </button>
-            <button className={route === "/treasury" ? "active" : ""} type="button" onClick={() => navigate("/treasury")}>
+            </a>
+            <a className={route === "/treasury" ? "active" : ""} href="/treasury" aria-current={route === "/treasury" ? "page" : undefined} onClick={(event) => followLink(event, "/treasury")}>
               Agent
-            </button>
-            <button className={route === "/wallet" ? "active" : ""} type="button" onClick={() => navigate("/wallet")}>
+            </a>
+            <a className={route === "/wallet" ? "active" : ""} href="/wallet" aria-current={route === "/wallet" ? "page" : undefined} onClick={(event) => followLink(event, "/wallet")}>
               Shared wallet
-            </button>
-            <button className={route === "/cover" ? "active" : ""} type="button" onClick={() => navigate("/cover")}>
+            </a>
+            <a className={route === "/cover" ? "active" : ""} href="/cover" aria-current={route === "/cover" ? "page" : undefined} onClick={(event) => followLink(event, "/cover")}>
               Agent Cover
-            </button>
-            <button className={route === "/insurance" ? "active" : ""} type="button" onClick={() => navigate("/insurance")}>
+            </a>
+            <a className={route === "/insurance" ? "active" : ""} href="/insurance" aria-current={route === "/insurance" ? "page" : undefined} onClick={(event) => followLink(event, "/insurance")}>
               Insurance
-            </button>
-            <button className={route === "/ars" ? "active" : ""} type="button" onClick={() => navigate("/ars")}>
+            </a>
+            <a className={route === "/ars" ? "active" : ""} href="/ars" aria-current={route === "/ars" ? "page" : undefined} onClick={(event) => followLink(event, "/ars")}>
               ARS
-            </button>
-            <button className={route === "/credentials" ? "active" : ""} type="button" onClick={() => navigate("/credentials")}>
+            </a>
+            <a className={route === "/credentials" ? "active" : ""} href="/credentials" aria-current={route === "/credentials" ? "page" : undefined} onClick={(event) => followLink(event, "/credentials")}>
               Credentials
-            </button>
-            <button className={route === "/transfer" ? "active" : ""} type="button" onClick={() => navigate("/transfer")}>
+            </a>
+            <a className={route === "/transfer" ? "active" : ""} href="/transfer" aria-current={route === "/transfer" ? "page" : undefined} onClick={(event) => followLink(event, "/transfer")}>
               Transfer
-            </button>
+            </a>
           </div>
         </nav>
       </aside>
 
-      <section className="app-content">
+      <main className="app-content" id="main-content" tabIndex={-1}>
         <p className="tagline">Autonomous treasury on XRPL. The AI explains; deterministic code decides.</p>
-        {error && <p className="error">{error}</p>}
+        {error && <p className="error" role="alert" aria-live="polite">{error}</p>}
 
         {route === "/" && (
           <DashboardPage
@@ -218,27 +227,29 @@ export function App() {
             onNavigate={navigate}
           />
         )}
-        {route === "/transfer" && (
-          <TransferPage
-            payments={payments}
-            busy={busy}
-            approvingId={approvingId}
-            resolvingKycId={resolvingKycId}
-            tamperedId={tamperedId}
-            tamperError={tamperError}
-            onSubmit={submit}
-            onApprove={approve}
-            onResolveKyc={resolveKyc}
-            onTamperRetry={tamperAndRetry}
-          />
-        )}
-        {route === "/credentials" && <CredentialsPage />}
-        {route === "/treasury" && <TreasuryPage />}
-        {route === "/ars" && <ARSPage />}
-        {route === "/cover" && <CoverPage />}
-        {route === "/insurance" && <InsurancePage />}
-        {route === "/wallet" && <WalletPage />}
-      </section>
+        <Suspense fallback={<p className="route-loading" role="status">Loading workspace…</p>}>
+          {route === "/transfer" && (
+            <TransferPage
+              payments={payments}
+              busy={busy}
+              approvingId={approvingId}
+              resolvingKycId={resolvingKycId}
+              tamperedId={tamperedId}
+              tamperError={tamperError}
+              onSubmit={submit}
+              onApprove={approve}
+              onResolveKyc={resolveKyc}
+              onTamperRetry={tamperAndRetry}
+            />
+          )}
+          {route === "/credentials" && <CredentialsPage />}
+          {route === "/treasury" && <TreasuryPage />}
+          {route === "/ars" && <ARSPage />}
+          {route === "/cover" && <CoverPage />}
+          {route === "/insurance" && <InsurancePage />}
+          {route === "/wallet" && <WalletPage />}
+        </Suspense>
+      </main>
 
       {approvingId && (
         <div className="firefly-overlay" role="status" aria-live="polite">
@@ -247,10 +258,10 @@ export function App() {
             <h2>Confirm on Firefly.app</h2>
             <p>Check the payment details on the device and approve with the physical control.</p>
             <div className="progress-line" />
-            <p className="muted">Waiting for signed approval...</p>
+            <p className="muted">Waiting for signed approval…</p>
           </div>
         </div>
       )}
-    </main>
+    </div>
   );
 }
