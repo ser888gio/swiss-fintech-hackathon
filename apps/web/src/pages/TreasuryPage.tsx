@@ -656,9 +656,8 @@ function GoalsSidebar({
             <span className="eyebrow">XLS-33 · MPTokens</span>
             <strong>COMPLY compliance-attestation issuance</strong>
           </div>
-        )}
 
-        {goals.map((goal) => (
+          {goals.map((goal) => (
           <article key={goal.id} style={{
             padding: "0.6rem 0",
             borderBottom: "1px solid var(--border)",
@@ -686,41 +685,42 @@ function GoalsSidebar({
               remove
             </button>
           </article>
-        ))}
+          ))}
 
-        {showForm && (
-          <div style={{ marginTop: "0.75rem", display: "grid", gap: "0.5rem" }}>
-            {[
-              { key: "name", label: "Name" },
-              { key: "beneficiaryName", label: "Beneficiary" },
-              { key: "beneficiaryAddress", label: "XRPL address" },
-              { key: "reference", label: "Reference" },
-            ].map(({ key, label }) => (
-              <label key={key} style={{ display: "flex", flexDirection: "column", gap: "0.15rem", fontSize: "0.75rem" }}>
-                <span className="muted">{label}</span>
-                <input value={String(form[key as keyof TreasuryGoalCreate] ?? "")}
-                  onChange={fieldChange(key as keyof TreasuryGoalCreate)}
-                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.25rem 0.4rem", fontSize: "0.75rem" }} />
-              </label>
-            ))}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.4rem" }}>
-              <label style={{ fontSize: "0.75rem", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
-                <span className="muted">Amount</span>
-                <input type="number" value={form.amount} onChange={fieldChange("amount")}
-                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.25rem 0.4rem", fontSize: "0.75rem" }} />
-              </label>
-              <label style={{ fontSize: "0.75rem", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
-                <span className="muted">Interval (h)</span>
-                <input type="number" value={form.triggerIntervalHours} onChange={fieldChange("triggerIntervalHours")} step={0.001}
-                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.25rem 0.4rem", fontSize: "0.75rem" }} />
-              </label>
+          {showForm && (
+            <div style={{ marginTop: "0.75rem", display: "grid", gap: "0.5rem" }}>
+              {[
+                { key: "name", label: "Name" },
+                { key: "beneficiaryName", label: "Beneficiary" },
+                { key: "beneficiaryAddress", label: "XRPL address" },
+                { key: "reference", label: "Reference" },
+              ].map(({ key, label }) => (
+                <label key={key} style={{ display: "flex", flexDirection: "column", gap: "0.15rem", fontSize: "0.75rem" }}>
+                  <span className="muted">{label}</span>
+                  <input value={String(form[key as keyof TreasuryGoalCreate] ?? "")}
+                    onChange={fieldChange(key as keyof TreasuryGoalCreate)}
+                    style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.25rem 0.4rem", fontSize: "0.75rem" }} />
+                </label>
+              ))}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.4rem" }}>
+                <label style={{ fontSize: "0.75rem", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                  <span className="muted">Amount</span>
+                  <input type="number" value={form.amount} onChange={fieldChange("amount")}
+                    style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.25rem 0.4rem", fontSize: "0.75rem" }} />
+                </label>
+                <label style={{ fontSize: "0.75rem", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                  <span className="muted">Interval (h)</span>
+                  <input type="number" value={form.triggerIntervalHours} onChange={fieldChange("triggerIntervalHours")} step={0.001}
+                    style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.25rem 0.4rem", fontSize: "0.75rem" }} />
+                </label>
+              </div>
+              <button type="button" className="primary-action" disabled={adding} onClick={() => void runAdd(form, true)}
+                style={{ minHeight: "unset", padding: "0.4rem", fontSize: "0.8rem", borderRadius: 8 }}>
+                {adding ? "Adding..." : "Add goal"}
+              </button>
             </div>
-            <button type="button" className="primary-action" disabled={adding} onClick={() => void runAdd(form, true)}
-              style={{ minHeight: "unset", padding: "0.4rem", fontSize: "0.8rem", borderRadius: 8 }}>
-              {adding ? "Adding..." : "Add goal"}
-            </button>
-          </div>
-        )}
+          )}
+        </section>
       </section>
     </div>
   );
