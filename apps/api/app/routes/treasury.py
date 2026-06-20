@@ -332,7 +332,7 @@ async def trigger_service_payment(req: ServicePaymentRequest) -> X402Settlement:
         result = await orchestrator.process_service_payment(
             req.service_url, service_type=req.service_type
         )
-        return result.payment
+        return result
     except orchestrator.GuardrailBlocked as exc:
         raise HTTPException(status_code=403, detail=f"Guardrail {exc.guardrail} blocked: {exc.reason}")
     except Exception as exc:

@@ -32,6 +32,7 @@ import type {
   ReceivableCreate,
   RouteQuote,
   RuntimeStatus,
+  ServicePaymentRecord,
   TreasuryAgentRun,
   TreasuryGoal,
   TreasuryGoalCreate,
@@ -230,5 +231,10 @@ export const api = {
     request<TreasuryAgentRun>(`/agents/${agentId}/run`, { method: "POST" }),
   listAgentRuns: (agentId: string) => request<TreasuryAgentRun[]>(`/agents/${agentId}/runs`),
   getAgentStats: (agentId: string) => request<AgentDashboardStats>(`/agents/${agentId}/stats`),
+  seedMaersk: () => request<Agent[]>("/agents/seed-maersk", { method: "POST" }),
+  runController: () => request<TreasuryAgentRun>("/agents/controller/run", { method: "POST" }),
+  listServicePayments: (agentId?: string) => request<ServicePaymentRecord[]>(
+    `/agents/service-payments/history${agentId ? `?agent_id=${encodeURIComponent(agentId)}` : ""}`
+  ),
 };
 

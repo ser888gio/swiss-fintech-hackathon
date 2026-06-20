@@ -46,6 +46,29 @@ async def quote(request: InsuranceQuoteRequest) -> PremiumQuote:
     return engine.price(request.txn_context, seeded, pool, _policy())
 
 
+async def bind_service_cover(job_id: str, quote: PremiumQuote) -> PremiumQuote:
+    """Bind quoted service cover without collecting a premium payment.
+
+    This is the fleet integration seam owned by the insurance module. It emits
+    an audit fact and returns the quote attached to the service-payment record;
+    it deliberately does not call the premium-settlement `bind()` path.
+    """
+    from ..tools import audit_log
+    audit_log.append(
+        event_type="service_cover_bound",
+        actor="insurance_engine",
+        context_kind="service_payment",
+        payload={
+            "job_id": job_id,
+            "decision": quote.decision.value,
+            "premium_quote": quote.premium,
+            "receipt_hash": quote.receipt_hash,
+            "premium_collected": False,
+        },
+    )
+    return quote
+
+
 async def bind(request: BindRequest) -> InsurancePremiumRecord:
     now = datetime.now(timezone.utc)
     premium = Decimal(request.quote.premium).quantize(MONEY_QUANT, rounding=ROUND_DOWN)

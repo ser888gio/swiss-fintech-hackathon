@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from .models import Base
@@ -39,6 +40,21 @@ async def init_db(database_url: str) -> bool:
         async with asyncio.timeout(DB_STARTUP_TIMEOUT_SECONDS):
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all, checkfirst=True)
+                if conn.dialect.name == "postgresql":
+                    # create_all does not alter the pre-existing service_payments
+                    # table. Keep this additive upgrade safe for current Railway DBs.
+                    await conn.execute(text(
+                        "ALTER TABLE service_payments "
+                        "ADD COLUMN IF NOT EXISTS agent_id VARCHAR"
+                    ))
+                    await conn.execute(text(
+                        "ALTER TABLE service_payments "
+                        "ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'settled'"
+                    ))
+                    await conn.execute(text(
+                        "ALTER TABLE service_payments "
+                        "ADD COLUMN IF NOT EXISTS cover JSON"
+                    ))
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
         log.info("Postgres connected; audit store ready.")
         return True

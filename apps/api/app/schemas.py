@@ -478,7 +478,7 @@ class AgentCreate(CamelModel):
     currency: str = "RLUSD"
     allowed_categories: list[str] | None = None        # None=any, []=deny-all
     allowed_assets: list[str] = Field(default_factory=lambda: ["RLUSD"])
-    allowed_network: str = "XRPL"
+    allowed_network: str = "xrpl:1"
     allowed_addresses: list[str] | None = None         # None=any, []=deny-all
     blocked_addresses: list[str] = Field(default_factory=list)
     allowed_hosts: list[str] | None = None
@@ -507,6 +507,7 @@ class AgentUpdate(CamelModel):
     currency: str | None = None
     allowed_categories: list[str] | None = None
     allowed_assets: list[str] | None = None
+    allowed_network: str | None = None
     allowed_addresses: list[str] | None = None
     blocked_addresses: list[str] | None = None
     allowed_hosts: list[str] | None = None
@@ -555,6 +556,9 @@ class TreasuryGoal(CamelModel):
     trigger_interval_hours: float = 24.0
     last_triggered_at: datetime | None = None
     agent_id: str | None = None   # set for goals owned by a business agent
+    service_url: str | None = None
+    service_type: str | None = None
+    category: str | None = None
 
 
 class TreasuryGoalCreate(CamelModel):
@@ -571,6 +575,9 @@ class TreasuryGoalCreate(CamelModel):
     reference: str
     purpose: str
     trigger_interval_hours: float = 24.0
+    service_url: str | None = None
+    service_type: str | None = None
+    category: str | None = None
 
 
 class TreasuryAgentRun(CamelModel):
@@ -588,6 +595,7 @@ class TreasuryAgentRun(CamelModel):
     # LLM narration of the run — explains outcomes, never decides anything.
     narration: str | None = None
     status: str  # "completed" | "error"
+    agent_id: str | None = None
 
 
 # ── ARS Guardrails & Audit (Pillar 5) ─────────────────────────────────────────
@@ -688,6 +696,7 @@ class X402PaymentRequirement(CamelModel):
     network: str                # must match configured network
     amount: str                 # Decimal string from the challenge
     invoice_id: str             # anti-replay nonce
+    source_tag: int | None = None
     expires_at: datetime | None = None
 
 
@@ -702,12 +711,15 @@ class X402Settlement(CamelModel):
     currency: str
     guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
     audit_event_id: str | None = None
+    agent_id: str | None = None
 
 
 class ServicePaymentRecord(CamelModel):
     """Audit record for one x402 service payment."""
 
     id: str
+    agent_id: str | None = None
+    status: str = "settled"       # "settled" | "blocked"
     service_host: str
     invoice_id: str
     asset_currency: str
@@ -717,6 +729,7 @@ class ServicePaymentRecord(CamelModel):
     explorer_url: str | None = None
     guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
     audit_event_id: str | None = None
+    cover: PremiumQuote | None = None
     created_at: datetime
     updated_at: datetime
 

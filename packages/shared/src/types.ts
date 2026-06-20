@@ -303,6 +303,9 @@ export interface TreasuryGoal {
   triggerIntervalHours: number;
   lastTriggeredAt: string | null;
   agentId?: string | null;
+  serviceUrl?: string | null;
+  serviceType?: string | null;
+  category?: string | null;
 }
 
 export interface TreasuryGoalCreate {
@@ -317,6 +320,9 @@ export interface TreasuryGoalCreate {
   reference: string;
   purpose: string;
   triggerIntervalHours?: number;
+  serviceUrl?: string | null;
+  serviceType?: string | null;
+  category?: string | null;
 }
 
 export interface TreasuryAgentRun {
@@ -330,6 +336,7 @@ export interface TreasuryAgentRun {
   triggerLog: string[];
   narration: string | null;
   status: string; // "completed" | "error"
+  agentId?: string | null;
 }
 
 // Firefly bridge contract (browser <-> localhost bridge).
@@ -393,6 +400,7 @@ export interface AgentUpdate {
   currency?: string;
   allowedCategories?: string[] | null;
   allowedAssets?: string[] | null;
+  allowedNetwork?: string | null;
   allowedAddresses?: string[] | null;
   blockedAddresses?: string[] | null;
   allowedHosts?: string[] | null;
@@ -488,6 +496,7 @@ export interface X402PaymentRequirement {
   network: string;
   amount: string;              // Decimal string
   invoiceId: string;
+  sourceTag: number | null;
   expiresAt: string | null;
 }
 
@@ -500,10 +509,13 @@ export interface X402Settlement {
   currency: string;
   guardrailTrail: GuardrailResult[];
   auditEventId: string | null;
+  agentId: string | null;
 }
 
 export interface ServicePaymentRecord {
   id: string;
+  agentId: string | null;
+  status: "settled" | "blocked";
   serviceHost: string;
   invoiceId: string;
   assetCurrency: string;
@@ -513,6 +525,7 @@ export interface ServicePaymentRecord {
   explorerUrl: string | null;
   guardrailTrail: GuardrailResult[];
   auditEventId: string | null;
+  cover: PremiumQuote | null;
   createdAt: string;
   updatedAt: string;
 }

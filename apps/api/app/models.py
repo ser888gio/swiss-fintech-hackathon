@@ -155,6 +155,8 @@ class ServicePaymentRecord(Base):
     __tablename__ = "service_payments"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    agent_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String, default="settled", index=True)
     service_host: Mapped[str] = mapped_column(String, index=True)
     invoice_id: Mapped[str] = mapped_column(String, unique=True)    # anti-replay
     asset_currency: Mapped[str] = mapped_column(String)
@@ -164,6 +166,7 @@ class ServicePaymentRecord(Base):
     explorer_url: Mapped[str | None] = mapped_column(String, nullable=True)
     guardrail_trail: Mapped[list | None] = mapped_column(JSON, nullable=True)
     audit_event_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    cover: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
@@ -298,7 +301,7 @@ class AgentRecord(Base):
     requires_approval_above: Mapped[str] = mapped_column(String) # Decimal string
     allowed_categories: Mapped[list | None] = mapped_column(JSON, nullable=True)
     allowed_assets: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    allowed_network: Mapped[str] = mapped_column(String, default="XRPL")
+    allowed_network: Mapped[str] = mapped_column(String, default="xrpl:1")
     allowed_addresses: Mapped[list | None] = mapped_column(JSON, nullable=True)
     blocked_addresses: Mapped[list | None] = mapped_column(JSON, nullable=True)
     allowed_hosts: Mapped[list | None] = mapped_column(JSON, nullable=True)
@@ -309,3 +312,43 @@ class AgentRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
     )
+
+
+class AgentSpendReservationRecord(Base):
+    """Durable velocity reservation keyed by business agent, not wallet."""
+
+    __tablename__ = "agent_spend_reservations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    agent_id: Mapped[str] = mapped_column(String, index=True)
+    idempotency_key: Mapped[str] = mapped_column(String)
+    amount: Mapped[str] = mapped_column(String)
+    currency: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    __table_args__ = (
+        UniqueConstraint("agent_id", "idempotency_key", name="uq_agent_spend_reservation"),
+        Index("ix_agent_spend_agent_status", "agent_id", "status"),
+    )
+
+
+class TreasuryGoalRecord(Base):
+    __tablename__ = "treasury_goals"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    agent_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    payload: Mapped[dict] = mapped_column(JSON)
+    last_triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class TreasuryAgentRunRecord(Base):
+    __tablename__ = "treasury_agent_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    agent_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    payload: Mapped[dict] = mapped_column(JSON)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

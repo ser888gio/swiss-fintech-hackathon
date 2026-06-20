@@ -141,7 +141,7 @@ class Settings(BaseSettings):
     # Allowed assets and facilitators are allowlisted here; the x402 tool rejects
     # any challenge that requests a currency or facilitator not in these lists.
     # Agent spend scope (G4): caps per single x402 call and rolling 24-hour window.
-    x402_enabled: bool = False
+    x402_enabled: bool = True
     x402_facilitator_url: str = "https://xrpl-facilitator-testnet.t54.ai"
     x402_allowed_assets: str = "RLUSD"          # comma-separated currency codes
     x402_allowed_facilitators: str = "https://xrpl-facilitator-testnet.t54.ai"  # comma-sep URLs
@@ -152,6 +152,12 @@ class Settings(BaseSettings):
     x402_demo_enabled: bool = False             # local/test merchant resource only
     x402_demo_pay_to: str = ""                  # trust-lined Testnet recipient
     x402_demo_price: str = "1.000000"           # exact RLUSD amount
+    # Distinct trust-lined Testnet merchant accounts for the Maersk fleet demo.
+    x402_repair_yard_pay_to: str = ""
+    x402_customs_pay_to: str = ""
+    x402_port_authority_pay_to: str = ""
+    x402_bunker_fuel_pay_to: str = ""
+    x402_marine_insurance_pay_to: str = ""
 
     # ARS Agent-to-Agent Delegation (G5). When enabled, the orchestrator accepts
     # grant_delegation / sub-agent payment calls. delegation_default_max_total is

@@ -9,6 +9,7 @@ import type {
   Payment,
   PoolStatus,
   RuntimeStatus,
+  ServicePaymentRecord,
   TreasuryAgentRun,
   TreasuryGoal,
   TreasuryGoalCreate,
@@ -166,7 +167,7 @@ const DEFAULT_AGENT: AgentCreate = {
   requiresApprovalAbove: "25",
   currency: "RLUSD",
   allowedAssets: ["RLUSD"],
-  allowedNetwork: "XRPL",
+  allowedNetwork: "xrpl:1",
   requireKnownMerchant: false,
 };
 
@@ -675,6 +676,10 @@ export function TreasuryPage() {
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [fleetStats, setFleetStats] = useState<Record<string, AgentDashboardStats>>({});
+  const [servicePayments, setServicePayments] = useState<ServicePaymentRecord[]>([]);
+  const [controllerRunning, setControllerRunning] = useState(false);
+  const [fleetMessage, setFleetMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const [a, p, r] = await Promise.allSettled([
@@ -685,6 +690,12 @@ export function TreasuryPage() {
     if (a.status === "fulfilled") setAgents(a.value);
     if (p.status === "fulfilled") setPool(p.value);
     if (r.status === "fulfilled") setRuntime(r.value);
+    if (a.status === "fulfilled") {
+      const fleet = a.value.filter((agent) => agent.id.endsWith("-bot"));
+      const stats = await Promise.all(fleet.map(async (agent) => [agent.id, await api.getAgentStats(agent.id)] as const));
+      setFleetStats(Object.fromEntries(stats));
+    }
+    setServicePayments(await api.listServicePayments().catch(() => []));
     setLoading(false);
   }, []);
 
@@ -707,6 +718,27 @@ export function TreasuryPage() {
     setSelectedId(null);
   };
 
+  const seedFleet = async () => {
+    setFleetMessage("Seeding controller and five policy-scoped agents…");
+    await api.seedMaersk();
+    await refresh();
+    setFleetMessage("Maersk fleet ready.");
+  };
+
+  const runFleet = async () => {
+    setControllerRunning(true);
+    setFleetMessage("Controller is running all five subagents…");
+    try {
+      const run = await api.runController();
+      setFleetMessage(`${run.goalsTriggered} service payment(s) settled; blocked attempts remain visible below.`);
+      await refresh();
+    } finally {
+      setControllerRunning(false);
+    }
+  };
+
+  const fleet = agents.filter((agent) => agent.id.endsWith("-bot"));
+
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto" }}>
       {/* Page header */}
@@ -719,6 +751,10 @@ export function TreasuryPage() {
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <button type="button" className="text-action" onClick={() => void seedFleet()}>Seed Maersk fleet</button>
+          <button type="button" className="primary-action" disabled={controllerRunning || fleet.length === 0} onClick={() => void runFleet()} style={{ minHeight: "unset", padding: "0.4rem 0.8rem" }}>
+            {controllerRunning ? "Running controller…" : "Run controller"}
+          </button>
           <span title={runtime ? `XRPL ${runtime.network}; Firefly confirmation ${runtime.fireflyConfirmationEnabled ? "enabled" : "disabled"}` : "Runtime status unavailable"} style={{
             fontSize: "0.7rem", padding: "0.2rem 0.6rem", borderRadius: 999,
             border: runtime?.mockMode
@@ -732,6 +768,38 @@ export function TreasuryPage() {
       </div>
 
       <PoolStrip pool={pool} />
+
+      {fleet.length > 0 && (
+        <section style={{ marginBottom: "1.25rem", display: "grid", gap: "0.75rem" }} aria-label="Maersk treasury agent fleet">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+            <div><span className="eyebrow">Maersk Treasury Fleet</span><strong style={{ marginLeft: "0.6rem" }}>5 subagents · one shared wallet</strong></div>
+            {fleetMessage && <span className="muted" style={{ fontSize: "0.72rem" }}>{fleetMessage}</span>}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "0.55rem" }}>
+            {fleet.map((agent) => {
+              const stats = fleetStats[agent.id];
+              return <div key={agent.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "0.7rem", background: "rgba(255,255,255,0.025)" }}>
+                <strong style={{ fontSize: "0.78rem" }}>{agent.name}</strong>
+                <div className="muted" style={{ fontSize: "0.68rem", marginTop: "0.2rem" }}>{agent.allowedCategories?.[0] ?? "scoped"}</div>
+                <div style={{ fontSize: "0.7rem", marginTop: "0.45rem" }}>{stats?.amountSpentToday ?? "0"} / {agent.maxDailySpend} RLUSD</div>
+                <div className="muted" style={{ fontSize: "0.66rem" }}>tx cap {agent.maxSinglePayment} · blocked {stats?.totalBlocked ?? 0}</div>
+              </div>;
+            })}
+          </div>
+          <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "0.7rem 0.9rem" }}>
+            <span className="eyebrow">x402 settlement feed</span>
+            {servicePayments.length === 0 && <span className="muted" style={{ marginLeft: "0.7rem", fontSize: "0.72rem" }}>No service attempts yet.</span>}
+            <div style={{ display: "grid", gap: "0.25rem", marginTop: servicePayments.length ? "0.45rem" : 0 }}>
+              {servicePayments.slice(0, 12).map((payment) => <div key={payment.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem" }}>
+                <span><strong>{payment.agentId ?? "shared"}</strong> · {payment.amount} {payment.assetCurrency} · {payment.serviceHost}</span>
+                <span style={{ color: payment.status === "settled" ? "#6ee7b7" : "#f87171", fontWeight: 800 }}>
+                  {payment.explorerUrl ? <a href={payment.explorerUrl} target="_blank" rel="noreferrer">{payment.status} ↗</a> : payment.status}
+                </span>
+              </div>)}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Two-column layout */}
       <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: "1.5rem", alignItems: "start" }}>

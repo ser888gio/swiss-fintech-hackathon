@@ -19,6 +19,7 @@ Invariant enforced here:
 from __future__ import annotations
 
 import uuid
+import asyncio
 from datetime import datetime, timezone
 
 from ..config import get_settings
@@ -50,11 +51,15 @@ _agent_run_lock: dict[str, bool] = {}
 
 def add_goal(goal: TreasuryGoal) -> TreasuryGoal:
     _goals[goal.id] = goal
+    _schedule(_persist_goal(goal))
     return goal
 
 
 def remove_goal(goal_id: str) -> bool:
-    return _goals.pop(goal_id, None) is not None
+    removed = _goals.pop(goal_id, None) is not None
+    if removed:
+        _schedule(_delete_goal(goal_id))
+    return removed
 
 
 def get_goal(goal_id: str) -> TreasuryGoal | None:
@@ -73,11 +78,15 @@ def list_runs() -> list[TreasuryAgentRun]:
 
 def add_agent_goal(agent_id: str, goal: TreasuryGoal) -> TreasuryGoal:
     _agent_goals.setdefault(agent_id, {})[goal.id] = goal
+    _schedule(_persist_goal(goal.model_copy(update={"agent_id": agent_id})))
     return goal
 
 
 def remove_agent_goal(agent_id: str, goal_id: str) -> bool:
-    return _agent_goals.get(agent_id, {}).pop(goal_id, None) is not None
+    removed = _agent_goals.get(agent_id, {}).pop(goal_id, None) is not None
+    if removed:
+        _schedule(_delete_goal(goal_id))
+    return removed
 
 
 def get_agent_goal(agent_id: str, goal_id: str) -> TreasuryGoal | None:
@@ -182,7 +191,7 @@ async def run(goals: list[TreasuryGoal] | None = None) -> TreasuryAgentRun:
         if settings.mpt_enabled and payment.status == PaymentStatus.settled:
             await _mint_compliance_attestation(payment, trigger_log, settings)
         # Update last_triggered_at on the stored goal.
-        _goals[goal.id] = goal.model_copy(update={"last_triggered_at": now})
+        add_goal(goal.model_copy(update={"last_triggered_at": now}))
 
     # Deterministic vault sweep: deposit excess above threshold, recall when low.
     # Only runs when vault_enabled=True; never the LLM's decision.
@@ -203,6 +212,7 @@ async def run(goals: list[TreasuryGoal] | None = None) -> TreasuryAgentRun:
         status="completed",
     )
     _runs.append(agent_run)
+    _schedule(_persist_run(agent_run))
     return agent_run
 
 
@@ -244,11 +254,34 @@ async def run_for_agent(agent_id: str, agent_scope: "AgentScope") -> TreasuryAge
                 payments_skipped.append(goal.id)
                 continue
 
-            intent = _build_intent(goal, settings)
             try:
+                if goal.service_url:
+                    settlement = await orchestrator.process_service_payment(
+                        goal.service_url,
+                        service_type=goal.service_type or "service",
+                        agent_id=agent_id,
+                        agent_scope=agent_scope,
+                        category=goal.category or goal.purpose,
+                    )
+                    payments_initiated.append(settlement.invoice_id)
+                    trigger_log.append(
+                        f"  → x402 settled invoice {settlement.invoice_id[:12]}… "
+                        f"amount={settlement.amount} {settlement.currency}"
+                    )
+                    updated = goal.model_copy(update={"last_triggered_at": now})
+                    add_agent_goal(agent_id, updated)
+                    continue
+                intent = _build_intent(goal, settings)
                 payment = await orchestrator.process_payment(
                     intent, agent_id=agent_id, agent_scope=agent_scope
                 )
+            except orchestrator.GuardrailBlocked as exc:
+                trigger_log.append(f"  blocked: {exc.reason}")
+                payments_skipped.append(goal.id)
+                add_agent_goal(
+                    agent_id, goal.model_copy(update={"last_triggered_at": now})
+                )
+                continue
             except Exception as exc:
                 trigger_log.append(f"  ✗ payment initiation failed: {exc}")
                 payments_skipped.append(goal.id)
@@ -262,7 +295,7 @@ async def run_for_agent(agent_id: str, agent_scope: "AgentScope") -> TreasuryAge
             if settings.mpt_enabled and payment.status == PaymentStatus.settled:
                 await _mint_compliance_attestation(payment, trigger_log, settings)
             updated = goal.model_copy(update={"last_triggered_at": now})
-            _agent_goals.setdefault(agent_id, {})[goal.id] = updated
+            add_agent_goal(agent_id, updated)
 
     finally:
         _agent_run_lock[agent_id] = False
@@ -280,9 +313,97 @@ async def run_for_agent(agent_id: str, agent_scope: "AgentScope") -> TreasuryAge
         trigger_log=trigger_log,
         narration=narration,
         status="completed",
+        agent_id=agent_id,
     )
     _agent_runs.setdefault(agent_id, []).append(agent_run)
+    _schedule(_persist_run(agent_run))
     return agent_run
+
+
+async def load_agent_state_from_db() -> None:
+    """Hydrate durable goals and runs after agents have loaded."""
+    from sqlalchemy import select
+    from .. import db
+    from ..models import TreasuryAgentRunRecord, TreasuryGoalRecord
+
+    if db.session_factory is None:
+        return
+    async with db.session_factory() as session:
+        goal_rows = (await session.execute(select(TreasuryGoalRecord))).scalars().all()
+        run_rows = (await session.execute(select(TreasuryAgentRunRecord))).scalars().all()
+    for row in goal_rows:
+        goal = TreasuryGoal(**row.payload)
+        if row.agent_id:
+            _agent_goals.setdefault(row.agent_id, {}).setdefault(goal.id, goal)
+        else:
+            _goals.setdefault(goal.id, goal)
+    for row in run_rows:
+        run = TreasuryAgentRun(**row.payload)
+        if row.agent_id:
+            bucket = _agent_runs.setdefault(row.agent_id, [])
+        else:
+            bucket = _runs
+        if not any(existing.id == run.id for existing in bucket):
+            bucket.append(run)
+
+
+def _schedule(coro) -> None:
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(coro)
+            return
+    except RuntimeError:
+        pass
+    coro.close()
+
+
+async def _persist_goal(goal: TreasuryGoal) -> None:
+    from .. import db
+    from ..models import TreasuryGoalRecord
+    if db.session_factory is None:
+        return
+    try:
+        async with db.session_factory() as session:
+            await session.merge(TreasuryGoalRecord(
+                id=goal.id,
+                agent_id=goal.agent_id,
+                payload=goal.model_dump(mode="json", by_alias=False),
+                last_triggered_at=goal.last_triggered_at,
+            ))
+            await session.commit()
+    except Exception:
+        return
+
+
+async def _delete_goal(goal_id: str) -> None:
+    from sqlalchemy import delete
+    from .. import db
+    from ..models import TreasuryGoalRecord
+    if db.session_factory is None:
+        return
+    async with db.session_factory() as session:
+        await session.execute(delete(TreasuryGoalRecord).where(TreasuryGoalRecord.id == goal_id))
+        await session.commit()
+
+
+async def _persist_run(run: TreasuryAgentRun) -> None:
+    from .. import db
+    from ..models import TreasuryAgentRunRecord
+    if db.session_factory is None:
+        return
+    try:
+        async with db.session_factory() as session:
+            await session.merge(TreasuryAgentRunRecord(
+                id=run.id,
+                agent_id=run.agent_id,
+                payload=run.model_dump(mode="json", by_alias=False),
+                started_at=run.started_at,
+                completed_at=run.completed_at,
+            ))
+            await session.commit()
+    except Exception:
+        return
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

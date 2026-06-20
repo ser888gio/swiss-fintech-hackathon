@@ -141,6 +141,8 @@ credential checks, Firefly approval verification, or audit trail.
 | **Firefly approval tool** | Deterministic | `app/tools/firefly.py` | Builds the approval challenge, verifies the Firefly signature, then triggers release. |
 | **Audit tool** | LLM-assisted | `app/tools/audit.py` | Writes a human-readable explanation of each decision to Postgres. |
 | **Shared wallet tool** | Deterministic, read-only | `app/tools/wallet.py` | Derives only the configured treasury public address server-side and reads its XRP/token balances and validated transaction history from Testnet and Devnet. |
+| **x402 service-payment tool** | Deterministic | `app/tools/x402.py` | Fetches and validates a 402 requirement, submits a direct RLUSD Payment with `xrpl-py`, and retries with invoice-bound ledger proof. Policy and agent reservations are enforced by the orchestrator before settlement. |
+| **Simulated merchant router** | Deterministic | `app/routes/merchants.py` | Represents five distinct counterparties inside the existing API deploy and releases resources only after exact validated-ledger verification. |
 
 ## The policy boundary (the core innovation)
 
@@ -182,6 +184,14 @@ in `app/schemas.py` and mirror `packages/shared/src/types.ts`.
   signature against `FIREFLY_PUBLIC_KEY`, then submits EscrowFinish.
 - `write_audit(payment_id, decision_trail) -> None`.
 - `get_overview() -> WalletOverview` — read-only `{ address, fetched_at, networks[] }`, where each network contains its independent funds, recent validated transactions, and explorer links.
+- `fetch_requirement(service_url) -> X402PaymentRequirement` — performs the
+  initial GET and validates asset, issuer, network, facilitator, and positive
+  amount without moving funds.
+- `settle_x402(requirement) -> X402Settlement` — submits the direct RLUSD
+  Payment with SourceTag and invoice memo after the orchestrator's full-scope
+  policy gate and agent-keyed reservation.
+- `retry_with_proof(requirement, settlement) -> ServiceResponse` — retries with
+  the invoice-bound transaction proof and requires a successful merchant response.
 
 ## Hardware veto — chosen approach
 

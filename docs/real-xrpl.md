@@ -234,3 +234,18 @@ the same public address may be funded on one and inactive on the other. Override
 the read-only endpoints with `WALLET_TESTNET_ENDPOINT` and
 `WALLET_DEVNET_ENDPOINT` when needed. These queries never expose or use the
 signing seed in the browser.
+
+## Maersk x402 fleet assumptions (2026-06-20)
+
+- Network identifier is `xrpl:1`; the websocket endpoint is XRPL Testnet.
+- RLUSD uses issuer `rQhWct2fv4Vc4KRjRgMrxa8xPN9Zx9iLKV`. Each configured
+  merchant account needs its own Testnet RLUSD trust line before live use.
+- Settlement is an `xrpl-py` issued-currency `Payment` submitted directly by
+  the Python API. This is an x402-style challenge/pay/retry flow, not a claim
+  that the t54 facilitator submitted the transaction.
+- Each merchant verifies `validated`, `tesSUCCESS`, payer, destination, exact
+  issued amount/issuer, SourceTag, and invoice memo before releasing content.
+- The five role agents share the treasury wallet. Daily velocity accounting is
+  keyed by `agent_id`, so one agent cannot consume another agent's policy cap.
+- x402 review outcomes are hard blocks. Firefly approval remains on the separate
+  institutional direct-payment escrow path.

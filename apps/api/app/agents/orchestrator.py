@@ -21,7 +21,7 @@ from ..insurance import binding as insurance_binding
 from ..insurance import engine as insurance_engine
 from ..policy import engine
 from ..policy.guardrail import evaluate_guardrails
-from ..policy.scope import AgentScope
+from ..policy.scope import AgentScope, evaluate_scope
 from ..schemas import (
     AgentLogEntry,
     BindRequest,
@@ -36,6 +36,7 @@ from ..schemas import (
     PolicyDecision,
     Receivable,
     ReceivableCreate,
+    ServicePaymentRecord,
     X402Settlement,
 )
 from ..tools import audit, compliance, credentials, execution, firefly, receipt, routing
@@ -167,7 +168,7 @@ async def process_payment(
         receipt_hash=receipt.compute_decision_hash(payment),
     )
 
-    if settings.insurance_enabled and insurance_engine.cover_requirement(
+    if getattr(settings, "insurance_enabled", False) and insurance_engine.cover_requirement(
         intent.cover_required,
         amount_usd,
         intent.cover_required_above_usd
@@ -345,44 +346,197 @@ async def process_service_payment(
     *,
     service_type: str = "data_lookup",
     agent_address: str | None = None,
+    agent_id: str | None = None,
+    agent_scope: AgentScope | None = None,
+    category: str | None = None,
 ) -> X402Settlement:
-    """Pay for an external service via x402. Runs G1→G4 guardrails before paying.
+    """Challenge → full-scope policy → reserve → direct pay → verified retry.
 
-    Guardrail order:
-      G1  KYA          — agent must have an accepted credential
-      G2  sanctions    — service host checked (OpenSanctions not wired for hosts,
-                         so we verify the host is in the allowed list instead)
-      G4  spend scope  — per-tx + daily velocity cap
+    The 402 price is fetched before any policy decision. x402 never enters an
+    approval flow: scope or G6 review outcomes are hard blocks with no payment.
     """
     settings = get_settings()
     from urllib.parse import urlparse
 
     effective_agent = agent_address or settings.treasury_wallet_address or "rMOCK_TREASURY"
-    host = urlparse(service_url).netloc
-    scope = _agent_scope(settings)
+    requirement = await x402_tool.fetch_requirement(service_url)
+    host = urlparse(requirement.service_url).netloc
+    scope = agent_scope or _agent_scope(settings)
+    agent_key = agent_id or effective_agent
     since = datetime.now(timezone.utc) - timedelta(hours=24)
-    spent_today = store.recent_payments_sum(effective_agent, since, "RLUSD")
+    spent_today = store.agent_payments_sum(
+        agent_key, since, requirement.asset_currency
+    )
     cred = await credentials.verify_kyc(effective_agent)
+    trail: list[GuardrailResult] = []
+    kya_ok = cred.verified if settings.credential_kyc_enabled else True
+    trail.append(GuardrailResult(
+        name="G1_kya",
+        passed=kya_ok,
+        rule_fired=None if kya_ok else "kya_unverified",
+        reason=None if kya_ok else "agent credential not verified",
+    ))
+    if not kya_ok:
+        _save_service_outcome(requirement, host, agent_id, "blocked", trail)
+        raise GuardrailBlocked("kya_unverified", "agent credential not verified", trail)
 
-    result = evaluate_guardrails(
-        context_kind="service_payment",
-        agent_credential_verified=cred.verified if settings.credential_kyc_enabled else True,
-        amount=Decimal("1"),  # placeholder; real amount comes from the 402 challenge
-        spent_today=spent_today,
-        scope_max_per_tx=scope.max_per_transaction,
-        scope_max_per_day=scope.max_per_day,
-        allowed_service_hosts=scope.allowed_service_hosts,
+    scope_result = evaluate_scope(
+        Decimal(requirement.amount),
+        scope,
+        spent_today,
+        payee_address=requirement.pay_to,
         service_host=host,
         service_type=service_type,
+        asset=requirement.asset_currency,
+        network=requirement.network,
+        category=category,
+        payee_is_known_merchant=_is_known_merchant(requirement, scope),
     )
-    trail = result.guardrail_trail
-    if not result.allowed:
-        raise GuardrailBlocked(result.rule_fired or "guardrail", result.reasons[0] if result.reasons else "blocked", trail)
+    trail.append(GuardrailResult(
+        name="G4_scope",
+        passed=scope_result.allowed,
+        rule_fired=scope_result.rule_fired,
+        reason=scope_result.reasons[0] if scope_result.reasons else None,
+    ))
+    if not scope_result.allowed:
+        reason = scope_result.reasons[0] if scope_result.reasons else "blocked"
+        if scope_result.requires_approval:
+            reason = f"over approval threshold: {reason}"
+        _save_service_outcome(requirement, host, agent_id, "blocked", trail)
+        raise GuardrailBlocked(scope_result.rule_fired or "G4_scope", reason, trail)
 
-    settlement = await x402_tool.request_with_payment(
-        service_url, service_type=service_type, guardrail_trail=trail
+    threshold = engine.evaluate(
+        float(Decimal(requirement.amount)),
+        0,
+        threshold_usd=settings.policy_threshold_usd,
+        flag_score=settings.policy_compliance_flag_score,
     )
+    g6_ok = not threshold.blocked and not threshold.requires_approval
+    trail.append(GuardrailResult(
+        name="G6_threshold",
+        passed=g6_ok,
+        rule_fired=threshold.rule_fired,
+        reason="; ".join(threshold.reasons) if threshold.reasons else None,
+    ))
+    if not g6_ok:
+        reason = "; ".join(threshold.reasons) or "over approval threshold"
+        _save_service_outcome(requirement, host, agent_id, "blocked", trail)
+        raise GuardrailBlocked(threshold.rule_fired or "G6_threshold", reason, trail)
+
+    reserved = store.reserve_agent_spend(
+        agent_key,
+        requirement.invoice_id,
+        Decimal(requirement.amount),
+        requirement.asset_currency,
+    )
+    if not reserved:
+        raise x402_tool.X402Rejected("invoice was already reserved or settled")
+
+    try:
+        settlement = await x402_tool.settle_x402(
+            requirement,
+            guardrail_trail=trail,
+            agent_id=agent_id,
+        )
+        await x402_tool.retry_with_proof(requirement, settlement)
+        store.commit_agent_spend(agent_key, requirement.invoice_id)
+    except Exception as exc:
+        store.release_agent_spend(agent_key, requirement.invoice_id)
+        failure_trail = trail + [GuardrailResult(
+            name="merchant_proof",
+            passed=False,
+            rule_fired="settlement_or_proof_failed",
+            reason=str(exc),
+        )]
+        _save_service_outcome(requirement, host, agent_id, "blocked", failure_trail)
+        raise
+
+    record = _save_service_outcome(
+        requirement,
+        host,
+        agent_id,
+        "settled",
+        trail,
+        settlement=settlement,
+    )
+    if getattr(settings, "insurance_enabled", False):
+        try:
+            quote = await insurance_binding.quote(InsuranceQuoteRequest(
+                agent_address=effective_agent,
+                score_band="STANDARD",
+                txn_context={
+                    "category": category or service_type,
+                    "tenorBand": "instant",
+                    "cptyBand": "standard",
+                    "firstSeen": False,
+                    "amount": requirement.amount,
+                    "amountZ": 0.0,
+                    "velocityZ": 0.0,
+                    "concentrationZ": 0.0,
+                    "activeLines": [CoverLine.merchant_default],
+                },
+            ))
+            record.cover = await insurance_binding.bind_service_cover(
+                requirement.invoice_id, quote
+            )
+            record.updated_at = _now()
+            store.update_service_payment(record)
+        except Exception:
+            # Cover is an integration hook; settlement remains authoritative.
+            pass
     return settlement
+
+
+def _is_known_merchant(requirement, scope: AgentScope) -> bool:
+    return "/merchants/" in requirement.service_url or (
+        scope.allowed_addresses is not None
+        and requirement.pay_to in scope.allowed_addresses
+    )
+
+
+def _save_service_outcome(
+    requirement,
+    host: str,
+    agent_id: str | None,
+    status: str,
+    trail: list[GuardrailResult],
+    *,
+    settlement: X402Settlement | None = None,
+) -> ServicePaymentRecord:
+    now = _now()
+    audit_event_id = settlement.audit_event_id if settlement else None
+    if settlement is None:
+        from ..tools import audit_log
+        event = audit_log.append(
+            event_type="x402_blocked",
+            actor="policy_engine",
+            context_kind="service_payment",
+            payload={
+                "agent_id": agent_id,
+                "invoice_id": requirement.invoice_id,
+                "service_url": requirement.service_url,
+                "amount": requirement.amount,
+                "currency": requirement.asset_currency,
+                "guardrail_trail": [g.model_dump(mode="json") for g in trail],
+            },
+        )
+        audit_event_id = event.event_id
+    return store.save_service_payment(ServicePaymentRecord(
+        id=str(uuid.uuid4()),
+        agent_id=agent_id,
+        status=status,
+        service_host=host,
+        invoice_id=requirement.invoice_id,
+        asset_currency=requirement.asset_currency,
+        asset_issuer=requirement.asset_issuer,
+        amount=requirement.amount,
+        tx_hash=settlement.tx_hash if settlement else None,
+        explorer_url=settlement.explorer_url if settlement else None,
+        guardrail_trail=trail,
+        audit_event_id=audit_event_id,
+        created_at=now,
+        updated_at=now,
+    ))
 
 
 # ── On-chain credit / trade finance (Feature B) ───────────────────────────────

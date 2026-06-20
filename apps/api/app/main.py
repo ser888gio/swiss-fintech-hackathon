@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from . import db, store
 from .config import get_settings
 from .insurance import store as insurance_store
-from .routes import credentials, health, insurance, payments, treasury, wallet
+from .routes import credentials, health, insurance, merchants, payments, treasury, wallet
 from .routes.agents import router as agents_router, load_agents_from_db
 
 
@@ -20,6 +20,8 @@ async def lifespan(app: FastAPI):
         from .tools import insurance as insurance_tool
         await insurance_tool.load_from_db()
         await load_agents_from_db()
+        from .agents import treasury_agent
+        await treasury_agent.load_agent_state_from_db()
     yield
 
 
@@ -62,6 +64,7 @@ app.include_router(credentials.router)
 app.include_router(treasury.router)
 app.include_router(wallet.router)
 app.include_router(agents_router)
+app.include_router(merchants.router)
 
 
 def _cors_headers(request: Request) -> dict[str, str]:
