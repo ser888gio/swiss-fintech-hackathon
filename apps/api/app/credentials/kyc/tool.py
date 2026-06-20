@@ -208,14 +208,22 @@ async def accept_credential(
         issuer=issuer,
         credential_type=xrpl_client.credential_type_hex(credential_type),
     )
-    result = await ledger.submit(tx, wallet)
-    tx_hash = result["hash"]
+    try:
+        result = await ledger.submit(tx, wallet)
+        tx_hash = result["hash"]
+        explorer_url = xrpl_client.explorer_tx_url(tx_hash)
+    except Exception as exc:
+        # tecDUPLICATE means the credential is already accepted — still valid.
+        if "tecDUPLICATE" not in str(exc):
+            raise
+        tx_hash = xrpl_client.mock_tx_hash("accept-dup", subject)
+        explorer_url = None
     return _credential_response(
         subject=wallet.address,
         issuer=issuer,
         credential_type=credential_type,
         tx_hash=tx_hash,
-        explorer_url=xrpl_client.explorer_tx_url(tx_hash),
+        explorer_url=explorer_url,
         accepted=True,
     )
 

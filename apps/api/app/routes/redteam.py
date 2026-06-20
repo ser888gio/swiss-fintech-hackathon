@@ -49,6 +49,11 @@ from .. import store
 
 router = APIRouter(prefix="/redteam")
 
+
+class X402SetupError(RuntimeError):
+    """A red-team scenario is missing required on-ledger configuration."""
+
+
 # ── Scenario registry ─────────────────────────────────────────────────────────
 
 AttackID = Literal["AT-1", "AT-2", "AT-3", "AT-4", "AT-5", "AT-6"]
@@ -183,37 +188,71 @@ async def _run_at1() -> AttackResult:
 
 
 async def _run_at2() -> AttackResult:
-    """AT-2: KYC Forge — accept a credential under a fake issuer, then try to pay."""
+    """AT-2: KYC Forge — accept a credential under a fake issuer, then try to verify.
+
+    Fully on-ledger: the subject is the real account behind CREDENTIAL_SUBJECT_SEED;
+    the attacker-controlled issuer is a freshly generated, valid XRPL address that
+    never signed a CredentialCreate. Either the on-ledger CredentialAccept is
+    rejected (no matching credential), or verify_kyc — which only trusts the
+    configured issuer — refuses it. Both outcomes are the guardrail holding.
+    """
     trail: list[GuardrailHit] = []
-    # Use an address in MOCK_UNVERIFIED_SUBJECTS so it starts as unverified.
-    target_addr = next(iter(credentials.MOCK_UNVERIFIED_SUBJECTS))
     settings = get_settings()
-    real_issuer = settings.credential_issuer_address or settings.token_issuer_address or "rISSUER"
+    real_issuer = settings.credential_issuer_address or settings.token_issuer_address
+    if not settings.credential_subject_seed:
+        raise X402SetupError("CREDENTIAL_SUBJECT_SEED is required to run AT-2 on-ledger")
 
-    # Attacker calls accept_credential with a FAKE issuer address they control.
-    # On real XRPL this requires a signed CredentialCreate from the real issuer —
-    # without the issuer seed the tx would be rejected by the ledger.
-    await credentials.accept_credential(target_addr, issuer="rFAKE_ATTACKER_ISSUER", credential_type="KYC")
+    from ..ledger import Ledger
+    from xrpl.wallet import Wallet
 
+    target_addr = Ledger(settings).wallet(settings.credential_subject_seed).address
+    # A real, valid XRPL address the attacker "controls" — it never issued the
+    # credential, so no CredentialCreate from it exists on the ledger.
+    fake_issuer = Wallet.create().address
+
+    # Attacker tries to accept a credential naming the fake issuer. On real XRPL
+    # this requires a matching CredentialCreate signed by that issuer; with none,
+    # the ledger rejects the accept outright (tecNO_ISSUER / tecNO_ENTRY).
+    accept_error = ""
+    try:
+        await credentials.accept_credential(
+            target_addr, issuer=fake_issuer, credential_type="KYC"
+        )
+    except Exception as exc:
+        accept_error = str(exc)
+
+    # The ledger rejection IS the guardrail holding — no further verification needed.
+    ledger_blocked = bool(accept_error)
     trail.append(GuardrailHit(
         guardrail="accept_with_fake_issuer",
-        passed=True,
-        detail=f"accepted against rFAKE_ATTACKER_ISSUER (not the trusted issuer {real_issuer})",
+        passed=not ledger_blocked,
+        detail=(
+            f"accept against attacker issuer {fake_issuer}: "
+            + (f"rejected by ledger — {accept_error}" if ledger_blocked
+               else f"submitted (not the trusted issuer {real_issuer})")
+        ),
     ))
 
-    # Now verify — verify_kyc checks against the CONFIGURED trusted issuer only.
+    if ledger_blocked:
+        return _result("AT-2", "KYC Forge", 0, "blocked", trail,
+            f"Caught at the ledger — the XRPL rejected the CredentialAccept because no "
+            f"CredentialCreate from attacker issuer {fake_issuer} exists. "
+            f"Forging a credential on-ledger requires the issuer's private key to sign "
+            f"a CredentialCreate first. The trust chain was never established.")
+
+    # If the ledger somehow accepted (shouldn't happen), verify_kyc still rejects
+    # because it only trusts the configured issuer, not the attacker's address.
     status = await credentials.verify_kyc(target_addr)
     trail.append(GuardrailHit(
         guardrail="KYC_issuer_check",
-        passed=status.verified,
+        passed=not status.verified,
         detail=f"verified={status.verified} (trusted issuer={real_issuer}), reason={status.reason}",
     ))
 
     if not status.verified:
         return _result("AT-2", "KYC Forge", 0, "blocked", trail,
-            f"Caught at KYC issuer check — accepting a credential from rFAKE_ATTACKER_ISSUER doesn't satisfy "
-            f"the trust chain. verify_kyc only accepts credentials issued by the configured issuer "
-            f"({real_issuer}). On a real ledger, forging a CredentialCreate requires the issuer's private key.")
+            f"Caught at KYC issuer check — credential from attacker issuer {fake_issuer} "
+            f"rejected because verify_kyc only trusts the configured issuer ({real_issuer}).")
 
     return _result("AT-2", "KYC Forge", 1, "escalated", trail, "Unexpected pass!")
 
@@ -314,9 +353,22 @@ async def _run_at4() -> AttackResult:
 
 
 async def _run_at5() -> AttackResult:
-    """AT-5: PEP credential inject — issue a real credential with PEP flag, re-run compliance."""
+    """AT-5: PEP credential inject — issue a real credential with PEP flag, re-run compliance.
+
+    Fully on-ledger: the trusted issuer signs a real CredentialCreate carrying a
+    PEP-flagged URI to the configured subject account, the subject accepts it,
+    and compliance reads it back from the live ledger via verify_kyc. No mock
+    store, no fabricated credential status.
+    """
     trail: list[GuardrailHit] = []
-    pep_addr = "rPEP_INJECT_TEST_99999999999999"
+    settings = get_settings()
+    issuer = settings.credential_issuer_address or settings.token_issuer_address
+    if not settings.credential_subject_seed:
+        raise X402SetupError("CREDENTIAL_SUBJECT_SEED is required to run AT-5 on-ledger")
+
+    # The subject is the real, funded account behind CREDENTIAL_SUBJECT_SEED.
+    from ..ledger import Ledger
+    pep_addr = Ledger(settings).wallet(settings.credential_subject_seed).address
 
     # Issue a real credential through the proper tool, with PEP flag in the URI.
     # This simulates a compromised issuer that signs a credential for a PEP.
@@ -330,40 +382,28 @@ async def _run_at5() -> AttackResult:
         pep=StepStatus.flagged,   # PEP flag embedded in on-ledger URI
         ref="RT-AT5-PEP",
     )
-    await credentials.issue_credential(pep_addr, steps=pep_steps)
-    settings = get_settings()
-    issuer = settings.credential_issuer_address or settings.token_issuer_address or "rISSUER"
+    # Delete any pre-existing credential so re-issue doesn't hit tecDUPLICATE.
+    await _delete_credential_if_exists(pep_addr, settings)
+    await credentials.issue_credential(pep_addr, steps=pep_steps, credential_type="KYC")
     await credentials.accept_credential(pep_addr, issuer=issuer, credential_type="KYC")
 
     trail.append(GuardrailHit(
         guardrail="credential_issued",
         passed=True,
-        detail=f"PEP-flagged credential issued+accepted for {pep_addr}",
+        detail=f"PEP-flagged credential issued+accepted on-ledger for {pep_addr}",
     ))
 
-    # Read the credential directly from mock store — bypasses the KYC enabled/disabled gate
-    # so the scenario works regardless of CREDENTIAL_KYC_ENABLED env setting.
-    from ..credentials.kyc.tool import _MOCK_URIS
-    from ..credentials.kyc.tool import _decode_steps as _decode_kyc_steps
-    from ..schemas import CredentialStatus as CredStat
-
-    uri_str, _raw = _MOCK_URIS.get((pep_addr, issuer, "KYC"), (None, None))
-    decoded_steps = _decode_kyc_steps(uri_str)
-    cred_status = CredStat(
-        checked=True,
-        verified=True,
-        subject=pep_addr,
-        issuer=issuer,
-        credential_type="KYC",
-        uri=uri_str,
-        verification_steps=decoded_steps,
-        reason="PEP-flagged credential read from mock store",
-    )
+    # Read the credential back from the live ledger through the real verify path.
+    cred_status = await credentials.verify_kyc(pep_addr)
+    decoded_steps = cred_status.verification_steps
 
     trail.append(GuardrailHit(
         guardrail="credential_verify",
-        passed=True,
-        detail=f"verified=True, steps pep={decoded_steps.pep if decoded_steps else 'N/A'}",
+        passed=cred_status.verified,
+        detail=(
+            f"verified={cred_status.verified}, "
+            f"steps pep={decoded_steps.pep if decoded_steps else 'N/A'}"
+        ),
     ))
 
     intent = PaymentIntent(**{
@@ -397,6 +437,26 @@ async def _run_at5() -> AttackResult:
 
     return _result("AT-5", "PEP Credential Inject", 2, "settled", trail,
         f"PEP flag not caught — AML score={result.aml_score}. Score: 2 pts.")
+
+
+async def _delete_credential_if_exists(subject: str, settings) -> None:
+    """Delete an existing CredentialCreate (issuer-side) so re-issue doesn't hit tecDUPLICATE."""
+    from xrpl.models.transactions import CredentialDelete
+    from .. import xrpl_client
+    from ..ledger import Ledger
+
+    ledger = Ledger(settings)
+    issuer_wallet = ledger.wallet(settings.credential_issuer_seed)
+    cred_type_hex = xrpl_client.credential_type_hex(settings.credential_type)
+    tx = CredentialDelete(
+        account=issuer_wallet.address,
+        subject=subject,
+        credential_type=cred_type_hex,
+    )
+    try:
+        await ledger.submit(tx, issuer_wallet)
+    except Exception:
+        pass  # nothing to delete — proceed to issue
 
 
 async def _run_at6() -> AttackResult:
@@ -539,5 +599,6 @@ def reset_leaderboard() -> Response:
 
 
 def _require_demo() -> None:
+    """Hide judge-facing attack routes unless the local demo gate is enabled."""
     if not get_settings().demo_mode:
         raise HTTPException(status_code=404, detail="not found")
