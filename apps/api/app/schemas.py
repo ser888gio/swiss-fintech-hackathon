@@ -584,6 +584,7 @@ class InsurancePayoutRecord(CamelModel):
     currency: str
     slash_tx_hash: str | None = None
     pool_draw_tx_hash: str | None = None
+    explorer_url: str | None = None         # explorer link for the pool-draw tx
     reputation_mpt_protected: bool = True   # principal score NOT burned on insured default
     created_at: datetime
 

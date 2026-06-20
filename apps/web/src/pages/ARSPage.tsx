@@ -521,6 +521,8 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
   const [amount, setAmount] = useState("20000");
   const [scoreBand, setScoreBand] = useState("STANDARD");
   const [category, setCategory] = useState("merchant_payment");
+  // Payout beneficiary — in live (non-mock) mode this must be an activated account.
+  const [merchant, setMerchant] = useState("rBBHb3oX4JxoGRU28X94iDRiZUPU8Xu7ur");
   const [lines, setLines] = useState<CoverLine[]>(["merchant_default"]);
   const [quote, setQuote] = useState<PremiumQuote | null>(null);
   const [premiums, setPremiums] = useState<InsurancePremiumRecord[]>([]);
@@ -618,7 +620,7 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
       const payout = await api.claimInsurance({
         jobId,
         agentAddress: agent,
-        merchant: "rMERCHANT000000000000000000000000",
+        merchant,
         line: lines[0] ?? "merchant_default",
         loss: amount,
         collateral: "0",
@@ -628,6 +630,7 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
         kind: "success",
         text: `Payout — pool drew ${payout.poolDrawn} ${payout.currency}, merchant paid ${payout.totalPaid}. Principal score protected.`,
         txHash: payout.poolDrawTxHash ?? undefined,
+        explorerUrl: payout.explorerUrl ?? undefined,
       });
       await Promise.all([refresh(), refreshRisk(agent)]);
     } catch (e) {
@@ -670,6 +673,9 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
             <option value="supplier_payment">supplier_payment</option>
             <option value="loan_repayment">loan_repayment</option>
           </select>
+        </label>
+        <label><span>Merchant (payout beneficiary)</span>
+          <input value={merchant} onChange={(e) => setMerchant(e.target.value)} spellCheck={false} />
         </label>
       </div>
 

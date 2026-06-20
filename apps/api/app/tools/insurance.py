@@ -17,6 +17,7 @@ network — the full quote → bind → claim round-trip runs offline.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -29,6 +30,7 @@ from ..insurance.engine import PoolState, PricePolicy, QuoteContext
 from ..insurance.risk import AgentRisk, TxnFeatures
 from ..insurance.tables import LINE_PARAMS
 from ..policy import engine as policy_engine
+from . import execution
 from . import vault as vault_tool
 from ..schemas import (
     AgentRiskState,
@@ -174,10 +176,10 @@ async def bind(req: BindRequest) -> InsurancePremiumRecord:
         raise CoverUnavailable(q.decision.value, q.reason or "cover not offered")
 
     premium = Decimal(q.premium)
-    # Settle the premium on-ledger as an XLS-65 VaultDeposit into the Insurance
-    # Vault — the first-loss pool grows by the premium.
-    vault_id = await _ensure_vault(settings)
-    deposit = await vault_tool.deposit(vault_id, float(premium))
+    # Settle the premium on-ledger into the first-loss pool. Vault mode uses an
+    # XLS-65 VaultDeposit (Devnet); Payment mode sends a token Payment to the pool
+    # account (works on any network) — both return a real explorer link.
+    tx_hash, explorer_url = await _settle_premium(req, premium, settings)
 
     now = datetime.now(timezone.utc)
     record = InsurancePremiumRecord(
@@ -185,9 +187,9 @@ async def bind(req: BindRequest) -> InsurancePremiumRecord:
         job_id=req.job_id,
         agent_address=req.agent_address,
         premium_amount=q.premium,
-        currency=req.currency,
-        tx_hash=deposit.tx_hash,
-        explorer_url=deposit.explorer_url,
+        currency=settings.token_currency,   # actual on-ledger settlement asset
+        tx_hash=tx_hash,
+        explorer_url=explorer_url,
         score_band=q.score_band,
         created_at=now,
     )
@@ -201,8 +203,8 @@ async def bind(req: BindRequest) -> InsurancePremiumRecord:
             "premium": q.premium,
             "currency": req.currency,
             "receipt_hash": q.receipt_hash,
-            "vault_id": vault_id,
-            "vault_deposit_tx": deposit.tx_hash,
+            "tx_hash": tx_hash,
+            "explorer_url": explorer_url,
         },
     )
     _schedule(_persist_premium(record))
@@ -245,19 +247,10 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
     if _is_collusion(req.agent_address, req.merchant):
         raise PayoutRefused("collusion pattern: repeated payouts between agent and merchant")
 
-    # Draw the pool portion on-ledger as an XLS-65 VaultWithdraw from the
-    # Insurance Vault. Agent-collateral slashing is off-vault (separate
-    # collateral track); it carries a mock hash in mock mode.
-    slash_tx = (
-        xrpl_client.mock_tx_hash("insurance_slash", req.job_id)
-        if collateral_recovery > 0 and settings.use_mock_xrpl
-        else None
-    )
-    draw_tx: str | None = None
-    if pool_drawn > 0:
-        vault_id = await _ensure_vault(settings)
-        withdrawal = await vault_tool.withdraw(vault_id, float(pool_drawn))
-        draw_tx = withdrawal.tx_hash
+    # Settle the payout: the pool portion is drawn on-ledger (XLS-65 VaultWithdraw
+    # in vault mode, or a token Payment to the merchant in Payment mode). Agent
+    # collateral slashing is an off-vault track (mock hash in mock mode).
+    slash_tx, draw_tx, draw_explorer = await _settle_payout(req, collateral_recovery, pool_drawn, settings)
 
     now = datetime.now(timezone.utc)
     record = InsurancePayoutRecord(
@@ -267,9 +260,10 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
         collateral_slashed=str(collateral_recovery),
         pool_drawn=str(pool_drawn),
         total_paid=str((collateral_recovery + pool_drawn).quantize(_Q2)),
-        currency=req.currency,
+        currency=settings.token_currency,   # actual on-ledger settlement asset
         slash_tx_hash=slash_tx,
         pool_draw_tx_hash=draw_tx,
+        explorer_url=draw_explorer,
         reputation_mpt_protected=True,
         created_at=now,
     )
@@ -366,6 +360,76 @@ def list_payouts() -> list[InsurancePayoutRecord]:
     return sorted(_payouts, key=lambda p: p.created_at, reverse=True)
 
 
+# ── On-ledger settlement (mock / vault / payment) ─────────────────────────────
+
+async def _settle_premium(req: BindRequest, premium: Decimal, settings) -> tuple[str, str | None]:
+    """Settle the premium into the pool. Returns (tx_hash, explorer_url)."""
+    if settings.use_mock_xrpl:
+        return xrpl_client.mock_tx_hash("insurance_premium", req.job_id), None
+    if settings.insurance_use_vault:
+        vault_id = await _ensure_vault(settings)
+        deposit = await vault_tool.deposit(vault_id, float(premium))
+        return deposit.tx_hash, deposit.explorer_url
+    return await _pay(_pool_account(settings), premium, req.job_id, "insurance_premium", settings)
+
+
+async def _settle_payout(
+    req: ClaimRequest, collateral_recovery: Decimal, pool_drawn: Decimal, settings
+) -> tuple[str | None, str | None, str | None]:
+    """Settle the payout. Returns (slash_tx, pool_draw_tx, pool_draw_explorer)."""
+    slash_tx = (
+        xrpl_client.mock_tx_hash("insurance_slash", req.job_id)
+        if collateral_recovery > 0 and settings.use_mock_xrpl
+        else None
+    )
+    if pool_drawn <= 0:
+        return slash_tx, None, None
+    if settings.use_mock_xrpl:
+        return slash_tx, xrpl_client.mock_tx_hash("insurance_payout", req.job_id), None
+    if settings.insurance_use_vault:
+        vault_id = await _ensure_vault(settings)
+        withdrawal = await vault_tool.withdraw(vault_id, float(pool_drawn))
+        return None, withdrawal.tx_hash, withdrawal.explorer_url
+    draw_tx, explorer = await _pay(req.merchant, pool_drawn, req.job_id, "insurance_payout", settings)
+    return None, draw_tx, explorer
+
+
+async def _pay(destination: str, amount: Decimal, job_id: str, kind: str, settings) -> tuple[str, str | None]:
+    """Submit a real token Payment for an insurance settlement (Payment mode).
+
+    Applies the same testnet settlement scale as the payment path so the
+    on-ledger amount is fundable, and anchors the job id in a Memo + SourceTag.
+    """
+    if not destination:
+        raise InsuranceConfigError(
+            "insurance_vault_address (pool account) must be set for real-mode insurance settlement"
+        )
+    from ..ledger import Ledger
+    from xrpl.models.transactions import Memo, Payment
+
+    ledger = Ledger(settings)
+    wallet = ledger.treasury_wallet
+    memo_data = json.dumps({kind: job_id}, separators=(",", ":"))
+    on_ledger = execution.scaled_settlement(float(amount), settings)
+    tx = Payment(
+        account=wallet.address,
+        destination=destination,
+        amount=xrpl_client.token_amount(settings.token_currency, on_ledger, settings),
+        source_tag=settings.insurance_source_tag,
+        memos=[Memo(
+            memo_type="insurance/v1".encode().hex().upper(),
+            memo_data=memo_data.encode().hex().upper(),
+        )],
+    )
+    result = await ledger.submit(tx, wallet)
+    tx_hash = result["hash"]
+    return tx_hash, xrpl_client.explorer_tx_url_for(tx_hash, settings.xrpl_endpoint)
+
+
+def _pool_account(settings) -> str:
+    return settings.insurance_vault_address
+
+
 # ── Guards & helpers ──────────────────────────────────────────────────────────
 
 def _is_collusion(agent_address: str, merchant: str) -> bool:
@@ -423,7 +487,7 @@ async def load_from_db() -> None:
                     id=row.id, job_id=row.job_id, merchant=row.merchant,
                     collateral_slashed=row.collateral_slashed, pool_drawn=row.pool_drawn,
                     total_paid=row.total_paid, currency=row.currency, slash_tx_hash=row.slash_tx_hash,
-                    pool_draw_tx_hash=row.pool_draw_tx_hash,
+                    pool_draw_tx_hash=row.pool_draw_tx_hash, explorer_url=row.explorer_url,
                     reputation_mpt_protected=row.reputation_mpt_protected, created_at=row.created_at,
                 ))
                 _pool["payouts"] += Decimal(row.pool_drawn)
@@ -459,7 +523,7 @@ async def _persist_payout(rec: InsurancePayoutRecord) -> None:
                 id=rec.id, job_id=rec.job_id, merchant=rec.merchant,
                 collateral_slashed=rec.collateral_slashed, pool_drawn=rec.pool_drawn,
                 total_paid=rec.total_paid, currency=rec.currency, slash_tx_hash=rec.slash_tx_hash,
-                pool_draw_tx_hash=rec.pool_draw_tx_hash,
+                pool_draw_tx_hash=rec.pool_draw_tx_hash, explorer_url=rec.explorer_url,
                 reputation_mpt_protected=rec.reputation_mpt_protected, created_at=rec.created_at,
             ))
             await session.commit()

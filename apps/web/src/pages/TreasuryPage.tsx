@@ -3,7 +3,8 @@ import type { MPTStatus, TreasuryAgentRun, TreasuryGoal, TreasuryGoalCreate, Vau
 
 import { api } from "../lib/api.js";
 
-const CURRENCIES = ["USD", "EUR", "CHF", "GBP"];
+// XRP-only: the agent transacts natively in XRP so there is no FX step.
+const CURRENCIES = ["XRP"];
 type BusyKey = "goal" | "run" | "vault" | "mpt";
 
 const DEFAULT_GOAL: TreasuryGoalCreate = {
@@ -13,7 +14,7 @@ const DEFAULT_GOAL: TreasuryGoalCreate = {
   beneficiaryCountry: "US",
   receiverEntityType: "company",
   amount: 1000,
-  currency: "USD",
+  currency: "XRP",
   reference: "INV-AUTO-001",
   purpose: "supplier_payment",
   triggerIntervalHours: 0.001, // ~3.6 s — fires immediately for demo

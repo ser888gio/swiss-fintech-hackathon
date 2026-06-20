@@ -261,6 +261,7 @@ class InsurancePayoutRecord(Base):
     currency: Mapped[str] = mapped_column(String)
     slash_tx_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     pool_draw_tx_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    explorer_url: Mapped[str | None] = mapped_column(String, nullable=True)
     reputation_mpt_protected: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 

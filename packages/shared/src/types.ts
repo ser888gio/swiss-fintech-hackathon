@@ -481,6 +481,7 @@ export interface InsurancePayoutRecord {
   currency: string;
   slashTxHash: string | null;
   poolDrawTxHash: string | null;
+  explorerUrl: string | null;
   reputationMptProtected: boolean;
   createdAt: string;
 }

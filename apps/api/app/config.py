@@ -165,7 +165,12 @@ class Settings(BaseSettings):
     insurance_lambda_risk_max: float = 0.30
     insurance_tau_days: float = 120.0
     insurance_cover_required_above_usd: float = 10_000.0
-    insurance_vault_address: str = ""      # Insurance Vault payee; empty → mock
+    # insurance_use_vault=True settles the pool on-ledger via XLS-65
+    # VaultDeposit/VaultWithdraw (Devnet, needs an issued asset + trust line).
+    # False (default) settles premium/payout as direct token Payments, which works
+    # on any network (Testnet/Devnet) and yields a standard explorer link.
+    insurance_use_vault: bool = False
+    insurance_vault_address: str = ""      # pool account: premium payee / payout source
     insurance_source_tag: int = 20260530
 
     # XLS-33 MPTokens — COMPLY compliance-attestation issuance.
