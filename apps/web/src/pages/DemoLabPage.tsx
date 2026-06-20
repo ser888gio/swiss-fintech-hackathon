@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import type { TreasuryAgentRun } from "@treasury/shared";
+import { useEffect, useMemo, useState } from "react";
+import type { Agent, TreasuryAgentRun } from "@treasury/shared";
 import { api } from "../lib/api.js";
 import type { DemoAttackResult } from "../lib/api.js";
 
@@ -101,6 +101,7 @@ function AttackViz({ state, result, gateLabel, outboundLabel = "payment intent",
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const EXAMPLE_AGENT_ID = "example-treasury-agent";
 
 export function DemoLabPage() {
   const [states, setStates] = useState<Record<string, RunState>>({});
@@ -111,6 +112,17 @@ export function DemoLabPage() {
   const [invoiceAmount, setInvoiceAmount] = useState("500");
   const [paidAmount, setPaidAmount] = useState("480");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState(EXAMPLE_AGENT_ID);
+  const [agentsError, setAgentsError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    api.listAgents()
+      .then((items) => { if (active) setAgents(items); })
+      .catch((cause) => { if (active) setAgentsError(String(cause)); });
+    return () => { active = false; };
+  }, []);
 
   const completed = useMemo(() => Object.values(states).filter((state) => state === "passed" || state === "attention").length, [states]);
   const total = SECURITY_SCENARIOS.length + 2;
@@ -134,7 +146,7 @@ export function DemoLabPage() {
   const runAttack = async (scenario: Scenario) => {
     setRunning(scenario.id);
     try {
-      const [result] = await Promise.all([api.runDemoAttack(scenario.attackId!), sleep(5000)]);
+      const [result] = await Promise.all([api.runDemoAttack(scenario.attackId!, selectedAgentId), sleep(5000)]);
       const final: RunState = result.outcome === "settled" ? "attention" : "passed";
       setResults((current) => ({ ...current, [scenario.id]: result }));
       setFinalStates((current) => ({ ...current, [scenario.id]: final }));
@@ -244,6 +256,22 @@ export function DemoLabPage() {
           <div><span className="eyebrow">Defense in depth</span><h2>Credential & policy stress tests</h2></div>
           <p>Choose any attack. A safe result is a refusal or controlled escalation—not a theatrical success screen.</p>
         </div>
+        <div className="demo-agent-picker">
+          <label htmlFor="demo-agent-select">
+            <span className="eyebrow">Agent under test</span>
+            <select
+              id="demo-agent-select"
+              value={selectedAgentId}
+              onChange={(event) => setSelectedAgentId(event.target.value)}
+              disabled={Object.values(states).some((state) => state === "running")}
+            >
+              <option value={EXAMPLE_AGENT_ID}>Example treasury agent</option>
+              {agents.map((agent) => <option value={agent.id} key={agent.id}>{agent.name} ({agent.id})</option>)}
+            </select>
+          </label>
+          <p>The controlled attack input will be attributed to this agent. Create more agents in Agent Builder and they will appear here.</p>
+          {agentsError && <span className="demo-error" role="alert">Could not load created agents: {agentsError}</span>}
+        </div>
         <div className="demo-scenario-grid">
           {SECURITY_SCENARIOS.map((scenario) => {
             const result = results[scenario.id];
@@ -263,6 +291,7 @@ export function DemoLabPage() {
                   <button className="demo-replay" type="button" onClick={() => replayViz(scenario.id)}>↺ Replay simulation</button>
                 )}
                 {errors[scenario.id] && <p className="demo-error" role="alert">{errors[scenario.id]}</p>}
+                {result && <small className="demo-tested-agent">Tested agent: {result.agentId ?? selectedAgentId}</small>}
                 {result && <div className="demo-result"><div className="demo-result-head"><strong>{result.outcome}</strong><span>Depth {result.depthReached}/4 · {result.pointsEarned} pts</span></div><GuardrailTrail result={result} /><p>{result.verdict}</p></div>}
               </article>
             );

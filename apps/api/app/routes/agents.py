@@ -36,6 +36,11 @@ router = APIRouter(prefix="/agents", tags=["agents"])
 _agents: dict[str, Agent] = {}
 
 
+def has_registered_agent(agent_id: str) -> bool:
+    """Return whether Demo Lab may bind a scenario to this agent."""
+    return agent_id in _agents
+
+
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
 @router.post("", response_model=Agent, status_code=201)

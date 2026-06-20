@@ -85,6 +85,7 @@ export interface DemoAttackResult {
   attackId: string;
   scenarioName: string;
   teamName: string;
+  agentId?: string;
   outcome: "blocked" | "escalated" | "settled";
   depthReached: number;
   pointsEarned: number;
@@ -97,6 +98,7 @@ interface DemoAttackWireResult {
   attack_id: string;
   scenario_name: string;
   team_name: string;
+  agent_id: string;
   outcome: "blocked" | "escalated" | "settled";
   depth_reached: number;
   points_earned: number;
@@ -311,14 +313,15 @@ export const api = {
 
   // Judge-facing demo lab. These routes execute the backend's real deterministic
   // tools with controlled demo inputs; DEMO_MODE must be enabled for red-team runs.
-  runDemoAttack: (attackId: string, teamName = "Hackathon Judge") =>
+  runDemoAttack: (attackId: string, agentId = "example-treasury-agent", teamName = "Hackathon Judge") =>
     request<DemoAttackWireResult>("/redteam/attack", {
       method: "POST",
-      body: JSON.stringify({ attack_id: attackId, team_name: teamName }),
+      body: JSON.stringify({ attack_id: attackId, agent_id: agentId, team_name: teamName }),
     }).then((result): DemoAttackResult => ({
       attackId: result.attack_id,
       scenarioName: result.scenario_name,
       teamName: result.team_name,
+      agentId: result.agent_id,
       outcome: result.outcome,
       depthReached: result.depth_reached,
       pointsEarned: result.points_earned,

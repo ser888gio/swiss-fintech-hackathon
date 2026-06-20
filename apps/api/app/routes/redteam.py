@@ -37,7 +37,7 @@ from types import SimpleNamespace
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Response, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..config import get_settings
 from ..schemas import PaymentIntent, PaymentStatus, ReceiverEntityType
@@ -103,6 +103,7 @@ SCENARIOS: dict[str, dict] = {
 class AttackRequest(BaseModel):
     attack_id: AttackID
     team_name: str = "Red Team"
+    agent_id: str = Field(default="example-treasury-agent", min_length=1, max_length=100)
 
 
 class GuardrailHit(BaseModel):
@@ -115,6 +116,7 @@ class AttackResult(BaseModel):
     attack_id: str
     scenario_name: str
     team_name: str
+    agent_id: str = "example-treasury-agent"
     outcome: str          # "blocked" | "escalated" | "settled"
     depth_reached: int    # 0-4
     points_earned: int
@@ -598,6 +600,12 @@ async def run_attack(body: AttackRequest) -> AttackResult:
     """
     _require_demo()
 
+    if body.agent_id != "example-treasury-agent":
+        from .agents import has_registered_agent
+
+        if not has_registered_agent(body.agent_id):
+            raise HTTPException(status_code=404, detail=f"Unknown demo agent: {body.agent_id}")
+
     handler = _HANDLERS.get(body.attack_id)
     if not handler:
         raise HTTPException(status_code=404, detail=f"Unknown attack scenario: {body.attack_id}")
@@ -608,6 +616,7 @@ async def run_attack(body: AttackRequest) -> AttackResult:
         raise HTTPException(status_code=500, detail=f"Attack handler error: {exc}") from exc
 
     result.team_name = body.team_name
+    result.agent_id = body.agent_id
     _update_leaderboard(body.team_name, result.points_earned, result.depth_reached)
     return result
 
