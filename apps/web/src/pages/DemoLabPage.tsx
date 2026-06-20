@@ -3,7 +3,7 @@ import type { TreasuryAgentRun } from "@treasury/shared";
 import { api } from "../lib/api.js";
 import type { DemoAttackResult } from "../lib/api.js";
 
-type RunState = "ready" | "running" | "passed" | "attention" | "error";
+type RunState = "ready" | "running" | "replaying" | "passed" | "attention" | "error";
 
 type Scenario = {
   id: string;
@@ -28,11 +28,13 @@ function ResultPill({ state }: { state: RunState }) {
   const labels: Record<RunState, string> = {
     ready: "Ready",
     running: "Running tools…",
+    replaying: "Replaying…",
     passed: "Guardrails held",
     attention: "Review result",
     error: "Could not run",
   };
-  return <span className={`demo-status demo-${state}`}>{labels[state]}</span>;
+  const displayState = state === "replaying" ? "running" : state;
+  return <span className={`demo-status demo-${displayState}`}>{labels[state]}</span>;
 }
 
 function GuardrailTrail({ result }: { result: DemoAttackResult }) {
@@ -55,10 +57,11 @@ function AttackViz({ state, result, gateLabel }: {
   result?: DemoAttackResult;
   gateLabel: string;
 }) {
+  const isAnimating = state === "running" || state === "replaying";
   if (state === "ready" || state === "error") return null;
 
   let vizState: VizState = "running";
-  if (state !== "running" && result) {
+  if (!isAnimating && result) {
     if (result.outcome === "blocked") vizState = "blocked";
     else if (result.outcome === "escalated") vizState = "escalated";
     else vizState = "settled";
@@ -68,7 +71,7 @@ function AttackViz({ state, result, gateLabel }: {
     ? (result.guardrailTrail.find((s) => !s.passed)?.guardrail.replaceAll("_", " ") ?? gateLabel)
     : gateLabel;
 
-  const responseLabel = state !== "running" && result ? result.outcome.toUpperCase() : "···";
+  const responseLabel = !isAnimating && result ? result.outcome.toUpperCase() : "···";
 
   return (
     <div className={`attack-viz attack-viz--${vizState}`}>
@@ -95,8 +98,11 @@ function AttackViz({ state, result, gateLabel }: {
   );
 }
 
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 export function DemoLabPage() {
   const [states, setStates] = useState<Record<string, RunState>>({});
+  const [finalStates, setFinalStates] = useState<Record<string, RunState>>({});
   const [results, setResults] = useState<Record<string, DemoAttackResult>>({});
   const [agentRun, setAgentRun] = useState<TreasuryAgentRun | null>(null);
   const [coverResult, setCoverResult] = useState<{ description: string; amount: string; narration: string | null } | null>(null);
@@ -110,12 +116,21 @@ export function DemoLabPage() {
     setErrors((current) => ({ ...current, [id]: "" }));
   };
 
+  const replayViz = (id: string) => {
+    const final = finalStates[id];
+    if (!final) return;
+    setStates((current) => ({ ...current, [id]: "replaying" }));
+    setTimeout(() => setStates((current) => ({ ...current, [id]: final })), 5000);
+  };
+
   const runAttack = async (scenario: Scenario) => {
     setRunning(scenario.id);
     try {
-      const result = await api.runDemoAttack(scenario.attackId!);
+      const [result] = await Promise.all([api.runDemoAttack(scenario.attackId!), sleep(5000)]);
+      const final: RunState = result.outcome === "settled" ? "attention" : "passed";
       setResults((current) => ({ ...current, [scenario.id]: result }));
-      setStates((current) => ({ ...current, [scenario.id]: result.outcome === "settled" ? "attention" : "passed" }));
+      setFinalStates((current) => ({ ...current, [scenario.id]: final }));
+      setStates((current) => ({ ...current, [scenario.id]: final }));
     } catch (cause) {
       setErrors((current) => ({ ...current, [scenario.id]: String(cause) }));
       setStates((current) => ({ ...current, [scenario.id]: "error" }));
@@ -126,9 +141,11 @@ export function DemoLabPage() {
     setRunning("autonomous");
     try {
       await api.seedMaersk();
-      const run = await api.runController(true, true);
+      const [run] = await Promise.all([api.runController(true, true), sleep(5000)]);
+      const final: RunState = run.goalsTriggered > 0 ? "passed" : "attention";
       setAgentRun(run);
-      setStates((current) => ({ ...current, autonomous: run.goalsTriggered > 0 ? "passed" : "attention" }));
+      setFinalStates((current) => ({ ...current, autonomous: final }));
+      setStates((current) => ({ ...current, autonomous: final }));
     } catch (cause) {
       setErrors((current) => ({ ...current, autonomous: String(cause) }));
       setStates((current) => ({ ...current, autonomous: "error" }));
@@ -138,8 +155,9 @@ export function DemoLabPage() {
   const runCover = async () => {
     setRunning("cover");
     try {
-      const result = await api.coverRunDemo41();
+      const [result] = await Promise.all([api.coverRunDemo41(), sleep(5000)]);
       setCoverResult({ description: result.description, amount: result.payout.amountPaid, narration: result.narration });
+      setFinalStates((current) => ({ ...current, cover: "passed" }));
       setStates((current) => ({ ...current, cover: "passed" }));
     } catch (cause) {
       setErrors((current) => ({ ...current, cover: String(cause) }));
@@ -178,10 +196,13 @@ export function DemoLabPage() {
             <ResultPill state={states.autonomous ?? "ready"} />
             <h3>Run the treasury fleet</h3>
             <p>Seeds scoped business agents, evaluates their due goals, checks spending policy, and executes eligible x402 service payments.</p>
-            <button className="demo-run" type="button" onClick={runAutonomousPayment} disabled={states.autonomous === "running"}>
+            <button className="demo-run" type="button" onClick={runAutonomousPayment} disabled={states.autonomous === "running" || states.autonomous === "replaying"}>
               {states.autonomous === "running" ? "Agent is evaluating…" : agentRun ? "Run another cycle" : "Run autonomous cycle"}
             </button>
             <AttackViz state={states.autonomous ?? "ready"} result={agentRun ? { outcome: "settled", guardrailTrail: [], depthReached: 4, pointsEarned: 0, attackId: "", scenarioName: "", teamName: "", verdict: "", timestamp: "" } : undefined} gateLabel="x402 · Policy" />
+            {(states.autonomous === "passed" || states.autonomous === "attention") && agentRun && (
+              <button className="demo-replay" type="button" onClick={() => replayViz("autonomous")}>↺ Replay simulation</button>
+            )}
             {errors.autonomous && <p className="demo-error" role="alert">{errors.autonomous}</p>}
           </div>
           <div className="demo-proof-panel">
@@ -226,10 +247,13 @@ export function DemoLabPage() {
                 <h3>{scenario.title}</h3>
                 <p>{scenario.description}</p>
                 <div className="demo-expected"><span>Expected control</span><strong>{scenario.expected}</strong></div>
-                <button className="demo-run demo-run-secondary" type="button" onClick={() => runAttack(scenario)} disabled={state === "running"}>
+                <button className="demo-run demo-run-secondary" type="button" onClick={() => runAttack(scenario)} disabled={state === "running" || state === "replaying"}>
                   {state === "running" ? "Running…" : result ? "Run again" : "Test guardrails"}
                 </button>
                 <AttackViz state={state} result={result} gateLabel={scenario.gateLabel} />
+                {(state === "passed" || state === "attention") && result && (
+                  <button className="demo-replay" type="button" onClick={() => replayViz(scenario.id)}>↺ Replay simulation</button>
+                )}
                 {errors[scenario.id] && <p className="demo-error" role="alert">{errors[scenario.id]}</p>}
                 {result && <div className="demo-result"><div className="demo-result-head"><strong>{result.outcome}</strong><span>Depth {result.depthReached}/4 · {result.pointsEarned} pts</span></div><GuardrailTrail result={result} /><p>{result.verdict}</p></div>}
               </article>
@@ -249,8 +273,11 @@ export function DemoLabPage() {
             <h3>Underpayment hallucination</h3>
             <div className="demo-equation"><div><span>Invoice</span><strong>500</strong></div><b>−</b><div><span>Paid</span><strong>480</strong></div><b>=</b><div className="demo-loss"><span>Covered loss</span><strong>20 RLUSD</strong></div></div>
             <p>The claim endpoint derives all financial facts server-side, applies eligibility and capacity rules, and tops up the merchant.</p>
-            <button className="demo-run" type="button" onClick={runCover} disabled={states.cover === "running"}>{states.cover === "running" ? "Reconciling…" : coverResult ? "Run another claim" : "Simulate & settle claim"}</button>
+            <button className="demo-run" type="button" onClick={runCover} disabled={states.cover === "running" || states.cover === "replaying"}>{states.cover === "running" ? "Reconciling…" : coverResult ? "Run another claim" : "Simulate & settle claim"}</button>
             <AttackViz state={states.cover ?? "ready"} result={coverResult ? { outcome: "settled", guardrailTrail: [], depthReached: 4, pointsEarned: 0, attackId: "", scenarioName: "", teamName: "", verdict: "", timestamp: "" } : undefined} gateLabel="Reconciler" />
+            {(states.cover === "passed" || states.cover === "attention") && coverResult && (
+              <button className="demo-replay" type="button" onClick={() => replayViz("cover")}>↺ Replay simulation</button>
+            )}
             {errors.cover && <p className="demo-error" role="alert">{errors.cover}</p>}
           </div>
           <div className="demo-proof-panel">
