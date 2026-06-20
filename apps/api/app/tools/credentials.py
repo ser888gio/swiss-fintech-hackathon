@@ -22,7 +22,8 @@ from datetime import datetime, timezone
 from .. import xrpl_client
 from ..config import get_settings
 from ..ledger import Ledger
-from ..schemas import CredentialStatus
+from ..schemas import CredentialStatus, VerificationSteps, VerificationStepStatus
+from . import credential_uri
 
 # Demo subjects treated as un-KYC'd in mock mode, so the credential gate can be
 # demonstrated offline. Everyone else is considered verified in the mock.
@@ -33,10 +34,15 @@ MOCK_UNVERIFIED_SUBJECTS = {"rUNVERIFIED00000000000000000000000"}
 # credential for an un-KYC'd subject, verify_kyc flips it to verified.
 _MOCK_ACCEPTED: set[tuple[str, str, str]] = set()
 
+# URI strings stored at issue time so mock verify can decode steps.
+# Key: (subject, issuer, credential_type) → (uri_str, VerificationSteps | None)
+_MOCK_URIS: dict[tuple[str, str, str], tuple[str | None, credential_uri.VerificationSteps | None]] = {}
+
 
 def reset_mock_state() -> None:
     """Clear mock-accepted credentials (used by tests for isolation)."""
     _MOCK_ACCEPTED.clear()
+    _MOCK_URIS.clear()
 
 
 async def verify_kyc(subject: str) -> CredentialStatus:
@@ -81,13 +87,17 @@ async def verify_kyc(subject: str) -> CredentialStatus:
             reason="KYC credential expired",
         )
 
+    uri_str = _hex_to_str(obj.get("URI"))
+    steps = _decode_steps(uri_str)
+
     return _status(
         subject,
         verified=True,
         issuer=issuer,
         credential_type=credential_type,
         expiration=expiration,
-        uri=_hex_to_str(obj.get("URI")),
+        uri=uri_str,
+        steps=steps,
         reason="accepted KYC credential verified on-ledger",
     )
 
@@ -97,15 +107,25 @@ async def issue_credential(
     uri: str | None = None,
     expiration: datetime | None = None,
     credential_type: str | None = None,
+    steps: credential_uri.VerificationSteps | None = None,
 ) -> dict:
     """Issue a KYC credential to `subject` (CredentialCreate).
 
-    The subject must accept it before it verifies. Returns the submission result.
+    Pass `steps` to encode per-step verification outcomes (documentary, selfie,
+    sanctions, PEP) into the URI field — modelled on Plaid IDV's step schema.
+    The subject must accept the credential before it verifies.
     """
     settings = get_settings()
     credential_type = credential_type or settings.credential_type
 
+    # Encode steps into URI if provided and no explicit URI given
+    if steps is not None and uri is None:
+        uri = credential_uri.build_uri(steps)
+
     if settings.use_mock_xrpl:
+        key = (subject, settings.credential_issuer_address, credential_type)
+        decoded = credential_uri.parse_uri(uri) if uri else None
+        _MOCK_URIS[key] = (uri, decoded)
         return _credential_response(
             subject=subject,
             issuer=settings.credential_issuer_address,
@@ -160,7 +180,11 @@ async def accept_credential(
     credential_type = credential_type or settings.credential_type
 
     if settings.use_mock_xrpl:
-        _MOCK_ACCEPTED.add((subject, issuer, credential_type))
+        key = (subject, issuer, credential_type)
+        _MOCK_ACCEPTED.add(key)
+        # Preserve any URI that was stored at issue time
+        if key not in _MOCK_URIS:
+            _MOCK_URIS[key] = (None, None)
         return _credential_response(
             subject=subject,
             issuer=issuer,
@@ -199,16 +223,39 @@ async def accept_credential(
 def _mock_verify(subject: str, issuer: str, credential_type: str) -> CredentialStatus:
     accepted = (subject, issuer, credential_type) in _MOCK_ACCEPTED
     verified = accepted or subject not in MOCK_UNVERIFIED_SUBJECTS
+    # Decode steps from the mock-accepted URI if one was stored
+    uri, steps = _MOCK_URIS.get((subject, issuer, credential_type), (None, None))
     return _status(
         subject,
         verified=verified,
         issuer=issuer,
         credential_type=credential_type,
+        uri=uri,
+        steps=steps,
         reason=(
             "mock: accepted KYC credential present"
             if verified
             else "mock: no KYC credential on file"
         ),
+    )
+
+
+def _decode_steps(uri: str | None) -> VerificationSteps | None:
+    """Parse verification steps from a credential URI string."""
+    parsed = credential_uri.parse_uri(uri)
+    if parsed is None:
+        return None
+    # Convert credential_uri.VerificationSteps → schemas.VerificationSteps
+    def _s(st: credential_uri.StepStatus) -> VerificationStepStatus:
+        return VerificationStepStatus(st.value)
+    return VerificationSteps(
+        documentary=_s(parsed.documentary),
+        selfie=_s(parsed.selfie),
+        kyc=_s(parsed.kyc),
+        sanctions=_s(parsed.sanctions),
+        pep=_s(parsed.pep),
+        ref=parsed.ref,
+        issued_on=parsed.issued_on,
     )
 
 
@@ -221,6 +268,7 @@ def _status(
     credential_type: str | None = None,
     expiration: datetime | None = None,
     uri: str | None = None,
+    steps: VerificationSteps | None = None,
     reason: str,
 ) -> CredentialStatus:
     return CredentialStatus(
@@ -231,6 +279,7 @@ def _status(
         credential_type=credential_type,
         expiration=expiration,
         uri=uri,
+        verification_steps=steps,
         reason=reason,
     )
 

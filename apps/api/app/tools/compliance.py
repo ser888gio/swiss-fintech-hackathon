@@ -1,12 +1,17 @@
 """Compliance tool: check_compliance.
 
 Screens the receiver with OpenSanctions when configured, falls back to the demo
-screen when not, and combines deterministic risk signals into a single AML
-score. Sanctions can block payments; public intelligence can only raise risk.
+screen when not, and assembles deterministic risk signals into a single AML
+score using the FATF-aligned risk model in tools/risk_model.py.
+
+Sanctions can block payments outright. All other signals feed the AML score
+which the policy engine compares against its flag threshold to decide whether
+to escalate to hardware approval.
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -16,16 +21,15 @@ from ..schemas import (
     ComplianceResult,
     CredentialStatus,
     PaymentIntent,
+    PaymentStatus,
     ReceiverEntityType,
     SanctionsMatch,
 )
-from . import public_intel
+from . import plaid_monitor, public_intel, risk_model
 
 # Demo sanctions list. Used for local demos and as a graceful provider fallback.
 SANCTIONED_ACCOUNTS = {"rSANCTIONED000000000000000000000000", "ACME-SHELL-CO"}
 SANCTIONED_NAMES = {"acme shell co", "blocked industries ltd"}
-HIGH_RISK_COUNTRIES = {"IR", "KP", "RU", "SY"}
-HIGH_RISK_KEYWORDS = ("crypto-mixer", "shell", "unverified")
 
 OPENSANCTIONS_ENTITY_URL = "https://www.opensanctions.org/entities/{id}/"
 
@@ -40,43 +44,110 @@ def check_compliance(
     intent: PaymentIntent, credential: CredentialStatus | None = None
 ) -> ComplianceResult:
     settings = get_settings()
-    flags: list[str] = []
 
+    # ── 1. External OSINT (advisory, score only raises) ───────────────────────
     public = public_intel.assess_public_intel(intent)
+
+    # ── 2. Sanctions / PEP screening ─────────────────────────────────────────
     matches: list[SanctionsMatch] = []
     sanctioned = False
+    is_pep = False
+    has_adverse_media = False
+    fallback_used = False
+    plaid_flags: list[str] = []
 
-    if settings.opensanctions_api_key:
+    plaid_result = _screen_plaid(intent, settings)
+    if plaid_result is not None:
+        sanctioned = plaid_result.sanctioned
+        is_pep = plaid_result.is_pep
+        has_adverse_media = plaid_result.has_adverse_media
+        plaid_flags = plaid_result.flags
+    elif settings.opensanctions_api_key:
         try:
             matches = _screen_opensanctions(intent)
             sanctioned = _has_blocking_match(matches, settings.opensanctions_match_threshold)
         except (httpx.HTTPError, ValueError):
             sanctioned = _fallback_sanctioned(intent)
-            flags.append("OpenSanctions unavailable; used local demo sanctions fallback")
+            fallback_used = True
     else:
         sanctioned = _fallback_sanctioned(intent)
 
+    # ── 3. Velocity check from payment store ──────────────────────────────────
+    prior_count, prior_total = _velocity_check(intent)
+
+    # ── 4. FATF-aligned AML signal evaluation ─────────────────────────────────
+    signals = risk_model.evaluate_signals(
+        receiver_name=intent.receiver_name,
+        receiver_country=intent.receiver_country,
+        sender_country=intent.sender_country,
+        receiver_entity_type=intent.receiver_entity_type.value,
+        amount=intent.amount,
+        currency=intent.currency,
+        purpose=intent.purpose,
+        reference=intent.reference,
+        policy_threshold=getattr(settings, "policy_threshold_usd", 10_000.0),
+        prior_payment_count=prior_count,
+        prior_payment_total=prior_total,
+    )
+
+    # ── 5. Assemble flags ─────────────────────────────────────────────────────
+    flags: list[str] = []
+    step_weight = 0  # default; overwritten below if credential has steps
+
     if sanctioned:
         flags.append("counterparty on sanctions list")
+    if fallback_used:
+        flags.append("OpenSanctions unavailable; used local demo sanctions fallback")
 
-    if intent.receiver_country.upper() in HIGH_RISK_COUNTRIES:
-        flags.append(f"receiver country is high risk ({intent.receiver_country.upper()})")
+    # Plaid Monitor flags (sanctions, PEP, adverse media)
+    flags.extend(plaid_flags)
 
-    reference = f"{intent.reference} {intent.purpose}".lower()
-    for keyword in HIGH_RISK_KEYWORDS:
-        if keyword in reference:
-            flags.append(f"reference mentions '{keyword}'")
+    # Flags from the risk model signals
+    flags.extend(s.flag for s in signals)
 
+    # Promote Plaid PEP / adverse-media signals into the risk model score
+    # by injecting synthetic signals so the weight is applied consistently.
+    if is_pep and not any(s.typology == risk_model.AMLTypology.pep_exposure for s in signals):
+        signals = list(signals) + [risk_model.RiskSignal(
+            typology=risk_model.AMLTypology.pep_exposure,
+            weight=25,
+            flag="Plaid Monitor confirmed PEP match",
+            evidence="Plaid Monitor returned a PEP hit for this counterparty.",
+        )]
+    if has_adverse_media:
+        signals = list(signals) + [risk_model.RiskSignal(
+            typology=risk_model.AMLTypology.pep_exposure,
+            weight=15,
+            flag="Plaid Monitor adverse media signal",
+            evidence="Plaid Monitor flagged adverse media associated with this counterparty.",
+        )]
+
+    # Public intel flags
     flags.extend(public.flags)
 
+    # KYC credential status + per-step signals
     kyc_missing = credential is not None and credential.checked and not credential.verified
     if kyc_missing:
         flags.append(f"no valid on-chain KYC credential ({credential.reason})")
 
-    score = _score(sanctioned, len(flags), intent.amount, public.score)
+    # Step-level signals from the credential URI (Plaid-modelled verification manifest)
+    step_weight = 0
+    if credential is not None and credential.verified and credential.verification_steps:
+        vsteps = credential.verification_steps
+        step_flags = _step_flags(vsteps)
+        flags.extend(step_flags)
+        step_weight = _step_weight(vsteps)
+
+    # ── 6. Score ──────────────────────────────────────────────────────────────
+    score = risk_model.signals_to_score(signals, sanctioned, public.score)
+    score = min(score + step_weight, 95) if not sanctioned else score
+
     if kyc_missing:
         score = min(max(score, KYC_MISSING_SCORE), 95 if not sanctioned else 100)
-    explanation = _explain(score, flags, matches, public.summary)
+
+    # ── 7. Explanation ────────────────────────────────────────────────────────
+    explanation = _explain(score, flags, matches, signals, public.summary)
+
     return ComplianceResult(
         aml_score=score,
         sanctioned=sanctioned,
@@ -87,6 +158,8 @@ def check_compliance(
         credential=credential,
     )
 
+
+# ── OpenSanctions integration ─────────────────────────────────────────────────
 
 def build_opensanctions_request(intent: PaymentIntent) -> dict[str, Any]:
     schema = "Person" if intent.receiver_entity_type is ReceiverEntityType.individual else "Company"
@@ -162,33 +235,159 @@ def is_sanctioned(address: str, name: str | None = None) -> bool:
     return False
 
 
-def _score(sanctioned: bool, flag_count: int, amount: float, public_intel_score: int) -> int:
-    if sanctioned:
-        return 100
-    score = 10 + flag_count * 25
-    if amount >= 25_000:
-        score += 10
-    score = max(score, public_intel_score)
-    return min(score, 95)
+# ── Plaid Monitor screening ───────────────────────────────────────────────────
 
+def _screen_plaid(
+    intent: PaymentIntent, settings
+) -> "plaid_monitor.PlaidScreeningResult | None":
+    """Call Plaid Monitor if credentials and a program ID are configured.
+
+    Returns None when Plaid is not configured so the caller falls through to
+    OpenSanctions. HTTP errors are caught and logged as a flag; the caller
+    then falls back to OpenSanctions/demo list.
+    """
+    client_id = getattr(settings, "plaid_client_id", "")
+    secret = getattr(settings, "plaid_secret", "")
+    if not (client_id and secret):
+        return None
+
+    is_individual = intent.receiver_entity_type == ReceiverEntityType.individual
+    program_id = (
+        getattr(settings, "plaid_watchlist_program_id_individual", "")
+        if is_individual
+        else getattr(settings, "plaid_watchlist_program_id_entity", "")
+    )
+    if not program_id:
+        return None
+
+    plaid_env = getattr(settings, "plaid_env", "sandbox")
+
+    try:
+        if is_individual:
+            return plaid_monitor.screen_individual(
+                client_id=client_id,
+                secret=secret,
+                plaid_env=plaid_env,
+                program_id=program_id,
+                legal_name=intent.receiver_name,
+                country=intent.receiver_country,
+                client_user_id=intent.to,
+            )
+        else:
+            return plaid_monitor.screen_entity(
+                client_id=client_id,
+                secret=secret,
+                plaid_env=plaid_env,
+                program_id=program_id,
+                entity_name=intent.receiver_name,
+                country=intent.receiver_country,
+                client_user_id=intent.to,
+            )
+    except httpx.HTTPError as exc:
+        # Plaid unavailable — caller falls through to OpenSanctions
+        import logging
+        logging.getLogger(__name__).warning("Plaid Monitor unavailable: %s", exc)
+        return None
+
+
+# ── Velocity check ────────────────────────────────────────────────────────────
+
+def _velocity_check(intent: PaymentIntent) -> tuple[int, float]:
+    """Count recent payments to the same receiver from the in-memory store.
+
+    Returns (count, total_amount) for settled/released/pending payments to
+    intent.to within the last 24 hours. Blocked payments are excluded because
+    they never moved funds. Pure read — no side effects.
+    """
+    try:
+        from .. import store
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        non_terminal_statuses = {
+            PaymentStatus.settled,
+            PaymentStatus.released,
+            PaymentStatus.pending_approval,
+            PaymentStatus.routing,
+        }
+        recent = [
+            p for p in store.list_payments()
+            if p.intent.to == intent.to
+            and p.status in non_terminal_statuses
+            and p.created_at >= cutoff
+        ]
+        total = sum(p.intent.amount for p in recent)
+        return len(recent), total
+    except Exception:
+        # Store not available (test context without DB). Treat as no history.
+        return 0, 0.0
+
+
+# ── Explanation builder ───────────────────────────────────────────────────────
 
 def _explain(
     score: int,
     flags: list[str],
     matches: list[SanctionsMatch],
+    signals: list[risk_model.RiskSignal],
     public_intel_summary: str,
 ) -> str:
     parts: list[str] = []
-    if flags:
-        parts.append(f"AML score {score}/100. Flags: {'; '.join(flags)}.")
+
+    if score == 100:
+        parts.append(f"BLOCKED. AML score {score}/100 — counterparty is sanctioned.")
+    elif flags:
+        typologies = sorted({s.typology.value for s in signals})
+        typology_str = f" Typologies: {', '.join(typologies)}." if typologies else ""
+        parts.append(f"AML score {score}/100.{typology_str} Flags: {'; '.join(flags)}.")
     else:
-        parts.append(f"Clean screen. AML score {score}/100, no flags raised.")
+        parts.append(f"Clean screen. AML score {score}/100, no risk signals fired.")
 
     if matches:
-        top = max(matches, key=lambda match: match.score)
+        top = max(matches, key=lambda m: m.score)
         parts.append(f"Top OpenSanctions match: {top.caption} ({top.score:.2f}).")
 
     if public_intel_summary:
         parts.append(public_intel_summary)
 
     return " ".join(parts)
+
+
+# ── Credential step helpers ───────────────────────────────────────────────────
+
+def _step_flags(vsteps) -> list[str]:
+    """Derive compliance flags from credential verification steps."""
+    from ..schemas import VerificationStepStatus as S
+    flags: list[str] = []
+    if vsteps.documentary == S.fail:
+        flags.append("credential: government ID scan failed at issuance")
+    if vsteps.selfie == S.fail:
+        flags.append("credential: liveness check failed at issuance")
+    if vsteps.kyc == S.fail:
+        flags.append("credential: name/DOB verification failed at issuance")
+    if vsteps.sanctions == S.flagged:
+        flags.append("credential: sanctions hit recorded at time of KYC issuance")
+    if vsteps.pep == S.flagged:
+        flags.append("credential: counterparty confirmed PEP at time of KYC issuance")
+    if vsteps.documentary == S.skip:
+        flags.append("credential: documentary step not performed — identity not document-verified")
+    if vsteps.sanctions == S.skip:
+        flags.append("credential: sanctions screen not recorded in credential URI")
+    return flags
+
+
+def _step_weight(vsteps) -> int:
+    """AML score contribution from credential step outcomes."""
+    from ..schemas import VerificationStepStatus as S
+    weight = 0
+    if vsteps.pep == S.flagged:
+        weight += 20
+    if vsteps.sanctions == S.flagged:
+        weight += 30
+    if vsteps.documentary == S.fail or vsteps.selfie == S.fail or vsteps.kyc == S.fail:
+        weight += 15
+    # Verified identity slightly offsets generic risk signals
+    if vsteps.documentary == S.pass_ and vsteps.selfie == S.pass_:
+        weight -= 5
+    if vsteps.sanctions == S.pass_:
+        weight -= 5
+    return max(weight, 0)
