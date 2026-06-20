@@ -42,6 +42,7 @@ from .schemas import (
     PaymentIntent,
     PaymentStatus,
     PolicyDecision,
+    PremiumQuote,
     ReceiverEntityType,
     RouteQuote,
 )
@@ -244,6 +245,7 @@ def _payment_to_row(payment: Payment) -> PaymentRecord:
         route_quote=payment.route_quote.model_dump(by_alias=True) if payment.route_quote else None,
         compliance=payment.compliance.model_dump(by_alias=True) if payment.compliance else None,
         policy_decision=payment.policy_decision.model_dump(by_alias=True) if payment.policy_decision else None,
+        cover=payment.cover.model_dump(by_alias=True) if payment.cover else None,
         status=payment.status.value,
         escrow_sequence=payment.escrow_sequence,
         escrow_create_tx_hash=payment.escrow_create_tx_hash,
@@ -264,6 +266,7 @@ def _row_to_payment(row: PaymentRecord) -> Payment:
     route_data = row.route_quote
     compliance_data = row.compliance
     policy_data = row.policy_decision
+    cover_data = row.cover
 
     return Payment(
         id=row.id,
@@ -271,6 +274,7 @@ def _row_to_payment(row: PaymentRecord) -> Payment:
         route_quote=RouteQuote(**route_data) if route_data else None,
         compliance=ComplianceResult(**compliance_data) if compliance_data else None,
         policy_decision=PolicyDecision(**policy_data) if policy_data else None,
+        cover=PremiumQuote(**cover_data) if cover_data else None,
         status=PaymentStatus(row.status),
         escrow_sequence=row.escrow_sequence,
         escrow_create_tx_hash=row.escrow_create_tx_hash,

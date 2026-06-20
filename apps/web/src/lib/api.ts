@@ -164,19 +164,15 @@ export const api = {
   revokeDelegation: (grantId: string) =>
     request<DelegationGrant>(`/treasury/delegations/${grantId}`, { method: "DELETE" }),
 
-  // Insurance — pricing & risk engine (Pillar 3).
+  // Insurance pricing & risk engine.
+  getInsurancePool: () => request<PoolStatus>("/insurance/pool"),
   quoteInsurance: (req: InsuranceQuoteRequest) =>
-    request<PremiumQuote>("/treasury/insurance/quote", { method: "POST", body: JSON.stringify(req) }),
+    request<PremiumQuote>("/insurance/quote", { method: "POST", body: JSON.stringify(req) }),
   bindInsurance: (req: BindRequest) =>
-    request<InsurancePremiumRecord>("/treasury/insurance/bind", { method: "POST", body: JSON.stringify(req) }),
-  listInsurancePremiums: () =>
-    request<InsurancePremiumRecord[]>("/treasury/insurance/premiums"),
-  claimInsurance: (req: ClaimRequest) =>
-    request<InsurancePayoutRecord>("/treasury/insurance/claim", { method: "POST", body: JSON.stringify(req) }),
-  listInsurancePayouts: () =>
-    request<InsurancePayoutRecord[]>("/treasury/insurance/payouts"),
-  getInsurancePool: () =>
-    request<PoolStatus>("/treasury/insurance/pool"),
-  getAgentRisk: (address: string) =>
-    request<AgentRiskState>(`/treasury/insurance/agents/${address}/risk`),
+    request<InsurancePremiumRecord>("/insurance/bind", { method: "POST", body: JSON.stringify(req) }),
+  settleClaim: (req: ClaimRequest) =>
+    request<InsurancePayoutRecord>("/insurance/claim", { method: "POST", body: JSON.stringify(req) }),
+  listPremiums: () => request<InsurancePremiumRecord[]>("/insurance/premiums"),
+  listPayouts: () => request<InsurancePayoutRecord[]>("/insurance/payouts"),
+  getAgentRisk: (address: string) => request<AgentRiskState>(`/insurance/agents/${address}/risk`),
 };

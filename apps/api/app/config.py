@@ -145,6 +145,15 @@ class Settings(BaseSettings):
     trade_finance_discount_rate_default: float = 0.02
     trade_finance_source_tag: int = 20260530
 
+    # ARS Insurance pricing engine.
+    insurance_enabled: bool = True
+    insurance_premium_cap: float = 5000.0
+    insurance_lambda_expense: float = 0.12
+    insurance_lambda_capital: float = 0.08
+    insurance_lambda_risk_max: float = 0.22
+    insurance_tau_days: float = 30.0
+    insurance_cover_required_above_usd: float | None = None
+
     # ARS XLS-66 Lending (LoanBroker / LoanSet / LoanCreate / LoanRepay).
     # Amendment-gated — Devnet only at build time. If the amendment check fails
     # at demo time, flip this to false and fall back to XLS-65 early payment.

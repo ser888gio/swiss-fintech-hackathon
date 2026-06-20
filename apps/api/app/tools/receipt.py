@@ -75,6 +75,7 @@ def compute_decision_hash(payment: Payment) -> str:
         "routeQuote": _route(payment),
         "compliance": _compliance(payment),
         "policyDecision": _policy(payment),
+        "cover": _cover(payment),
         "guardrailTrail": _guardrail_trail(guardrail_trail),
         "auditLogRoot": _audit_log.root_hash(),
     }
@@ -102,6 +103,7 @@ def _canonical_json(payment: Payment) -> str:
         "routeQuote": _route(payment),
         "compliance": _compliance(payment),
         "policyDecision": _policy(payment),
+        "cover": _cover(payment),
         "escrowSequence": payment.escrow_sequence,
         "approvalSignature": payment.approval_signature,
         "txHash": payment.tx_hash,
@@ -173,6 +175,20 @@ def _policy(payment: Payment) -> dict | None:
         "requiresApproval": d.requires_approval,
         "ruleFired": d.rule_fired,
         "reasons": d.reasons,
+    }
+
+
+def _cover(payment: Payment) -> dict | None:
+    if payment.cover is None:
+        return None
+    return {
+        "decision": payment.cover.decision.value,
+        "premium": payment.cover.premium,
+        "lines": payment.cover.lines,
+        "pd": payment.cover.pd,
+        "credibility": payment.cover.credibility,
+        "reason": payment.cover.reason,
+        "receiptHash": payment.cover.receipt_hash,
     }
 
 

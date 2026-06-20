@@ -39,10 +39,6 @@ class PaymentIntent(CamelModel):
     amount: float
     currency: str
     reference: str
-    # ARS Insurance (Pillar 3) cover-requirement gate (spec §3). Optional and
-    # default-off so existing payloads are unaffected: a counterparty may mandate
-    # agent-default cover, conditionally above a USD amount. When required and
-    # unbound, the orchestrator auto-binds a premium before settling.
     cover_required: bool = False
     cover_required_above_usd: float | None = None
 
@@ -245,6 +241,7 @@ class Payment(CamelModel):
     explorer_url_secondary: str | None = None
     audit_explanation: str | None = None
     receipt_hash: str | None = None
+    cover: PremiumQuote | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -584,16 +581,11 @@ class InsurancePayoutRecord(CamelModel):
     currency: str
     slash_tx_hash: str | None = None
     pool_draw_tx_hash: str | None = None
-    explorer_url: str | None = None         # explorer link for the pool-draw tx
     reputation_mpt_protected: bool = True   # principal score NOT burned on insured default
     created_at: datetime
 
 
-# ── ARS Insurance — pricing & risk engine (Pillar 3) ──────────────────────────
-
 class CoverLine(str, Enum):
-    """The four covered lines (spec §2). Premium is additive across active lines."""
-
     merchant_default = "merchant_default"
     lender_credit = "lender_credit"
     principal_score = "principal_score"
@@ -601,96 +593,80 @@ class CoverLine(str, Enum):
 
 
 class QuoteDecision(str, Enum):
-    OFFER = "OFFER"       # bind via pay_premium
-    REVIEW = "REVIEW"     # capacity/risk — escalate
-    DECLINE = "DECLINE"   # ineligible
+    offer = "OFFER"
+    review = "REVIEW"
+    decline = "DECLINE"
 
 
 class TxnContext(CamelModel):
-    """Transaction-shape inputs to the relative-risk multiplier (spec §5)."""
-
-    category: str = "merchant_payment"
-    tenor_band: str = "lt_30d"
-    cpty_band: str = "known"
+    category: str
+    tenor_band: str
+    cpty_band: str
     first_seen: bool = False
+    amount: str
     amount_z: float = 0.0
     velocity_z: float = 0.0
     concentration_z: float = 0.0
-
-
-class InsuranceQuoteRequest(CamelModel):
-    """Request a premium quote for one agent transaction."""
-
-    agent_address: str
-    amount: str                                  # Decimal string — transaction EAD
-    currency: str = "RLUSD"
-    score_band: str | None = None
-    active_lines: list[CoverLine] = Field(default_factory=lambda: [CoverLine.merchant_default])
-    collateral: str = "0"                        # Decimal string — agent collateral
-    txn: TxnContext = Field(default_factory=TxnContext)
-    job_id: str | None = None
-
-
-class PremiumQuote(CamelModel):
-    """Deterministic, signed quote — reproducible from its inputs (spec §7)."""
-
-    decision: QuoteDecision
-    premium: str                                 # Decimal string — total premium
-    currency: str = "RLUSD"
-    lines: dict[str, str] = Field(default_factory=dict)   # per-line premium, Decimal strings
-    pd: float = 0.0                              # probability of default used
-    credibility: float = 0.0                     # Z ∈ [0, 1]
-    score_band: str | None = None
-    reason: str | None = None                    # why REVIEW / DECLINE
-    receipt_hash: str                            # canonical hash anchored in the bind Memo
-
-
-class BindRequest(CamelModel):
-    """Bind (pay) a premium for a transaction. Re-quotes server-side first."""
-
-    agent_address: str
-    job_id: str
-    amount: str                                  # Decimal string
-    currency: str = "RLUSD"
-    score_band: str | None = None
-    active_lines: list[CoverLine] = Field(default_factory=lambda: [CoverLine.merchant_default])
-    collateral: str = "0"
-    txn: TxnContext = Field(default_factory=TxnContext)
-
-
-class ClaimRequest(CamelModel):
-    """File a claim on a covered default — triggers the payout waterfall (spec §8)."""
-
-    job_id: str
-    agent_address: str
-    merchant: str                                # beneficiary
-    line: CoverLine = CoverLine.merchant_default
-    loss: str                                    # Decimal string — gross loss
-    currency: str = "RLUSD"
-    collateral: str = "0"                        # Decimal string — recoverable agent collateral
+    active_lines: list[CoverLine] = Field(default_factory=list)
 
 
 class AgentRiskState(CamelModel):
-    """Read-model of an agent's default-propensity posterior (spec §6)."""
-
     agent_address: str
-    score_band: str | None = None
+    score_band: str
     alpha: float
     beta: float
-    pd: float                                    # current posterior-mean default rate
-    credibility: float                           # Z ∈ [0, 1]
+    pd: float
+    credibility: float
     updated_at: datetime
 
 
-class PoolStatus(CamelModel):
-    """Insurance Vault capacity summary (first-loss capital + flows)."""
+class PremiumQuote(CamelModel):
+    decision: QuoteDecision
+    premium: str
+    lines: dict[str, str] = Field(default_factory=dict)
+    pd: float
+    credibility: float
+    reason: str
+    receipt_hash: str
 
-    first_loss: str                              # Decimal string — available capital
-    currency: str = "RLUSD"
-    premiums_collected: str = "0"                # Decimal string
-    payouts_made: str = "0"                      # Decimal string
-    capacity_ratio: float = 0.0                  # first_loss / base capital
-    vault_balance: str = "0"                     # Decimal string — on-ledger XLS-65 vault balance
+
+class InsuranceQuoteRequest(CamelModel):
+    agent_address: str
+    score_band: str = "STANDARD"
+    txn_context: TxnContext
+
+
+class BindRequest(CamelModel):
+    job_id: str
+    agent_address: str
+    score_band: str = "STANDARD"
+    currency: str = "USD"
+    quote: PremiumQuote
+
+
+class ClaimRequest(CamelModel):
+    job_id: str
+    agent_address: str
+    merchant: str
+    merchant_name: str | None = None
+    merchant_country: str = "CH"
+    score_band: str = "STANDARD"
+    currency: str = "USD"
+    claim_amount: str
+    collateral_available: str = "0.000000"
+    aml_score: int = 0
+    sanctioned: bool = False
+    receipt_hash: str | None = None
+
+
+class PoolStatus(CamelModel):
+    enabled: bool
+    currency: str
+    deposited: str
+    wallet_balance: str
+    available_capacity: str
+    premiums_collected: str
+    claims_paid: str
 
 
 # ── ARS Audit Log Event ───────────────────────────────────────────────────────
