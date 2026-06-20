@@ -1,46 +1,184 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
-import type {
-  InsurancePayoutRecord,
-  InsurancePremiumRecord,
-  Payment,
-  PoolStatus,
-  TreasuryAgentRun,
-  TreasuryGoal,
-  TreasuryGoalCreate,
-} from "@treasury/shared";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
+import type { MPTStatus, Payment, TreasuryAgentRun, TreasuryGoal, TreasuryGoalCreate, VaultStatus } from "@treasury/shared";
+
 import { api } from "../lib/api.js";
 import { hashShort, money } from "../lib/utils.js";
 
-// ── Demo goals pre-configured for the presentation ───────────────────────────
+// XRP-only: the agent transacts natively in XRP so there is no FX step.
+const CURRENCIES = ["XRP"];
+type BusyKey = "goal" | "run" | "vault" | "mpt";
 
-const DEMO_GOALS: TreasuryGoalCreate[] = [
-  {
-    name: "ACME Supplies AG — monthly invoice",
-    beneficiaryName: "ACME Supplies AG",
-    beneficiaryAddress: "rwjNyXSKQ5Rt6StJHHPzdHY5KA8UqYjBuC",
-    beneficiaryCountry: "DE",
-    receiverEntityType: "company",
-    amount: 500,
-    currency: "USD",
-    reference: "INV-ACME-001",
-    purpose: "vendor_invoice",
-    triggerIntervalHours: 0.001,
-  },
-  {
-    name: "Logistics Partner — freight settlement",
-    beneficiaryName: "SwissLog GmbH",
-    beneficiaryAddress: "rwjNyXSKQ5Rt6StJHHPzdHY5KA8UqYjBuC",
-    beneficiaryCountry: "CH",
-    receiverEntityType: "company",
-    amount: 1500,
-    currency: "USD",
-    reference: "INV-LOG-007",
-    purpose: "supplier_payment",
-    triggerIntervalHours: 0.001,
-  },
-];
+// Payments above this lock on-chain and require a physical Firefly approval —
+// mirrors POLICY_THRESHOLD_USD on the backend. These are the agentic
+// transactions whose step trail matters most to a reviewer.
+const FIREFLY_THRESHOLD = 500;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const STATUS_LABEL: Record<Payment["status"], string> = {
+  routing: "Routing",
+  settled: "Settled",
+  pending_approval: "Locked · Firefly",
+  released: "Released",
+  blocked: "Refused",
+  failed: "Failed",
+};
+
+type StepState = "pass" | "flag" | "block" | "info";
+interface TxStep {
+  label: string;
+  detail: string;
+  state: StepState;
+}
+
+// Derive the deterministic decision pipeline from a payment so the agentic side
+// shows *what* the agent did and *why*, not just that a goal fired.
+function buildSteps(p: Payment): TxStep[] {
+  const steps: TxStep[] = [];
+  const { intent, routeQuote: route, compliance, policyDecision: policy, status } = p;
+
+  if (route) {
+    steps.push({
+      label: "Route",
+      detail: `${route.pathSummary}${route.sendMax != null ? ` · SendMax ${route.sendMax.toLocaleString()}` : ""}`,
+      state: "info",
+    });
+  }
+
+  if (compliance) {
+    const kyc = compliance.credential?.checked
+      ? compliance.credential.verified ? " · KYC verified" : " · KYC missing"
+      : "";
+    const top = compliance.sanctionsMatches[0];
+    steps.push({
+      label: "Compliance",
+      detail: `AML ${compliance.amlScore}/100 · ${compliance.explanation}${kyc}${top ? ` · OpenSanctions ${Math.round(top.score * 100)}%` : ""}`,
+      state: compliance.sanctioned ? "block" : compliance.flags.length > 0 ? "flag" : "pass",
+    });
+  }
+
+  if (policy) {
+    if (policy.blocked) {
+      steps.push({ label: "Policy", detail: policy.blockReason ?? "Blocked outright", state: "block" });
+    } else if (policy.requiresApproval) {
+      steps.push({
+        label: "Policy",
+        detail: `Escalated (${policy.ruleFired ?? "rule"}) — ${policy.reasons.join("; ")}`,
+        state: "flag",
+      });
+    } else {
+      steps.push({
+        label: "Policy",
+        detail: `Auto-settle — at/below ${FIREFLY_THRESHOLD} ${intent.currency} threshold, low risk`,
+        state: "pass",
+      });
+    }
+  }
+
+  if (status === "settled" || status === "released") {
+    steps.push({ label: "Settlement", detail: "Delivered on-ledger", state: "pass" });
+  } else if (status === "pending_approval") {
+    steps.push({
+      label: "Firefly veto",
+      detail: `Locked in escrow${p.escrowSequence != null ? ` (seq ${p.escrowSequence})` : ""} — awaiting physical hardware approval`,
+      state: "flag",
+    });
+  } else if (status === "blocked") {
+    steps.push({ label: "Settlement", detail: "Not executed — blocked", state: "block" });
+  } else if (status === "failed") {
+    steps.push({ label: "Settlement", detail: "Submission failed", state: "block" });
+  } else {
+    steps.push({ label: "Settlement", detail: "Routing…", state: "info" });
+  }
+
+  return steps;
+}
+
+const STEP_SYMBOL: Record<StepState, string> = { pass: "✓", flag: "⚠", block: "✗", info: "•" };
+
+function AgenticTxCard({ payment }: { payment: Payment }) {
+  const { intent, status } = payment;
+  const large = intent.amount > FIREFLY_THRESHOLD;
+  const steps = buildSteps(payment);
+  return (
+    <article className={`agentic-tx status-${status}`}>
+      <header className="agentic-tx-head">
+        <strong>{intent.amount.toLocaleString()} {intent.currency}</strong>
+        <span className="badge">{STATUS_LABEL[status]}</span>
+        {large && (
+          <span className="firefly-tag">🔒 &gt;{FIREFLY_THRESHOLD} {intent.currency} · Firefly hardware veto</span>
+        )}
+      </header>
+      <p className="muted agentic-buying">
+        Buying: <strong>{intent.purpose.replace(/_/g, " ")}</strong> · {intent.reference} → {intent.receiverName} ({intent.receiverCountry})
+      </p>
+      <ol className="agentic-steps">
+        {steps.map((s, i) => (
+          <li key={i} className={`agentic-step step-${s.state}`}>
+            <span className="step-mark">{STEP_SYMBOL[s.state]}</span>
+            <span className="step-label">{s.label}</span>
+            <span className="step-detail">{s.detail}</span>
+          </li>
+        ))}
+      </ol>
+      {payment.auditExplanation && <p className="audit">{payment.auditExplanation}</p>}
+      {payment.explorerUrl && (
+        <a href={payment.explorerUrl} target="_blank" rel="noreferrer" className="agentic-tx-link">
+          View on explorer ↗
+        </a>
+      )}
+    </article>
+  );
+}
+
+const DEFAULT_GOAL: TreasuryGoalCreate = {
+  name: "Monthly supplier payment",
+  beneficiaryName: "Acme Supplies AG",
+  // Funded Devnet counterparty (activated account → payment lands; no tecNO_DST).
+  // Replace with your own funded beneficiary when you change networks.
+  beneficiaryAddress: "rBBHb3oX4JxoGRU28X94iDRiZUPU8Xu7ur",
+  beneficiaryCountry: "US",
+  receiverEntityType: "company",
+  amount: 1000,
+  currency: "XRP",
+  reference: "INV-AUTO-001",
+  purpose: "supplier_payment",
+  triggerIntervalHours: 0.001, // ~3.6 s — fires immediately for demo
+};
+
+export function TreasuryPage() {
+  const [goals, setGoals] = useState<TreasuryGoal[]>([]);
+  const [runs, setRuns] = useState<TreasuryAgentRun[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [vault, setVault] = useState<VaultStatus | null>(null);
+  const [mpt, setMpt] = useState<MPTStatus | null>(null);
+  const [form, setForm] = useState<TreasuryGoalCreate>(DEFAULT_GOAL);
+  const [vaultAmount, setVaultAmount] = useState<number>(10_000);
+  const [mptHolder, setMptHolder] = useState<string>("");
+  const [busy, setBusy] = useState<Record<BusyKey, boolean>>({
+    goal: false,
+    run: false,
+    vault: false,
+    mpt: false,
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [g, r, p, v, m] = await Promise.all([
+        api.listTreasuryGoals(),
+        api.listTreasuryRuns(),
+        api.listPayments().catch(() => [] as Payment[]),
+        api.getVaultStatus().catch(() => null),
+        api.getMptStatus().catch(() => null),
+      ]);
+      setGoals(g);
+      setRuns(r);
+      setPayments(p);
+      setVault(v);
+      setMpt(m);
+    } catch (cause) {
+      setError(String(cause));
+    }
+  }, []);
 
 function ts() {
   return new Date().toISOString().slice(11, 19);
@@ -202,6 +340,8 @@ function PaymentOutcomeCard({
     : "var(--muted)";
 
   const cover = payment.cover;
+
+  const paymentsById = useMemo(() => new Map(payments.map((p) => [p.id, p])), [payments]);
 
   return (
     <div style={{
@@ -448,17 +588,73 @@ function GoalsSidebar({
           </button>
         </div>
 
-        {goals.length === 0 && !showForm && (
-          <div style={{ fontSize: "0.8rem" }}>
-            <p className="muted" style={{ marginBottom: "0.5rem" }}>No goals yet. Add demo goals:</p>
-            {DEMO_GOALS.map((g) => (
-              <button key={g.reference} type="button" className="text-action"
-                disabled={adding}
-                style={{ display: "block", width: "100%", textAlign: "left", marginBottom: "0.3rem", fontSize: "0.75rem", minHeight: "unset", padding: "0.25rem 0" }}
-                onClick={() => void runAdd(g)}>
-                + {g.name}
-              </button>
-            ))}
+        {/* Active goals */}
+        <section className="queue">
+          <h2>Active goals ({goals.length})</h2>
+          {goals.length === 0 && <p className="muted">No goals yet. Add one above to get started.</p>}
+          {goals.map((goal) => (
+            <article className="decision-row" key={goal.id}>
+              <div>
+                <strong>{goal.name}</strong>
+                <p className="muted">
+                  {goal.amount.toLocaleString()} {goal.currency} → {goal.beneficiaryName} ({goal.beneficiaryCountry})
+                  · every {goal.triggerIntervalHours}h
+                </p>
+                <p className="muted">
+                  {goal.lastTriggeredAt
+                    ? `Last fired: ${new Date(goal.lastTriggeredAt).toLocaleString()}`
+                    : "Never triggered"}
+                </p>
+              </div>
+              <div className="decision-actions">
+                <span className={`dashboard-status ${goal.enabled ? "status-settled" : "status-blocked"}`}>
+                  {goal.enabled ? "Enabled" : "Disabled"}
+                </span>
+                <button className="text-action" type="button" onClick={() => void deleteGoal(goal.id)}>
+                  Remove
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
+
+        {/* Run history */}
+        <section className="queue">
+          <h2>Recent runs ({runs.length})</h2>
+          {runs.length === 0 && <p className="muted">No runs yet. Click "Run agent cycle now" above.</p>}
+          {runs.map((run) => (
+            <article className="decision-row" key={run.id}>
+              <div>
+                <strong>
+                  {run.goalsTriggered}/{run.goalsEvaluated} goals fired
+                  <span className={`dashboard-status status-${run.goalsTriggered > 0 ? "settled" : "routing"}`} style={{ marginLeft: "0.5rem" }}>
+                    {run.status}
+                  </span>
+                </strong>
+                <p className="muted">{new Date(run.startedAt).toLocaleString()}</p>
+                {run.narration && <p className="audit">{run.narration}</p>}
+                <ul className="credential-log">
+                  {run.triggerLog.map((line, i) => (
+                    <li key={i} className="muted">{line}</li>
+                  ))}
+                </ul>
+                {run.paymentsInitiated.length > 0 && (
+                  <div className="agentic-tx-list">
+                    {run.paymentsInitiated.map((pid) => {
+                      const p = paymentsById.get(pid);
+                      return p ? <AgenticTxCard key={pid} payment={p} /> : null;
+                    })}
+                  </div>
+                )}
+              </div>
+            </article>
+          ))}
+        </section>
+        {/* XLS-33 MPTokens */}
+        <section className="queue" aria-label="XLS-33 MPTokens">
+          <div className="section-heading" style={{ marginBottom: "0.75rem" }}>
+            <span className="eyebrow">XLS-33 · MPTokens</span>
+            <strong>COMPLY compliance-attestation issuance</strong>
           </div>
         )}
 

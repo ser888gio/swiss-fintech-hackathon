@@ -468,6 +468,7 @@ export interface InsurancePremiumRecord {
   txHash: string | null;
   explorerUrl: string | null;
   scoreBand: string | null;
+  guardrailTrail: GuardrailResult[];
   createdAt: string;
 }
 
@@ -482,6 +483,7 @@ export interface InsurancePayoutRecord {
   slashTxHash: string | null;
   poolDrawTxHash: string | null;
   reputationMptProtected: boolean;
+  guardrailTrail: GuardrailResult[];
   createdAt: string;
 }
 
@@ -556,11 +558,50 @@ export interface ClaimRequest {
   merchantCountry?: string;
   scoreBand?: string;
   currency?: string;
-  claimAmount: string;
-  collateralAvailable?: string;
-  amlScore?: number;
-  sanctioned?: boolean;
-  receiptHash?: string | null;
+  collateral?: string;
+}
+
+export interface AgentRiskState {
+  agentAddress: string;
+  scoreBand: string | null;
+  alpha: number;
+  beta: number;
+  pd: number;
+  credibility: number;
+  updatedAt: string;
+}
+
+export interface PoolStatus {
+  firstLoss: string;
+  currency: string;
+  premiumsCollected: string;
+  payoutsMade: string;
+  capacityRatio: number;
+  vaultBalance: string;        // on-ledger XLS-65 vault balance
+  lpCapital: string;           // total LP-provided capital
+}
+
+// Capital Provider (LP)
+export interface CapitalDepositRequest {
+  lpAddress: string;
+  amount: string;
+  currency?: string;
+}
+
+export interface CapitalWithdrawRequest {
+  lpAddress: string;
+  amount: string;
+}
+
+export interface LpPosition {
+  lpAddress: string;
+  capital: string;
+  sharePct: number;
+  currency: string;
+  txHash: string | null;
+  explorerUrl: string | null;
+  guardrailTrail: GuardrailResult[];
+  updatedAt: string;
 }
 
 // ── ARS Audit Log Event ──────────────────────────────────────────────────────

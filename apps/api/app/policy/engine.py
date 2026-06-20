@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from ..schemas import PolicyDecision
 
-THRESHOLD_USD = 10_000.0
+THRESHOLD_USD = 500.0
 COMPLIANCE_FLAG_SCORE = 60
 
 

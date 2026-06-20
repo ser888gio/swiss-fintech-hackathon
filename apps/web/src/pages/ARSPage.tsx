@@ -6,6 +6,7 @@ import type {
   DelegationGrantCreate,
   GuardrailResult,
   InsurancePremiumRecord,
+  LpPosition,
   PoolStatus,
   PremiumQuote,
   Receivable,
@@ -556,6 +557,10 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
   const [premiums, setPremiums] = useState<InsurancePremiumRecord[]>([]);
   const [pool, setPool] = useState<PoolStatus | null>(null);
   const [riskState, setRiskState] = useState<AgentRiskState | null>(null);
+  // First-loss capital providers (LPs).
+  const [lpPositions, setLpPositions] = useState<LpPosition[]>([]);
+  const [lpAddress, setLpAddress] = useState("rLP0000000000000000000000000000001");
+  const [lpAmount, setLpAmount] = useState("50000");
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const now = () => new Date().toISOString().slice(11, 19);
@@ -563,9 +568,14 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
 
   const refresh = useCallback(async () => {
     try {
-      const [pr, pl] = await Promise.all([api.listInsurancePremiums(), api.getInsurancePool()]);
+      const [pr, pl, lp] = await Promise.all([
+        api.listInsurancePremiums(),
+        api.getInsurancePool(),
+        api.listInsuranceCapital(),
+      ]);
       setPremiums(pr);
       setPool(pl);
+      setLpPositions(lp);
     } catch {
       /* feature may be disabled */
     }
@@ -631,6 +641,7 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
         text: `Premium bound — ${rec.premiumAmount} ${rec.currency} → Insurance Vault (job ${jobId.slice(-6)})`,
         txHash: rec.txHash ?? undefined,
         explorerUrl: rec.explorerUrl ?? undefined,
+        guardrailTrail: rec.guardrailTrail,
       });
       await refresh();
     } catch (e) {
@@ -659,6 +670,7 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
         text: `Payout — pool drew ${payout.poolDrawn} ${payout.currency}, merchant paid ${payout.totalPaid}. Principal score protected.`,
         txHash: payout.poolDrawTxHash ?? undefined,
         explorerUrl: payout.explorerUrl ?? undefined,
+        guardrailTrail: payout.guardrailTrail,
       });
       await Promise.all([refresh(), refreshRisk(agent)]);
     } catch (e) {
@@ -666,6 +678,53 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
       onLog({ ts: now(), kind: "error", text: `Claim refused: ${msg}` });
     } finally {
       setBusyKey("claim", false);
+    }
+  };
+
+  const depositCapital = async () => {
+    setBusyKey("lpDeposit", true);
+    setError(null);
+    onLog({ ts: now(), kind: "info", text: `LP ${lpAddress.slice(0, 10)}… depositing ${lpAmount} first-loss capital` });
+    try {
+      const pos = await api.depositInsuranceCapital({ lpAddress, amount: lpAmount });
+      onLog({
+        ts: now(),
+        kind: "success",
+        text: `Capital in — ${pos.capital} ${pos.currency} (${(pos.sharePct * 100).toFixed(1)}% of LP pool)`,
+        txHash: pos.txHash ?? undefined,
+        explorerUrl: pos.explorerUrl ?? undefined,
+        guardrailTrail: pos.guardrailTrail,
+      });
+      await refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      onLog({ ts: now(), kind: "error", text: `Capital deposit refused: ${msg}` });
+    } finally {
+      setBusyKey("lpDeposit", false);
+    }
+  };
+
+  const withdrawCapital = async () => {
+    setBusyKey("lpWithdraw", true);
+    setError(null);
+    onLog({ ts: now(), kind: "info", text: `LP ${lpAddress.slice(0, 10)}… recalling ${lpAmount} capital` });
+    try {
+      const pos = await api.withdrawInsuranceCapital({ lpAddress, amount: lpAmount });
+      onLog({
+        ts: now(),
+        kind: "success",
+        text: `Capital out — remaining ${pos.capital} ${pos.currency} (${(pos.sharePct * 100).toFixed(1)}% of LP pool)`,
+        txHash: pos.txHash ?? undefined,
+        explorerUrl: pos.explorerUrl ?? undefined,
+      });
+      await refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      onLog({ ts: now(), kind: "error", text: `Capital withdraw refused: ${msg}` });
+    } finally {
+      setBusyKey("lpWithdraw", false);
     }
   };
 
@@ -766,6 +825,9 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
             <p className="muted" style={{ fontSize: "0.7rem", margin: "0.1rem 0 0" }}>
               XLS-65 vault balance: {Number(pool.vaultBalance).toLocaleString()} {pool.currency}
             </p>
+            <p className="muted" style={{ fontSize: "0.7rem", margin: "0.1rem 0 0" }}>
+              LP first-loss capital: {Number(pool.lpCapital).toLocaleString()} {pool.currency}
+            </p>
           </div>
         )}
         {riskState && (
@@ -786,6 +848,43 @@ function InsurancePanel({ onLog }: { onLog: (l: LogLine) => void }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <strong>{p.premiumAmount} {p.currency}</strong>{" "}
                 <span className="muted" style={{ fontSize: "0.72rem" }}>· {p.scoreBand ?? "—"} · job {p.jobId.slice(-8)}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* First-loss capital providers (LPs) — fund the pool that backs payouts. */}
+      <div className="section-heading" style={{ marginTop: "1.5rem" }}>
+        <span className="eyebrow">Capital providers · first-loss pool</span>
+        <strong>Back the pool — deposit/recall first-loss capital (G1 KYA → G2 sanctions gated)</strong>
+      </div>
+      <div className="ars-form-grid">
+        <label><span>LP address</span>
+          <input value={lpAddress} onChange={(e) => setLpAddress(e.target.value)} spellCheck={false} />
+        </label>
+        <label><span>Amount</span>
+          <input value={lpAmount} onChange={(e) => setLpAmount(e.target.value)} />
+        </label>
+      </div>
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
+        <button className="primary-action" type="button" disabled={busy.lpDeposit} onClick={() => void depositCapital()}>
+          {busy.lpDeposit ? "Depositing…" : "Deposit capital"}
+        </button>
+        <button className="text-action" type="button" disabled={busy.lpWithdraw} onClick={() => void withdrawCapital()}>
+          {busy.lpWithdraw ? "Recalling…" : "Withdraw capital"}
+        </button>
+      </div>
+
+      {lpPositions.length > 0 && (
+        <ul className="credential-log" style={{ marginTop: "1rem" }}>
+          {lpPositions.map((lp) => (
+            <li key={lp.lpAddress} className="decision-row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong>{Number(lp.capital).toLocaleString()} {lp.currency}</strong>{" "}
+                <span className="muted" style={{ fontSize: "0.72rem" }}>
+                  · {(lp.sharePct * 100).toFixed(1)}% of LP pool · {lp.lpAddress.slice(0, 12)}…
+                </span>
               </div>
             </li>
           ))}

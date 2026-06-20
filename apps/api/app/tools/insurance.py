@@ -35,10 +35,14 @@ from . import vault as vault_tool
 from ..schemas import (
     AgentRiskState,
     BindRequest,
+    CapitalDepositRequest,
+    CapitalWithdrawRequest,
     ClaimRequest,
+    GuardrailResult,
     InsurancePayoutRecord,
     InsurancePremiumRecord,
     InsuranceQuoteRequest,
+    LpPosition,
     PoolStatus,
     PremiumQuote,
     QuoteDecision,
@@ -56,6 +60,7 @@ _premiums: list[InsurancePremiumRecord] = []
 _payouts: list[InsurancePayoutRecord] = []
 _pool = {"premiums": Decimal("0"), "payouts": Decimal("0")}
 _payout_pairs: dict[tuple[str, str], int] = {}   # (agent, merchant) → payout count
+_lp_capital: dict[str, Decimal] = {}             # LP address → capital contributed
 
 
 def reset_mock_state() -> None:
@@ -64,6 +69,7 @@ def reset_mock_state() -> None:
     _premiums.clear()
     _payouts.clear()
     _payout_pairs.clear()
+    _lp_capital.clear()
     _pool["premiums"] = Decimal("0")
     _pool["payouts"] = Decimal("0")
     # Reset the shared XLS-65 vault so the first-loss pool starts clean.
@@ -88,9 +94,13 @@ def _price_policy(settings) -> PricePolicy:
     )
 
 
+def _lp_total() -> Decimal:
+    return sum(_lp_capital.values(), Decimal("0"))
+
+
 def _pool_state(settings) -> PoolState:
     base = Decimal(str(settings.insurance_pool_first_loss_usd))
-    first_loss = base + _pool["premiums"] - _pool["payouts"]
+    first_loss = base + _lp_total() + _pool["premiums"] - _pool["payouts"]
     return PoolState(first_loss=max(Decimal("0"), first_loss), currency=settings.token_currency)
 
 
@@ -161,6 +171,12 @@ async def bind(req: BindRequest) -> InsurancePremiumRecord:
     if not settings.insurance_enabled:
         raise InsuranceDisabled("insurance_enabled is False")
 
+    # Per-party compliance: the agent must pass G1 KYA (advisory unless
+    # insurance_enforce_kya) and G2 sanctions (always hard) to bind cover.
+    trail, blocking = await _party_guardrails(agent_address=req.agent_address)
+    if blocking is not None:
+        raise GuardrailRefused(blocking.name, blocking.reason or blocking.rule_fired or "blocked", trail)
+
     quote_req = InsuranceQuoteRequest(
         agent_address=req.agent_address,
         amount=req.amount,
@@ -191,6 +207,7 @@ async def bind(req: BindRequest) -> InsurancePremiumRecord:
         tx_hash=tx_hash,
         explorer_url=explorer_url,
         score_band=q.score_band,
+        guardrail_trail=trail,
         created_at=now,
     )
     _premiums.append(record)
@@ -234,7 +251,9 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
     pool = _pool_state(settings)
     pool_drawn = min(payout, pool.first_loss).quantize(_Q2, rounding=ROUND_HALF_UP)
 
-    # decide(PAYOUT): reuse the deterministic policy kernel + a collusion guard.
+    # Build the full payout guardrail trail: per-party (G1/G2), the decide(PAYOUT)
+    # policy gate, and the collusion guard — then enforce the hard blocks.
+    trail, party_block = await _party_guardrails(agent_address=req.agent_address, counterparty=req.merchant)
     decision = policy_engine.evaluate(
         float(payout),
         aml_score=0,
@@ -242,9 +261,24 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
         threshold_usd=settings.policy_threshold_usd,
         flag_score=settings.policy_compliance_flag_score,
     )
+    trail.append(GuardrailResult(
+        name="G6_payout",
+        passed=not decision.blocked,
+        rule_fired=decision.rule_fired,
+        reason="; ".join(decision.reasons) if decision.reasons else None,
+    ))
+    collusion = _is_collusion(req.agent_address, req.merchant)
+    trail.append(GuardrailResult(
+        name="G2b_collusion",
+        passed=not collusion,
+        rule_fired="collusion" if collusion else None,
+        reason="repeated payouts between agent and counterparty" if collusion else None,
+    ))
+    if party_block is not None:
+        raise PayoutRefused(party_block.reason or party_block.rule_fired or "payout blocked")
     if decision.blocked:
         raise PayoutRefused(decision.block_reason or "payout blocked by policy")
-    if _is_collusion(req.agent_address, req.merchant):
+    if collusion:
         raise PayoutRefused("collusion pattern: repeated payouts between agent and merchant")
 
     # Settle the payout: the pool portion is drawn on-ledger (XLS-65 VaultWithdraw
@@ -265,6 +299,7 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
         pool_draw_tx_hash=draw_tx,
         explorer_url=draw_explorer,
         reputation_mpt_protected=True,
+        guardrail_trail=trail,
         created_at=now,
     )
     _payouts.append(record)
@@ -339,8 +374,10 @@ def get_agent_risk_state(agent_address: str) -> AgentRiskState | None:
 def get_pool_status() -> PoolStatus:
     settings = get_settings()
     base = Decimal(str(settings.insurance_pool_first_loss_usd))
-    first_loss = max(Decimal("0"), base + _pool["premiums"] - _pool["payouts"])
-    ratio = float(first_loss / base) if base > 0 else 0.0
+    lp_total = _lp_total()
+    first_loss = max(Decimal("0"), base + lp_total + _pool["premiums"] - _pool["payouts"])
+    denom = base + lp_total
+    ratio = float(first_loss / denom) if denom > 0 else 0.0
     vault_balance = Decimal(str(vault_tool.get_vault_state().get("deposited") or 0))
     return PoolStatus(
         first_loss=str(first_loss),
@@ -349,7 +386,125 @@ def get_pool_status() -> PoolStatus:
         payouts_made=str(_pool["payouts"]),
         capacity_ratio=ratio,
         vault_balance=str(vault_balance),
+        lp_capital=str(lp_total),
     )
+
+
+# ── Capital Provider (LP) ─────────────────────────────────────────────────────
+
+async def deposit_capital(req: CapitalDepositRequest) -> LpPosition:
+    """An LP contributes first-loss capital to the pool (G1/G2 gated)."""
+    settings = get_settings()
+    if not settings.insurance_enabled:
+        raise InsuranceDisabled("insurance_enabled is False")
+    trail, blocking = await _party_guardrails(agent_address=req.lp_address)
+    if blocking is not None:
+        raise GuardrailRefused(blocking.name, blocking.reason or blocking.rule_fired or "blocked", trail)
+
+    amount = Decimal(req.amount)
+    tx_hash, explorer_url = await _settle_capital(_pool_account(settings), amount, req.lp_address, "capital_in", settings)
+    _lp_capital[req.lp_address] = _lp_capital.get(req.lp_address, Decimal("0")) + amount
+    _emit_audit("insurance_capital_deposit", {"lp_address": req.lp_address, "amount": req.amount, "tx_hash": tx_hash})
+    return _lp_position(req.lp_address, tx_hash=tx_hash, explorer_url=explorer_url, trail=trail)
+
+
+async def withdraw_capital(req: CapitalWithdrawRequest) -> LpPosition:
+    """An LP recalls capital (clamped to its contributed balance)."""
+    settings = get_settings()
+    if not settings.insurance_enabled:
+        raise InsuranceDisabled("insurance_enabled is False")
+    held = _lp_capital.get(req.lp_address, Decimal("0"))
+    amount = min(Decimal(req.amount), held).quantize(_Q2, rounding=ROUND_HALF_UP)
+    tx_hash, explorer_url = (None, None)
+    if amount > 0:
+        tx_hash, explorer_url = await _settle_capital(req.lp_address, amount, req.lp_address, "capital_out", settings)
+        _lp_capital[req.lp_address] = held - amount
+    _emit_audit("insurance_capital_withdraw", {"lp_address": req.lp_address, "amount": str(amount), "tx_hash": tx_hash})
+    return _lp_position(req.lp_address, tx_hash=tx_hash, explorer_url=explorer_url)
+
+
+def list_positions() -> list[LpPosition]:
+    return [_lp_position(addr) for addr, cap in _lp_capital.items() if cap > 0]
+
+
+def _lp_position(
+    lp_address: str, *, tx_hash: str | None = None, explorer_url: str | None = None,
+    trail: list[GuardrailResult] | None = None,
+) -> LpPosition:
+    capital = _lp_capital.get(lp_address, Decimal("0"))
+    total = _lp_total()
+    share = float(capital / total) if total > 0 else 0.0
+    return LpPosition(
+        lp_address=lp_address,
+        capital=str(capital),
+        share_pct=share,
+        currency=get_settings().token_currency,
+        tx_hash=tx_hash,
+        explorer_url=explorer_url,
+        guardrail_trail=trail or [],
+        updated_at=datetime.now(timezone.utc),
+    )
+
+
+async def _settle_capital(
+    destination: str, amount: Decimal, lp_address: str, kind: str, settings
+) -> tuple[str | None, str | None]:
+    """Settle an LP capital movement on-ledger (mock hash, or a real Payment)."""
+    if settings.use_mock_xrpl:
+        return xrpl_client.mock_tx_hash(kind, f"{lp_address}:{amount}"), None
+    return await _pay(destination, amount, lp_address, kind, settings)
+
+
+# ── Per-party compliance guardrails (G1 KYA + G2 sanctions) ───────────────────
+
+async def _party_guardrails(
+    *, agent_address: str, counterparty: str | None = None, counterparty_name: str | None = None,
+) -> tuple[list[GuardrailResult], GuardrailResult | None]:
+    """Run G1 KYA + G2 sanctions for a party action.
+
+    Returns (trail, blocking): `blocking` is the first hard-failing guardrail
+    (G2 sanctions always; G1 KYA only when insurance_enforce_kya), or None.
+    """
+    settings = get_settings()
+    trail: list[GuardrailResult] = []
+    blocking: GuardrailResult | None = None
+
+    if settings.credential_kyc_enabled:
+        from . import credentials
+        cred = await credentials.verify_kyc(agent_address)
+        g1 = GuardrailResult(
+            name="G1_kya",
+            passed=cred.verified,
+            rule_fired=None if cred.verified else "kya_unverified",
+            reason=None if cred.verified else cred.reason,
+        )
+        trail.append(g1)
+        if not g1.passed and settings.insurance_enforce_kya:
+            blocking = blocking or g1
+
+    sanctioned = _sanctions_hit(agent_address, None) or (
+        counterparty is not None and _sanctions_hit(counterparty, counterparty_name)
+    )
+    g2 = GuardrailResult(
+        name="G2_sanctions",
+        passed=not sanctioned,
+        rule_fired="sanctions_block" if sanctioned else None,
+        reason="party on sanctions list" if sanctioned else None,
+    )
+    trail.append(g2)
+    if not g2.passed:
+        blocking = blocking or g2
+
+    return trail, blocking
+
+
+def _sanctions_hit(address: str, name: str | None) -> bool:
+    from . import compliance
+    if address in compliance.SANCTIONED_ACCOUNTS:
+        return True
+    if name and name.lower() in compliance.SANCTIONED_NAMES:
+        return True
+    return False
 
 
 def list_premiums() -> list[InsurancePremiumRecord]:
@@ -587,3 +742,13 @@ class CoverUnavailable(InsuranceError):
 
 class PayoutRefused(InsuranceError):
     pass
+
+
+class GuardrailRefused(InsuranceError):
+    """A per-party compliance guardrail hard-blocked the action."""
+
+    def __init__(self, guardrail: str, reason: str, trail: list[GuardrailResult]):
+        super().__init__(f"{guardrail}: {reason}")
+        self.guardrail = guardrail
+        self.reason = reason
+        self.trail = trail

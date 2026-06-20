@@ -3,6 +3,8 @@ import type {
   AgentRiskState,
   ApprovalChallenge,
   BindRequest,
+  CapitalDepositRequest,
+  CapitalWithdrawRequest,
   ClaimRequest,
   CredentialIssueRequest,
   CredentialLogEntry,
@@ -13,6 +15,7 @@ import type {
   InsurancePayoutRecord,
   InsurancePremiumRecord,
   InsuranceQuoteRequest,
+  LpPosition,
   MPTAttestationRecord,
   MPTAuthorizeRequest,
   MPTStatus,
@@ -169,10 +172,29 @@ export const api = {
   quoteInsurance: (req: InsuranceQuoteRequest) =>
     request<PremiumQuote>("/insurance/quote", { method: "POST", body: JSON.stringify(req) }),
   bindInsurance: (req: BindRequest) =>
-    request<InsurancePremiumRecord>("/insurance/bind", { method: "POST", body: JSON.stringify(req) }),
-  settleClaim: (req: ClaimRequest) =>
-    request<InsurancePayoutRecord>("/insurance/claim", { method: "POST", body: JSON.stringify(req) }),
-  listPremiums: () => request<InsurancePremiumRecord[]>("/insurance/premiums"),
-  listPayouts: () => request<InsurancePayoutRecord[]>("/insurance/payouts"),
-  getAgentRisk: (address: string) => request<AgentRiskState>(`/insurance/agents/${address}/risk`),
+    request<InsurancePremiumRecord>("/treasury/insurance/bind", { method: "POST", body: JSON.stringify(req) }),
+  listInsurancePremiums: () =>
+    request<InsurancePremiumRecord[]>("/treasury/insurance/premiums"),
+  claimInsurance: (req: ClaimRequest) =>
+    request<InsurancePayoutRecord>("/treasury/insurance/claim", { method: "POST", body: JSON.stringify(req) }),
+  listInsurancePayouts: () =>
+    request<InsurancePayoutRecord[]>("/treasury/insurance/payouts"),
+  getInsurancePool: () =>
+    request<PoolStatus>("/treasury/insurance/pool"),
+  getAgentRisk: (address: string) =>
+    request<AgentRiskState>(`/treasury/insurance/agents/${address}/risk`),
+
+  // Insurance first-loss capital providers (LPs).
+  listInsuranceCapital: () =>
+    request<LpPosition[]>("/treasury/insurance/capital"),
+  depositInsuranceCapital: (req: CapitalDepositRequest) =>
+    request<LpPosition>("/treasury/insurance/capital/deposit", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+  withdrawInsuranceCapital: (req: CapitalWithdrawRequest) =>
+    request<LpPosition>("/treasury/insurance/capital/withdraw", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
 };

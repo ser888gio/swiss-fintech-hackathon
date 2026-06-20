@@ -1574,3 +1574,105 @@ a {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Agentic transaction detail (Treasury agent runs) ─────────────────────── */
+.agentic-tx-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+}
+
+.agentic-tx {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  background: var(--surface-soft);
+}
+
+.agentic-tx.status-pending_approval {
+  border-color: rgba(209, 103, 31, 0.5);
+  background: rgba(209, 103, 31, 0.06);
+}
+
+.agentic-tx-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.agentic-tx-head strong {
+  font-size: 1.05rem;
+}
+
+.firefly-tag {
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  color: var(--accent-strong);
+  border: 1px solid rgba(209, 103, 31, 0.5);
+  background: rgba(209, 103, 31, 0.12);
+}
+
+.agentic-buying {
+  margin: 0.45rem 0 0.6rem;
+  font-size: 0.8rem;
+}
+
+.agentic-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.agentic-step {
+  display: grid;
+  grid-template-columns: 1.1rem 5.5rem 1fr;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.agentic-step .step-mark {
+  text-align: center;
+  font-weight: 800;
+}
+
+.agentic-step .step-label {
+  font-weight: 800;
+  color: var(--paper);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.68rem;
+}
+
+.agentic-step.step-flag .step-mark,
+.agentic-step.step-block .step-mark {
+  color: var(--accent-strong);
+}
+
+.agentic-step.step-pass .step-mark {
+  color: var(--paper);
+}
+
+.agentic-tx-link {
+  display: inline-block;
+  margin-top: 0.6rem;
+  font-size: 0.76rem;
+}
+
+@media (max-width: 640px) {
+  .agentic-step {
+    grid-template-columns: 1.1rem 1fr;
+  }
+  .agentic-step .step-label {
+    grid-column: 2;
+  }
+}

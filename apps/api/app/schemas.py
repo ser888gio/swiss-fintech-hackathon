@@ -566,6 +566,7 @@ class InsurancePremiumRecord(CamelModel):
     tx_hash: str | None = None
     explorer_url: str | None = None
     score_band: str | None = None   # score band that determined the rate
+    guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
     created_at: datetime
 
 
@@ -582,6 +583,7 @@ class InsurancePayoutRecord(CamelModel):
     slash_tx_hash: str | None = None
     pool_draw_tx_hash: str | None = None
     reputation_mpt_protected: bool = True   # principal score NOT burned on insured default
+    guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
     created_at: datetime
 
 
@@ -660,13 +662,43 @@ class ClaimRequest(CamelModel):
 
 
 class PoolStatus(CamelModel):
-    enabled: bool
-    currency: str
-    deposited: str
-    wallet_balance: str
-    available_capacity: str
-    premiums_collected: str
-    claims_paid: str
+    """Insurance Vault capacity summary (first-loss capital + flows)."""
+
+    first_loss: str                              # Decimal string — available capital
+    currency: str = "RLUSD"
+    premiums_collected: str = "0"                # Decimal string
+    payouts_made: str = "0"                      # Decimal string
+    capacity_ratio: float = 0.0                  # first_loss / base capital
+    vault_balance: str = "0"                     # Decimal string — on-ledger XLS-65 vault balance
+    lp_capital: str = "0"                        # Decimal string — total LP-provided capital
+
+
+# ── ARS Insurance — Capital Provider (LP) ─────────────────────────────────────
+
+class CapitalDepositRequest(CamelModel):
+    """An LP contributes first-loss capital to the Insurance pool."""
+
+    lp_address: str
+    amount: str                                  # Decimal string
+    currency: str = "RLUSD"
+
+
+class CapitalWithdrawRequest(CamelModel):
+    lp_address: str
+    amount: str                                  # Decimal string
+
+
+class LpPosition(CamelModel):
+    """An LP's share of the first-loss pool."""
+
+    lp_address: str
+    capital: str                                 # Decimal string — capital contributed
+    share_pct: float                             # pro-rata share of LP capital
+    currency: str = "RLUSD"
+    tx_hash: str | None = None
+    explorer_url: str | None = None
+    guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
+    updated_at: datetime
 
 
 # ── ARS Audit Log Event ───────────────────────────────────────────────────────

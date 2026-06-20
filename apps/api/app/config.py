@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     token_issuer_address: str = ""
     token_currency: str = "USD"
 
-    policy_threshold_usd: float = 10_000.0
+    policy_threshold_usd: float = 500.0
     policy_compliance_flag_score: int = 60
 
     # Routing / pathfinding. Slippage buffer added to the discovered source
@@ -184,6 +184,11 @@ class Settings(BaseSettings):
     insurance_use_vault: bool = False
     insurance_vault_address: str = ""      # pool account: premium payee / payout source
     insurance_source_tag: int = 20260530
+    # When true, an agent must pass G1 KYA (hold an accepted KYC credential) to
+    # bind cover, and an LP must pass it to add capital. Default false keeps the
+    # check advisory (surfaced in the guardrail trail) so demos run without
+    # pre-credentialing every wallet. G2 sanctions is always hard-enforced.
+    insurance_enforce_kya: bool = False
 
     # XLS-33 MPTokens — COMPLY compliance-attestation issuance.
     # Disabled by default. XLS-33 is available on Testnet and Devnet.
