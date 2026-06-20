@@ -159,63 +159,72 @@ export function App() {
   }, []);
 
   return (
-    <main>
-      <nav className="app-nav" aria-label="Primary">
-        <button className="brand-mark" type="button" onClick={() => navigate("/")}>
-          Treasury Agent
-        </button>
-        <div>
-          <button className={route === "/" ? "active" : ""} type="button" onClick={() => navigate("/")}>
-            Dashboard
-          </button>
-          <button className={route === "/transfer" ? "active" : ""} type="button" onClick={() => navigate("/transfer")}>
-            Transfer
-          </button>
-          <button className={route === "/credentials" ? "active" : ""} type="button" onClick={() => navigate("/credentials")}>
-            Credentials
-          </button>
-          <button className={route === "/treasury" ? "active" : ""} type="button" onClick={() => navigate("/treasury")}>
-            Agent
-          </button>
-          <button className={route === "/ars" ? "active" : ""} type="button" onClick={() => navigate("/ars")}>
-            ARS
-          </button>
-          <button className={route === "/insurance" ? "active" : ""} type="button" onClick={() => navigate("/insurance")}>
-            Insurance
-          </button>
-        </div>
-      </nav>
-      <p className="tagline">Autonomous treasury on XRPL. The AI explains; deterministic code decides.</p>
-      {error && <p className="error">{error}</p>}
+    <main className="app-shell">
+      <aside className="app-sidebar">
+        <nav className="app-nav" aria-label="Primary">
+          <div className="brand-mark">
+            <span className="brand-kicker">XRPL Treasury System</span>
+            <button className="brand-title" type="button" onClick={() => navigate("/")}>
+              Treasury Agent
+            </button>
+            <p className="brand-copy">Deterministic payment controls with an AI orchestration layer.</p>
+          </div>
+          <div className="app-nav-links">
+            <button className={route === "/" ? "active" : ""} type="button" onClick={() => navigate("/")}>
+              Dashboard
+            </button>
+            <button className={route === "/treasury" ? "active" : ""} type="button" onClick={() => navigate("/treasury")}>
+              Agent
+            </button>
+            <button className={route === "/insurance" ? "active" : ""} type="button" onClick={() => navigate("/insurance")}>
+              Insurance
+            </button>
+            <button className={route === "/ars" ? "active" : ""} type="button" onClick={() => navigate("/ars")}>
+              ARS
+            </button>
+            <button className={route === "/credentials" ? "active" : ""} type="button" onClick={() => navigate("/credentials")}>
+              Credentials
+            </button>
+            <button className={route === "/transfer" ? "active" : ""} type="button" onClick={() => navigate("/transfer")}>
+              Transfer
+            </button>
+          </div>
+        </nav>
+      </aside>
 
-      {route === "/" && (
-        <DashboardPage
-          payments={payments}
-          approvingId={approvingId}
-          resolvingKycId={resolvingKycId}
-          onApprove={approve}
-          onResolveKyc={resolveKyc}
-          onNavigate={navigate}
-        />
-      )}
-      {route === "/transfer" && (
-        <TransferPage
-          payments={payments}
-          busy={busy}
-          approvingId={approvingId}
-          resolvingKycId={resolvingKycId}
-          tamperedId={tamperedId}
-          tamperError={tamperError}
-          onSubmit={submit}
-          onApprove={approve}
-          onResolveKyc={resolveKyc}
-          onTamperRetry={tamperAndRetry}
-        />
-      )}
-      {route === "/credentials" && <CredentialsPage />}
-      {route === "/treasury" && <TreasuryPage />}
-      {route === "/ars" && <ARSPage />}
-      {route === "/insurance" && <InsurancePage />}
+      <section className="app-content">
+        <p className="tagline">Autonomous treasury on XRPL. The AI explains; deterministic code decides.</p>
+        {error && <p className="error">{error}</p>}
+
+        {route === "/" && (
+          <DashboardPage
+            payments={payments}
+            approvingId={approvingId}
+            resolvingKycId={resolvingKycId}
+            onApprove={approve}
+            onResolveKyc={resolveKyc}
+            onNavigate={navigate}
+          />
+        )}
+        {route === "/transfer" && (
+          <TransferPage
+            payments={payments}
+            busy={busy}
+            approvingId={approvingId}
+            resolvingKycId={resolvingKycId}
+            tamperedId={tamperedId}
+            tamperError={tamperError}
+            onSubmit={submit}
+            onApprove={approve}
+            onResolveKyc={resolveKyc}
+            onTamperRetry={tamperAndRetry}
+          />
+        )}
+        {route === "/credentials" && <CredentialsPage />}
+        {route === "/treasury" && <TreasuryPage />}
+        {route === "/ars" && <ARSPage />}
+        {route === "/insurance" && <InsurancePage />}
+      </section>
 
       {approvingId && (
         <div className="firefly-overlay" role="status" aria-live="polite">

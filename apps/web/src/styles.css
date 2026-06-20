@@ -52,50 +52,89 @@ select:disabled {
   opacity: 0.52;
 }
 
-main {
-  width: min(100%, 1120px);
+main.app-shell {
+  width: min(100%, 1320px);
   margin: 0 auto;
   padding: 22px 18px 44px;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.app-sidebar {
+  position: sticky;
+  top: 22px;
 }
 
 .app-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 16px;
+  display: grid;
+  gap: 16px;
+  padding: 18px 16px;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background: linear-gradient(160deg, rgba(23, 20, 19, 0.96), rgba(1, 0, 0, 0.9));
+  box-shadow: 0 18px 48px rgba(1, 0, 0, 0.36);
 }
 
-.app-nav > div {
-  display: inline-flex;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: rgba(23, 20, 19, 0.72);
+.app-nav-links {
+  display: grid;
+  gap: 8px;
 }
 
 .app-nav button {
-  min-height: 36px;
-  border-radius: 999px;
+  width: 100%;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 16px;
   background: transparent;
   color: var(--muted);
-  font-size: 0.84rem;
+  font-size: 0.88rem;
   font-weight: 850;
+  text-align: left;
 }
 
-.app-nav > div button {
-  padding: 0 14px;
-}
-
-.app-nav .active,
-.brand-mark {
+.app-nav .active {
   background: var(--paper);
   color: var(--black);
 }
 
 .brand-mark {
-  padding: 0 15px;
+  display: grid;
+  gap: 8px;
+  padding: 4px 4px 10px;
+  border-bottom: 1px solid rgba(235, 234, 233, 0.08);
+}
+
+.brand-kicker {
+  color: var(--orange);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.brand-title {
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  color: var(--paper);
+  font-size: 1.5rem;
+  font-weight: 760;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  text-align: left;
+}
+
+.brand-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.app-content {
+  min-width: 0;
 }
 
 .tagline {
@@ -1286,22 +1325,23 @@ a {
 
 
 @media (max-width: 640px) {
-  main {
+  main.app-shell {
     padding: 10px 8px 28px;
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .app-sidebar {
+    position: static;
   }
 
   .app-nav {
-    align-items: stretch;
-    flex-direction: column;
+    padding: 12px;
+    border-radius: 22px;
   }
 
-  .app-nav > div,
-  .brand-mark {
-    width: 100%;
-  }
-
-  .app-nav > div button {
-    flex: 1;
+  .app-nav-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .tagline {
