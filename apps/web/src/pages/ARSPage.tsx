@@ -925,7 +925,6 @@ export function ARSPage() {
             <span className="eyebrow">ARS · Agentic Risk Standard</span>
             <h1>Agentic Payment Infrastructure</h1>
           </div>
-          <span className="policy-pill">code decides · LLM narrates</span>
         </div>
         <p className="tagline" style={{ marginBottom: "1.5rem" }}>
           All three paths share the same guardrail spine (G1 KYA → G2 sanctions → G4 scope → G5

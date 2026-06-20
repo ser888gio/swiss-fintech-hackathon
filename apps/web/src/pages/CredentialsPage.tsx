@@ -109,7 +109,6 @@ export function CredentialsPage() {
             <span className="eyebrow">Credential agent · XLS-70</span>
             <h1>Issue XRPL credentials</h1>
           </div>
-          <span className="policy-pill">code decides · LLM narrates</span>
         </div>
 
         {/* KYC gate scenario callout */}
