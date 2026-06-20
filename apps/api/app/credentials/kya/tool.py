@@ -105,17 +105,26 @@ async def issue_kya_credential(
         else settings.credential_subject_seed
     )
     subject_wallet = ledger.wallet(subject_seed)
-    await ledger.submit(CredentialCreate(
-        account=issuer_wallet.address,
-        subject=agent_address,
-        credential_type=xrpl_client.credential_type_hex(credential_type),
-        uri=str_to_hex(uri_str).upper(),
-    ), issuer_wallet, endpoint=endpoint)
-    accepted = await ledger.submit(CredentialAccept(
-        account=subject_wallet.address,
-        issuer=issuer,
-        credential_type=xrpl_client.credential_type_hex(credential_type),
-    ), subject_wallet, endpoint=endpoint)
+    try:
+        await ledger.submit(CredentialCreate(
+            account=issuer_wallet.address,
+            subject=agent_address,
+            credential_type=xrpl_client.credential_type_hex(credential_type),
+            uri=str_to_hex(uri_str).upper(),
+        ), issuer_wallet, endpoint=endpoint)
+    except Exception as exc:
+        if "tecDUPLICATE" not in str(exc):
+            raise
+    try:
+        accepted = await ledger.submit(CredentialAccept(
+            account=subject_wallet.address,
+            issuer=issuer,
+            credential_type=xrpl_client.credential_type_hex(credential_type),
+        ), subject_wallet, endpoint=endpoint)
+    except Exception as exc:
+        if "tecDUPLICATE" not in str(exc):
+            raise
+        accepted = {"already_accepted": True}
     return KYAIssueResponse(
         agent_address=agent_address,
         issuer=issuer,
