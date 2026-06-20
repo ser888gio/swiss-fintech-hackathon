@@ -42,6 +42,7 @@ class PaymentRecord(Base):
     audit_explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
     receipt_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     amount_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    agent_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
@@ -275,6 +276,36 @@ class AgentRiskRecord(Base):
     beta: Mapped[float] = mapped_column(Float)
     pd: Mapped[float] = mapped_column(Float)
     credibility: Mapped[float] = mapped_column(Float)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
+
+
+# ── Business-defined payment agents ──────────────────────────────────────────
+
+class AgentRecord(Base):
+    """Business-defined payment agent with per-agent policy guardrails."""
+
+    __tablename__ = "agents"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)   # slug e.g. "supplier-bot"
+    name: Mapped[str] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, index=True, default="active")
+    currency: Mapped[str] = mapped_column(String, default="RLUSD")
+    max_single_payment: Mapped[str] = mapped_column(String)      # Decimal string
+    max_daily_spend: Mapped[str] = mapped_column(String)         # Decimal string
+    requires_approval_above: Mapped[str] = mapped_column(String) # Decimal string
+    allowed_categories: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    allowed_assets: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    allowed_network: Mapped[str] = mapped_column(String, default="XRPL")
+    allowed_addresses: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    blocked_addresses: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    allowed_hosts: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    blocked_hosts: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    require_known_merchant: Mapped[bool] = mapped_column(Boolean, default=False)
+    policy_revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
     )

@@ -31,6 +31,7 @@ from ..schemas import (
     Payment,
     PaymentIntent,
     PaymentStatus,
+    PolicyDecision,
     Receivable,
     ReceivableCreate,
     X402Settlement,
@@ -44,7 +45,11 @@ from ..tools import x402 as x402_tool
 TERMINAL_STATUSES = {PaymentStatus.settled, PaymentStatus.released, PaymentStatus.blocked}
 
 
-async def process_payment(intent: PaymentIntent) -> Payment:
+async def process_payment(
+    intent: PaymentIntent,
+    agent_id: str | None = None,
+    agent_scope: "AgentScope | None" = None,
+) -> Payment:
     settings = get_settings()
     payment_id = str(uuid.uuid4())
     now = _now()
@@ -52,6 +57,7 @@ async def process_payment(intent: PaymentIntent) -> Payment:
         id=payment_id,
         intent=intent,
         status=PaymentStatus.routing,
+        agent_id=agent_id,
         created_at=now,
         updated_at=now,
     )
@@ -85,6 +91,51 @@ async def process_payment(intent: PaymentIntent) -> Payment:
         amount_usd = route.dest_amount
     else:
         amount_usd = await routing.convert_to_usd(intent.amount, intent.currency)
+    # Per-agent scope check (G4 guardrail, deepened for business agents).
+    # Runs before engine.evaluate so hard-scope blocks short-circuit to avoid
+    # misleading "escalate" outcomes when a cap is simply exceeded.
+    scope_requires_approval = False
+    _scope_result = None
+    if agent_scope is not None and agent_id is not None:
+        since = _now() - timedelta(hours=24)
+        spent_today = store.agent_payments_sum(agent_id, since, intent.currency)
+        _scope_result = evaluate_scope(
+            spend=Decimal(str(amount_usd)),
+            scope=agent_scope,
+            spent_today=spent_today,
+            payee_address=intent.to,
+            asset=intent.currency,
+            network="XRPL",
+            category=intent.purpose,
+        )
+        _log(
+            payment_id,
+            f"Agent scope [{agent_id}]: "
+            + (_scope_result.rule_fired or "all checks passed")
+            + (f" — {_scope_result.reasons[0]}" if _scope_result.reasons else ""),
+        )
+        if not _scope_result.allowed:
+            if not _scope_result.requires_approval:
+                # Hard BLOCK — e.g. address on blocklist, daily cap breached
+                _block_reason = _scope_result.reasons[0] if _scope_result.reasons else "scope_block"
+                payment.policy_decision = PolicyDecision(
+                    requires_approval=False,
+                    rule_fired=_scope_result.rule_fired,
+                    reasons=list(_scope_result.reasons),
+                    blocked=True,
+                    block_reason=_block_reason,
+                )
+                payment.audit_explanation = (
+                    f"Blocked by agent policy [{agent_id}]: {_block_reason}. "
+                    f"Rule: {_scope_result.rule_fired}."
+                )
+                await _block(payment)
+                payment.updated_at = _now()
+                return store.save(payment)
+            else:
+                # ESCALATE — e.g. approval threshold exceeded
+                scope_requires_approval = True
+
     decision = engine.evaluate(
         amount_usd,
         screen.aml_score,
@@ -92,6 +143,14 @@ async def process_payment(intent: PaymentIntent) -> Payment:
         threshold_usd=settings.policy_threshold_usd,
         flag_score=settings.policy_compliance_flag_score,
     )
+    # If scope says ESCALATE but engine would auto-settle, honour the scope escalation.
+    if scope_requires_approval and not decision.blocked and not decision.requires_approval:
+        assert _scope_result is not None
+        decision = decision.model_copy(update={
+            "requires_approval": True,
+            "rule_fired": _scope_result.rule_fired,
+            "reasons": list(decision.reasons) + list(_scope_result.reasons),
+        })
     payment.policy_decision = decision
     payment.audit_explanation = await audit.write_audit(route, screen, decision)
     _log(
@@ -171,12 +230,22 @@ async def process_payment(intent: PaymentIntent) -> Payment:
                 ),
             )
 
+    # Reserve agent spend before submitting (prevents double-spend on concurrent runs).
+    if agent_id is not None and not decision.blocked:
+        store.reserve_agent_spend(agent_id, payment_id, Decimal(str(amount_usd)), intent.currency)
+
     if decision.blocked:
         await _block(payment)
+        if agent_id is not None:
+            store.release_agent_spend(agent_id, payment_id)
     elif decision.requires_approval:
         await _escalate(payment, route, intent, memo)
+        if agent_id is not None:
+            store.commit_agent_spend(agent_id, payment_id)
     else:
         await _settle(payment, route, intent, memo)
+        if agent_id is not None:
+            store.commit_agent_spend(agent_id, payment_id)
 
     payment.updated_at = _now()
     return store.save(payment)

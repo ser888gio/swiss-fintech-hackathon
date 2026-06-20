@@ -295,6 +295,7 @@ export interface TreasuryGoal {
   purpose: string;
   triggerIntervalHours: number;
   lastTriggeredAt: string | null;
+  agentId?: string | null;
 }
 
 export interface TreasuryGoalCreate {
@@ -344,6 +345,64 @@ export interface BridgeSignResponse {
   paymentId: string;
   signature: string; // hex secp256k1 signature
   publicKey: string; // hex, for the backend to verify against
+}
+
+// ── Business-defined payment agents ──────────────────────────────────────────
+
+export type AgentStatus = "active" | "paused";
+
+export interface AgentCreate {
+  id: string;
+  name: string;
+  description?: string | null;
+  maxSinglePayment: string;
+  maxDailySpend: string;
+  requiresApprovalAbove: string;
+  currency?: string;
+  allowedCategories?: string[] | null;
+  allowedAssets?: string[];
+  allowedNetwork?: string;
+  allowedAddresses?: string[] | null;
+  blockedAddresses?: string[];
+  allowedHosts?: string[] | null;
+  blockedHosts?: string[];
+  requireKnownMerchant?: boolean;
+}
+
+export interface Agent extends AgentCreate {
+  status: AgentStatus;
+  policyRevision: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentUpdate {
+  name?: string;
+  description?: string | null;
+  status?: AgentStatus;
+  maxSinglePayment?: string;
+  maxDailySpend?: string;
+  requiresApprovalAbove?: string;
+  currency?: string;
+  allowedCategories?: string[] | null;
+  allowedAssets?: string[] | null;
+  allowedAddresses?: string[] | null;
+  blockedAddresses?: string[] | null;
+  allowedHosts?: string[] | null;
+  blockedHosts?: string[] | null;
+  requireKnownMerchant?: boolean;
+}
+
+export interface AgentDashboardStats {
+  agentId: string;
+  paymentsToday: number;
+  amountSpentToday: string;
+  pendingApprovals: number;
+  lastRunAt: string | null;
+  lastRunStatus: string | null;
+  totalPayments: number;
+  totalBlocked: number;
+  totalEscalated: number;
 }
 
 // ── ARS Guardrails & Audit (Pillar 5) ────────────────────────────────────────

@@ -255,6 +255,7 @@ def _payment_to_row(payment: Payment) -> PaymentRecord:
         explorer_url_secondary=payment.explorer_url_secondary,
         audit_explanation=payment.audit_explanation,
         receipt_hash=payment.receipt_hash,
+        agent_id=payment.agent_id,
         created_at=payment.created_at,
         updated_at=payment.updated_at,
     )
@@ -284,6 +285,7 @@ def _row_to_payment(row: PaymentRecord) -> Payment:
         explorer_url_secondary=row.explorer_url_secondary,
         audit_explanation=row.audit_explanation,
         receipt_hash=row.receipt_hash,
+        agent_id=getattr(row, "agent_id", None),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -438,6 +440,71 @@ async def _persist_reservation(
             await session.commit()
     except Exception as exc:
         log.warning("Failed to persist spend reservation %s: %s", idempotency_key, exc)
+
+
+# ── Agent-id–keyed spend tracking (business-defined agents) ──────────────────
+# Separate from the wallet-address–keyed reservations above so per-agent
+# daily caps are isolated even when agents share the treasury wallet.
+
+_agent_reservations: dict[str, list[dict]] = {}
+
+
+def reserve_agent_spend(
+    agent_id: str,
+    idempotency_key: str,
+    amount: Decimal,
+    currency: str,
+) -> bool:
+    """Reserve a spend slot for a business agent (idempotent).
+
+    Returns True if a new slot was created, False if the key already exists.
+    Caller calls commit_agent_spend or release_agent_spend after the attempt.
+    """
+    import uuid
+    bucket = _agent_reservations.setdefault(agent_id, [])
+    if any(r["idempotency_key"] == idempotency_key for r in bucket):
+        return False
+    bucket.append({
+        "id": str(uuid.uuid4()),
+        "idempotency_key": idempotency_key,
+        "amount": amount,
+        "currency": currency,
+        "status": "reserved",
+        "created_at": datetime.now(timezone.utc),
+    })
+    return True
+
+
+def commit_agent_spend(agent_id: str, idempotency_key: str) -> None:
+    for r in _agent_reservations.get(agent_id, []):
+        if r["idempotency_key"] == idempotency_key:
+            r["status"] = "committed"
+            break
+
+
+def release_agent_spend(agent_id: str, idempotency_key: str) -> None:
+    for r in _agent_reservations.get(agent_id, []):
+        if r["idempotency_key"] == idempotency_key:
+            r["status"] = "released"
+            break
+
+
+def agent_payments_sum(
+    agent_id: str,
+    since: datetime,
+    currency: str,
+) -> Decimal:
+    """Committed + reserved spend for an agent in [since, now). Excludes released."""
+    total = Decimal("0")
+    for r in _agent_reservations.get(agent_id, []):
+        if r["status"] == "released":
+            continue
+        if r["currency"] != currency:
+            continue
+        if r["created_at"] < since:
+            continue
+        total += r["amount"]
+    return total
 
 
 # ── Utility ───────────────────────────────────────────────────────────────────

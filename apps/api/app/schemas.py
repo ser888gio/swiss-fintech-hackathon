@@ -385,6 +385,7 @@ class Payment(CamelModel):
     audit_explanation: str | None = None
     receipt_hash: str | None = None
     cover: PremiumQuote | None = None
+    agent_id: str | None = None    # set when initiated by a business agent
     created_at: datetime
     updated_at: datetime
 
@@ -457,6 +458,75 @@ class MPTAuthorizeRequest(CamelModel):
     holder: str              # XRPL address to authorize
 
 
+# ── Business-defined payment agents ───────────────────────────────────────────
+
+class AgentStatus(str, Enum):
+    active = "active"
+    paused = "paused"
+
+
+class AgentCreate(CamelModel):
+    """Request body for creating a business-defined payment agent."""
+
+    id: str                                            # slug e.g. "supplier-bot"
+    name: str
+    description: str | None = None                     # free-text context for this agent
+    max_single_payment: str                            # Decimal string
+    max_daily_spend: str                               # Decimal string
+    requires_approval_above: str                       # Decimal string, ≤ max_single_payment
+    currency: str = "RLUSD"
+    allowed_categories: list[str] | None = None        # None=any, []=deny-all
+    allowed_assets: list[str] = Field(default_factory=lambda: ["RLUSD"])
+    allowed_network: str = "XRPL"
+    allowed_addresses: list[str] | None = None         # None=any, []=deny-all
+    blocked_addresses: list[str] = Field(default_factory=list)
+    allowed_hosts: list[str] | None = None
+    blocked_hosts: list[str] = Field(default_factory=list)
+    require_known_merchant: bool = False
+
+
+class Agent(AgentCreate):
+    """A persisted business-defined payment agent."""
+
+    status: AgentStatus = AgentStatus.active
+    policy_revision: int = 1
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgentUpdate(CamelModel):
+    """Partial update — only provided fields are changed; policy_revision auto-increments."""
+
+    name: str | None = None
+    description: str | None = None
+    status: AgentStatus | None = None
+    max_single_payment: str | None = None
+    max_daily_spend: str | None = None
+    requires_approval_above: str | None = None
+    currency: str | None = None
+    allowed_categories: list[str] | None = None
+    allowed_assets: list[str] | None = None
+    allowed_addresses: list[str] | None = None
+    blocked_addresses: list[str] | None = None
+    allowed_hosts: list[str] | None = None
+    blocked_hosts: list[str] | None = None
+    require_known_merchant: bool | None = None
+
+
+class AgentDashboardStats(CamelModel):
+    """Per-agent mini dashboard snapshot."""
+
+    agent_id: str
+    payments_today: int
+    amount_spent_today: str           # Decimal string (USD)
+    pending_approvals: int
+    last_run_at: datetime | None
+    last_run_status: str | None
+    total_payments: int
+    total_blocked: int
+    total_escalated: int
+
+
 # ── Autonomous Treasury Agent ──────────────────────────────────────────────────
 
 class TreasuryGoal(CamelModel):
@@ -483,6 +553,7 @@ class TreasuryGoal(CamelModel):
     # Trigger: fire at most once per interval
     trigger_interval_hours: float = 24.0
     last_triggered_at: datetime | None = None
+    agent_id: str | None = None   # set for goals owned by a business agent
 
 
 class TreasuryGoalCreate(CamelModel):

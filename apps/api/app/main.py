@@ -9,6 +9,7 @@ from . import db, store
 from .config import get_settings
 from .insurance import store as insurance_store
 from .routes import credentials, health, insurance, payments, treasury, wallet
+from .routes.agents import router as agents_router, load_agents_from_db
 
 
 @asynccontextmanager
@@ -18,6 +19,7 @@ async def lifespan(app: FastAPI):
         await store.load_from_db()
         from .tools import insurance as insurance_tool
         await insurance_tool.load_from_db()
+        await load_agents_from_db()
     yield
 
 
@@ -59,6 +61,7 @@ app.include_router(payments.router)
 app.include_router(credentials.router)
 app.include_router(treasury.router)
 app.include_router(wallet.router)
+app.include_router(agents_router)
 
 
 def _cors_headers(request: Request) -> dict[str, str]:

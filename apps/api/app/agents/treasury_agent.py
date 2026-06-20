@@ -38,8 +38,15 @@ from . import orchestrator
 _goals: dict[str, TreasuryGoal] = {}
 _runs: list[TreasuryAgentRun] = []
 
+# Per-business-agent goal registry: agent_id → {goal_id: TreasuryGoal}
+_agent_goals: dict[str, dict[str, TreasuryGoal]] = {}
+# Per-agent run history: agent_id → [TreasuryAgentRun]
+_agent_runs: dict[str, list[TreasuryAgentRun]] = {}
+# Per-agent run lock: prevents concurrent run(agent_id) for the same agent
+_agent_run_lock: dict[str, bool] = {}
 
-# ── Goal registry ─────────────────────────────────────────────────────────────
+
+# ── Goal registry (global / legacy) ──────────────────────────────────────────
 
 def add_goal(goal: TreasuryGoal) -> TreasuryGoal:
     _goals[goal.id] = goal
@@ -60,6 +67,29 @@ def list_goals() -> list[TreasuryGoal]:
 
 def list_runs() -> list[TreasuryAgentRun]:
     return list(reversed(_runs))
+
+
+# ── Per-agent goal registry ───────────────────────────────────────────────────
+
+def add_agent_goal(agent_id: str, goal: TreasuryGoal) -> TreasuryGoal:
+    _agent_goals.setdefault(agent_id, {})[goal.id] = goal
+    return goal
+
+
+def remove_agent_goal(agent_id: str, goal_id: str) -> bool:
+    return _agent_goals.get(agent_id, {}).pop(goal_id, None) is not None
+
+
+def get_agent_goal(agent_id: str, goal_id: str) -> TreasuryGoal | None:
+    return _agent_goals.get(agent_id, {}).get(goal_id)
+
+
+def list_agent_goals(agent_id: str) -> list[TreasuryGoal]:
+    return list(_agent_goals.get(agent_id, {}).values())
+
+
+def list_agent_runs(agent_id: str) -> list[TreasuryAgentRun]:
+    return list(reversed(_agent_runs.get(agent_id, [])))
 
 
 def goal_from_create(request: TreasuryGoalCreate) -> TreasuryGoal:
@@ -173,6 +203,85 @@ async def run(goals: list[TreasuryGoal] | None = None) -> TreasuryAgentRun:
         status="completed",
     )
     _runs.append(agent_run)
+    return agent_run
+
+
+# ── Per-business-agent run ────────────────────────────────────────────────────
+
+async def run_for_agent(agent_id: str, agent_scope: "AgentScope") -> TreasuryAgentRun:
+    """Run one evaluation cycle for a specific business agent.
+
+    Evaluates only this agent's goals against the agent's own policy (scope).
+    Each payment call passes the agent_id and agent_scope so the orchestrator
+    enforces per-agent guardrails. The LLM narrates; code decides.
+
+    Returns immediately if the agent is already running (run-lock guard).
+    """
+    from ..policy.scope import AgentScope  # noqa: PLC0415 — avoid circular at module level
+
+    if _agent_run_lock.get(agent_id):
+        raise RuntimeError(f"Agent {agent_id} is already running; concurrent runs are not allowed")
+    _agent_run_lock[agent_id] = True
+
+    settings = get_settings()
+    now = _now()
+    run_id = str(uuid.uuid4())
+    active_goals = list(_agent_goals.get(agent_id, {}).values())
+
+    payments_initiated: list[str] = []
+    payments_skipped: list[str] = []
+    trigger_log: list[str] = []
+
+    try:
+        for goal in active_goals:
+            # Use the agent's max_single_payment as the cap, not the global setting.
+            from decimal import Decimal as _Dec
+            cap_usd = float(agent_scope.max_per_transaction)
+            should_fire, reason = evaluate_goal(goal, now, cap_usd)
+            trigger_log.append(f"[{goal.name}] {reason}.")
+
+            if not should_fire:
+                payments_skipped.append(goal.id)
+                continue
+
+            intent = _build_intent(goal, settings)
+            try:
+                payment = await orchestrator.process_payment(
+                    intent, agent_id=agent_id, agent_scope=agent_scope
+                )
+            except Exception as exc:
+                trigger_log.append(f"  ✗ payment initiation failed: {exc}")
+                payments_skipped.append(goal.id)
+                continue
+
+            payments_initiated.append(payment.id)
+            trigger_log.append(
+                f"  → payment {payment.id[:8]}… status={payment.status.value}"
+                + (f", rule={payment.policy_decision.rule_fired}" if payment.policy_decision and payment.policy_decision.rule_fired else "")
+            )
+            if settings.mpt_enabled and payment.status == PaymentStatus.settled:
+                await _mint_compliance_attestation(payment, trigger_log, settings)
+            updated = goal.model_copy(update={"last_triggered_at": now})
+            _agent_goals.setdefault(agent_id, {})[goal.id] = updated
+
+    finally:
+        _agent_run_lock[agent_id] = False
+
+    narration = await _narrate(active_goals, trigger_log, payments_initiated, settings)
+
+    agent_run = TreasuryAgentRun(
+        id=run_id,
+        started_at=now,
+        completed_at=_now(),
+        goals_evaluated=len(active_goals),
+        goals_triggered=len(payments_initiated),
+        payments_initiated=payments_initiated,
+        payments_skipped=payments_skipped,
+        trigger_log=trigger_log,
+        narration=narration,
+        status="completed",
+    )
+    _agent_runs.setdefault(agent_id, []).append(agent_run)
     return agent_run
 
 

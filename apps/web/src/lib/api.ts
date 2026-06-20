@@ -1,6 +1,10 @@
 import type {
+  Agent,
+  AgentCreate,
+  AgentDashboardStats,
   AgentLogEntry,
   AgentRiskState,
+  AgentUpdate,
   ApprovalChallenge,
   BindRequest,
   CapitalDepositRequest,
@@ -205,5 +209,24 @@ export const api = {
       method: "POST",
       body: JSON.stringify(req),
     }),
+
+  // Business-defined payment agents.
+  listAgents: () => request<Agent[]>("/agents"),
+  createAgent: (req: AgentCreate) =>
+    request<Agent>("/agents", { method: "POST", body: JSON.stringify(req) }),
+  getAgent: (agentId: string) => request<Agent>(`/agents/${agentId}`),
+  updateAgent: (agentId: string, req: AgentUpdate) =>
+    request<Agent>(`/agents/${agentId}`, { method: "PUT", body: JSON.stringify(req) }),
+  deleteAgent: (agentId: string) =>
+    request<void>(`/agents/${agentId}`, { method: "DELETE" }),
+  listAgentGoals: (agentId: string) => request<TreasuryGoal[]>(`/agents/${agentId}/goals`),
+  createAgentGoal: (agentId: string, req: TreasuryGoalCreate) =>
+    request<TreasuryGoal>(`/agents/${agentId}/goals`, { method: "POST", body: JSON.stringify(req) }),
+  deleteAgentGoal: (agentId: string, goalId: string) =>
+    request<void>(`/agents/${agentId}/goals/${goalId}`, { method: "DELETE" }),
+  runAgent: (agentId: string) =>
+    request<TreasuryAgentRun>(`/agents/${agentId}/run`, { method: "POST" }),
+  listAgentRuns: (agentId: string) => request<TreasuryAgentRun[]>(`/agents/${agentId}/runs`),
+  getAgentStats: (agentId: string) => request<AgentDashboardStats>(`/agents/${agentId}/stats`),
 };
 
