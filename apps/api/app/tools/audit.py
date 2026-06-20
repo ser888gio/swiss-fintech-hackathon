@@ -21,7 +21,9 @@ _SYSTEM_PROMPT = (
     "You write one short, plain-language paragraph explaining a corporate payment "
     "decision for an audit log. State the route, the compliance result, the "
     "policy outcome, and any guardrail that blocked or escalated the payment. "
-    "Do not invent facts beyond the data given."
+    "If a geopolitical or country-risk factor is present, explain the jurisdiction's "
+    "situation (e.g. FATF listing, sanctions program) and why it blocked or escalated "
+    "the payment. Do not invent facts beyond the data given."
 )
 
 
@@ -82,12 +84,16 @@ async def _generate_explanation(
         guardrail_note = f" Guardrail {blocked_guardrail.name} blocked: {blocked_guardrail.reason}."
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
+    geo = compliance.geopolitical_risk
+    geo_note = ""
+    if geo and geo.risk_level != "standard" and geo.summary:
+        geo_note = f" Geopolitical: {geo.summary} Sources: {', '.join(geo.sources)}."
     facts = (
         f"Route: {route.path_summary}, settling {route.dest_amount}. "
         f"Compliance: {compliance.explanation}. "
         f"Sanctions matches: {len(compliance.sanctions_matches)}. "
         f"Policy: requires_approval={decision.requires_approval}, "
-        f"rule_fired={decision.rule_fired}.{guardrail_note}"
+        f"rule_fired={decision.rule_fired}.{guardrail_note}{geo_note}"
     )
     response = await client.chat.completions.create(
         model=settings.openai_model,

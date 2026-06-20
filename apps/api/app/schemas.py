@@ -124,6 +124,19 @@ class PublicIntelResult(CamelModel):
     summary: str
 
 
+class GeopoliticalRiskResult(CamelModel):
+    """Deterministic country-policy evidence; never an LLM judgement."""
+
+    country: str
+    risk_level: str
+    score: int
+    blocked: bool
+    requires_review: bool
+    reasons: list[str]
+    sources: list[str]
+    summary: str = ""
+
+
 class VerificationStepStatus(str, Enum):
     """Outcome of a single KYC verification step — mirrors Plaid IDV step statuses."""
     pass_   = "pass"
@@ -320,6 +333,8 @@ class ComplianceResult(CamelModel):
     flags: list[str]
     explanation: str
     sanctions_matches: list[SanctionsMatch] = Field(default_factory=list)
+    sanctions_basis: list[str] = Field(default_factory=list)
+    geopolitical_risk: GeopoliticalRiskResult | None = None
     public_intel: PublicIntelResult | None = None
     credential: CredentialStatus | None = None
 

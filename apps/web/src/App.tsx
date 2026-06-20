@@ -14,8 +14,9 @@ const TransferPage = lazy(() => import("./pages/TransferPage.js").then((module) 
 const TreasuryPage = lazy(() => import("./pages/TreasuryPage.js").then((module) => ({ default: module.TreasuryPage })));
 const WalletPage = lazy(() => import("./pages/WalletPage.js").then((module) => ({ default: module.WalletPage })));
 const DemoLabPage = lazy(() => import("./pages/DemoLabPage.js").then((module) => ({ default: module.DemoLabPage })));
+const SanctionsPage = lazy(() => import("./pages/SanctionsPage.js").then((module) => ({ default: module.SanctionsPage })));
 
-type Route = "/" | "/transfer" | "/credentials" | "/treasury" | "/ars" | "/insurance" | "/wallet" | "/cover" | "/demo";
+type Route = "/" | "/transfer" | "/credentials" | "/treasury" | "/ars" | "/insurance" | "/wallet" | "/cover" | "/demo" | "/sanctions";
 
 function currentRoute(): Route {
   if (window.location.pathname === "/transfer") return "/transfer";
@@ -26,6 +27,7 @@ function currentRoute(): Route {
   if (window.location.pathname === "/wallet") return "/wallet";
   if (window.location.pathname === "/cover") return "/cover";
   if (window.location.pathname === "/demo") return "/demo";
+  if (window.location.pathname === "/sanctions") return "/sanctions";
   return "/";
 }
 
@@ -67,6 +69,7 @@ export function App() {
       : path === "/wallet" ? "/wallet"
       : path === "/cover" ? "/cover"
       : path === "/demo" ? "/demo"
+      : path === "/sanctions" ? "/sanctions"
       : "/";
     if (window.location.pathname !== nextRoute) {
       window.history.pushState({}, "", nextRoute);
@@ -212,6 +215,9 @@ export function App() {
             <a className={route === "/credentials" ? "active" : ""} href="/credentials" aria-current={route === "/credentials" ? "page" : undefined} onClick={(event) => followLink(event, "/credentials")}>
               Credentials
             </a>
+            <a className={route === "/sanctions" ? "active" : ""} href="/sanctions" aria-current={route === "/sanctions" ? "page" : undefined} onClick={(event) => followLink(event, "/sanctions")}>
+              Sanctions
+            </a>
             <a className={route === "/transfer" ? "active" : ""} href="/transfer" aria-current={route === "/transfer" ? "page" : undefined} onClick={(event) => followLink(event, "/transfer")}>
               Transfer
             </a>
@@ -255,6 +261,7 @@ export function App() {
           {route === "/insurance" && <InsurancePage />}
           {route === "/wallet" && <WalletPage />}
           {route === "/demo" && <DemoLabPage />}
+          {route === "/sanctions" && <SanctionsPage />}
         </Suspense>
       </main>
 

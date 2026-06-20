@@ -65,6 +65,13 @@ class Settings(BaseSettings):
     opensanctions_base_url: str = "https://api.opensanctions.org"
     opensanctions_dataset: str = "sanctions"
     opensanctions_match_threshold: float = 0.85
+    # ISO 3166-1 alpha-2 country codes maintained by the compliance owner.
+    # A blocked country is a G2 hard block. A review country raises the AML
+    # score and therefore routes the payment to Firefly approval.
+    sanctions_blocked_countries: str = ""
+    geopolitical_review_countries: str = ""
+    geopolitical_review_score: int = 65
+    sanctions_unavailable_review_score: int = 65
     public_intel_enabled: bool = False
 
     # Plaid Monitor — AML/PEP/sanctions watchlist screening.

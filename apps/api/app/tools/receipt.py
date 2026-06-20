@@ -138,6 +138,7 @@ def _compliance(payment: Payment) -> dict | None:
         "amlScore": c.aml_score,
         "explanation": c.explanation,
         "flags": c.flags,
+        "geopoliticalRisk": _geopolitical_risk(c),
         "publicIntel": _public_intel(c),
         "sanctioned": c.sanctioned,
         "sanctionsMatches": [
@@ -151,6 +152,22 @@ def _compliance(payment: Payment) -> dict | None:
             }
             for match in c.sanctions_matches
         ],
+    }
+
+
+def _geopolitical_risk(compliance) -> dict | None:
+    if compliance.geopolitical_risk is None:
+        return None
+    g = compliance.geopolitical_risk
+    return {
+        "country": g.country,
+        "riskLevel": g.risk_level,
+        "score": g.score,
+        "blocked": g.blocked,
+        "requiresReview": g.requires_review,
+        "reasons": g.reasons,
+        "sources": g.sources,
+        "summary": g.summary,
     }
 
 

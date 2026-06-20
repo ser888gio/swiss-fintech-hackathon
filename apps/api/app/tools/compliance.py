@@ -25,7 +25,7 @@ from ..schemas import (
     ReceiverEntityType,
     SanctionsMatch,
 )
-from . import public_intel, risk_model
+from . import country_risk, public_intel, risk_model
 from ..credentials.plaid import monitor as plaid_monitor
 
 # Demo sanctions list. Used for local demos and as a graceful provider fallback.
@@ -48,6 +48,7 @@ def check_compliance(
 
     # ── 1. External OSINT (advisory, score only raises) ───────────────────────
     public = public_intel.assess_public_intel(intent)
+    geopolitical = country_risk.assess_country_risk(intent, settings)
 
     # ── 2. Sanctions / PEP screening ─────────────────────────────────────────
     matches: list[SanctionsMatch] = []
@@ -55,6 +56,7 @@ def check_compliance(
     is_pep = False
     has_adverse_media = False
     fallback_used = False
+    sanctions_basis: list[str] = []
     plaid_flags: list[str] = []
 
     plaid_result = _screen_plaid(intent, settings)
@@ -63,15 +65,28 @@ def check_compliance(
         is_pep = plaid_result.is_pep
         has_adverse_media = plaid_result.has_adverse_media
         plaid_flags = plaid_result.flags
+        if sanctioned:
+            sanctions_basis.append("Plaid Monitor entity match")
     elif settings.opensanctions_api_key:
         try:
             matches = _screen_opensanctions(intent)
             sanctioned = _has_blocking_match(matches, settings.opensanctions_match_threshold)
+            if sanctioned:
+                sanctions_basis.append("OpenSanctions entity match")
         except (httpx.HTTPError, ValueError):
             sanctioned = _fallback_sanctioned(intent)
             fallback_used = True
     else:
         sanctioned = _fallback_sanctioned(intent)
+        if sanctioned:
+            sanctions_basis.append("local demo entity match")
+
+    if sanctioned and not sanctions_basis:
+        sanctions_basis.append("local demo entity match")
+
+    if geopolitical.blocked:
+        sanctioned = True
+        sanctions_basis.append("country sanctions / geopolitical policy")
 
     # ── 3. Velocity check from payment store ──────────────────────────────────
     prior_count, prior_total = _velocity_check(intent)
@@ -97,6 +112,7 @@ def check_compliance(
 
     if sanctioned:
         flags.append("counterparty on sanctions list")
+    flags.extend(geopolitical.reasons)
     if fallback_used:
         flags.append("OpenSanctions unavailable; used local demo sanctions fallback")
 
@@ -143,11 +159,19 @@ def check_compliance(
     score = risk_model.signals_to_score(signals, sanctioned, public.score)
     score = min(score + step_weight, 95) if not sanctioned else score
 
+    if not sanctioned:
+        score = max(score, geopolitical.score)
+        if fallback_used:
+            score = max(
+                score,
+                getattr(settings, "sanctions_unavailable_review_score", 65),
+            )
+
     if kyc_missing:
         score = min(max(score, KYC_MISSING_SCORE), 95 if not sanctioned else 100)
 
     # ── 7. Explanation ────────────────────────────────────────────────────────
-    explanation = _explain(score, flags, matches, signals, public.summary)
+    explanation = _explain(score, flags, matches, signals, public.summary, geopolitical)
 
     return ComplianceResult(
         aml_score=score,
@@ -155,6 +179,8 @@ def check_compliance(
         flags=flags,
         explanation=explanation,
         sanctions_matches=matches,
+        sanctions_basis=sanctions_basis,
+        geopolitical_risk=geopolitical,
         public_intel=public,
         credential=credential,
     )
@@ -331,6 +357,7 @@ def _explain(
     matches: list[SanctionsMatch],
     signals: list[risk_model.RiskSignal],
     public_intel_summary: str,
+    geopolitical=None,
 ) -> str:
     parts: list[str] = []
 
@@ -346,6 +373,9 @@ def _explain(
     if matches:
         top = max(matches, key=lambda m: m.score)
         parts.append(f"Top OpenSanctions match: {top.caption} ({top.score:.2f}).")
+
+    if geopolitical and geopolitical.summary:
+        parts.append(f"Geopolitical context: {geopolitical.summary}")
 
     if public_intel_summary:
         parts.append(public_intel_summary)

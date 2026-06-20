@@ -115,6 +115,17 @@ export interface PublicIntelResult {
   summary: string;
 }
 
+export interface GeopoliticalRiskResult {
+  country: string;
+  riskLevel: "standard" | "high" | "blocked";
+  score: number;
+  blocked: boolean;
+  requiresReview: boolean;
+  reasons: string[];
+  sources: string[];
+  summary: string;
+}
+
 // XRPL Credentials (XLS-70) KYC status for the receiver. `checked` is false when
 // the credential layer is disabled; `verified` is true only for an accepted,
 // non-expired credential from the trusted issuer.
@@ -182,6 +193,8 @@ export interface ComplianceResult {
   flags: string[];
   explanation: string;
   sanctionsMatches: SanctionsMatch[];
+  sanctionsBasis: string[];
+  geopoliticalRisk: GeopoliticalRiskResult | null;
   publicIntel: PublicIntelResult | null;
   credential: CredentialStatus | null;
 }

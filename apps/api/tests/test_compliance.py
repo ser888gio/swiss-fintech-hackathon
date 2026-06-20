@@ -28,6 +28,10 @@ def _settings(**overrides):
         "opensanctions_base_url": "https://api.opensanctions.org",
         "opensanctions_dataset": "sanctions",
         "opensanctions_match_threshold": 0.85,
+        "sanctions_blocked_countries": "",
+        "geopolitical_review_countries": "",
+        "geopolitical_review_score": 65,
+        "sanctions_unavailable_review_score": 65,
         "public_intel_enabled": False,
     }
     data.update(overrides)
@@ -170,6 +174,94 @@ def test_public_intel_score_can_raise_aml_but_not_sanction(monkeypatch):
     assert result.sanctioned is False
     assert result.aml_score == 72
     assert "adverse public intelligence signal" in result.flags
+
+
+def test_configured_country_sanctions_policy_hard_blocks(monkeypatch):
+    monkeypatch.setattr(
+        compliance,
+        "get_settings",
+        lambda: _settings(sanctions_blocked_countries="XZ,YY"),
+    )
+    monkeypatch.setattr(compliance.public_intel, "assess_public_intel", lambda intent: _public())
+
+    result = compliance.check_compliance(_intent(receiverCountry="xz"))
+
+    assert result.sanctioned is True
+    assert result.aml_score == 100
+    assert result.sanctions_basis == ["country sanctions / geopolitical policy"]
+    assert result.geopolitical_risk is not None
+    assert result.geopolitical_risk.blocked is True
+
+
+def test_geopolitical_review_country_forces_hardware_review_score(monkeypatch):
+    monkeypatch.setattr(
+        compliance,
+        "get_settings",
+        lambda: _settings(geopolitical_review_countries="XZ"),
+    )
+    monkeypatch.setattr(compliance.public_intel, "assess_public_intel", lambda intent: _public())
+
+    result = compliance.check_compliance(_intent(receiverCountry="XZ"))
+
+    assert result.sanctioned is False
+    assert result.aml_score == 65
+    assert result.geopolitical_risk is not None
+    assert result.geopolitical_risk.requires_review is True
+
+
+def test_opensanctions_outage_forces_review_not_false_clean(monkeypatch):
+    monkeypatch.setattr(
+        compliance,
+        "get_settings",
+        lambda: _settings(opensanctions_api_key="test-key"),
+    )
+    monkeypatch.setattr(compliance.public_intel, "assess_public_intel", lambda intent: _public())
+
+    class BrokenClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            raise compliance.httpx.ConnectError("offline")
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(compliance.httpx, "Client", BrokenClient)
+
+    result = compliance.check_compliance(_intent())
+
+    assert result.sanctioned is False
+    assert result.aml_score == 65
+    assert "OpenSanctions unavailable; used local demo sanctions fallback" in result.flags
+
+
+def test_curated_blocked_country_hard_blocks_via_check_compliance(monkeypatch):
+    monkeypatch.setattr(compliance, "get_settings", lambda: _settings())
+    monkeypatch.setattr(compliance.public_intel, "assess_public_intel", lambda intent: _public())
+
+    result = compliance.check_compliance(_intent(receiverCountry="IR"))
+
+    assert result.sanctioned is True
+    assert result.aml_score == 100
+    assert "country sanctions / geopolitical policy" in result.sanctions_basis
+    assert result.geopolitical_risk is not None
+    assert result.geopolitical_risk.blocked is True
+    assert "FATF" in result.explanation or "Iran" in result.explanation or "Geopolitical" in result.explanation
+
+
+def test_curated_review_country_raises_aml_score(monkeypatch):
+    monkeypatch.setattr(compliance, "get_settings", lambda: _settings())
+    monkeypatch.setattr(compliance.public_intel, "assess_public_intel", lambda intent: _public())
+
+    result = compliance.check_compliance(_intent(receiverCountry="PK"))
+
+    assert result.sanctioned is False
+    assert result.aml_score == 65
+    assert result.geopolitical_risk is not None
+    assert result.geopolitical_risk.requires_review is True
+    assert result.geopolitical_risk.summary != ""
+    assert "Geopolitical" in result.explanation
 
 
 def _client_for(payload):

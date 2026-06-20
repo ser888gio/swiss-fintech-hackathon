@@ -134,9 +134,10 @@ credential checks, Firefly approval verification, or audit trail.
 |---|---|---|---|
 | **Treasury Orchestrator** | LLM loop | `app/agents/orchestrator.py` | Receives a payment intent, calls tools in order, narrates decisions. Holds **no** policy logic. |
 | **Routing tool** `get_fx_path` | Deterministic | `app/tools/routing.py` | Frankfurter FX quote + XRPL `ripple_path_find`; returns the cheapest path summary. |
-| **Compliance tool** `check_compliance` | Deterministic (mock OK) | `app/tools/compliance.py` | Sanctions/KYC screen + AML score 0–100 + plain-language reason. Folds in the credential status. |
+| **Compliance tool** `check_compliance` | Deterministic (mock OK) | `app/tools/compliance.py` | Person/company sanctions matching, configured country sanctions policy, KYC screen, geopolitical review signal, AML score 0–100, and plain-language reason. Folds in credential status. |
 | **Credentials tool** `verify_kyc` / `issue_credential` | Deterministic | `app/tools/credentials.py` | XRPL Credentials (XLS-70): issues KYC credentials and verifies the receiver holds an accepted, non-expired one. Reports status only — escalation is the policy engine's call. |
 | **Public intelligence tool** `assess_public_intel` | Deterministic facade, agent-ready | `app/tools/public_intel.py` | Returns an advisory OSINT risk result. Future AI agents may gather evidence, but code computes the score and policy effect. |
+| **Country risk evaluator** | Deterministic, pure | `app/tools/country_risk.py` | Applies operator-owned country block/review lists. A block feeds G2; geopolitical review raises AML risk but cannot approve or override sanctions. |
 | **Policy engine** | **Deterministic — code-enforced** | `app/policy/engine.py` | Threshold + risk-score decision: auto-settle vs. escalate. **Never the LLM's call.** |
 | **Execution tool** | Deterministic | `app/tools/execution.py` | Direct token Payment, or escrow/lock for large payments. |
 | **Firefly approval tool** | Deterministic | `app/tools/firefly.py` | Builds the approval challenge, verifies the Firefly signature, then triggers release. |
@@ -206,7 +207,8 @@ in `app/schemas.py` and mirror `packages/shared/src/types.ts`.
 - `get_fx_path(intent) -> RouteQuote` — `{ source_amount, dest_amount, rate,
   path_summary, estimated_fee }`.
 - `check_compliance(intent) -> ComplianceResult` — `{ aml_score, sanctioned:
-  bool, flags: string[], explanation, sanctions_matches[], public_intel }`.
+  bool, flags: string[], explanation, sanctions_matches[], sanctions_basis[],
+  geopolitical_risk, public_intel }`.
 - `assess_public_intel(intent) -> PublicIntelResult` — `{ score,
   confidence, flags[], sources[], summary }`. Advisory only; it can raise AML
   risk but cannot block or approve a payment by itself.

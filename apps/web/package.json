@@ -11,8 +11,13 @@
   },
   "dependencies": {
     "@treasury/shared": "*",
+    "@types/three": "^0.184.1",
+    "@types/topojson-client": "^3.1.5",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-globe.gl": "^2.38.0",
+    "three": "^0.184.0",
+    "topojson-client": "^3.1.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
