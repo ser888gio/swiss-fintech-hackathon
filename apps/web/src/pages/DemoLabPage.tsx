@@ -12,15 +12,16 @@ type Scenario = {
   description: string;
   expected: string;
   attackId?: string;
+  gateLabel: string;
 };
 
 const SECURITY_SCENARIOS: Scenario[] = [
-  { id: "AT-6", eyebrow: "Identity", title: "Rogue agent", description: "Try to initiate a payment from a wallet with no Know Your Agent credential.", expected: "G1 KYA refuses the request before compliance runs.", attackId: "AT-6" },
-  { id: "AT-2", eyebrow: "Credentials", title: "Forged KYC", description: "Accept a recipient credential from an attacker-controlled issuer.", expected: "The trusted-issuer check rejects the credential chain.", attackId: "AT-2" },
-  { id: "AT-1", eyebrow: "Compliance", title: "Sanctioned counterparty", description: "Attempt a direct transfer to a known sanctioned address.", expected: "G2 sanctions hard-blocks it; approval cannot override it.", attackId: "AT-1" },
-  { id: "AT-3", eyebrow: "AML", title: "Threshold structuring", description: "Shape a payment to 90% of the approval threshold.", expected: "The STRC typology detects just-under-threshold behavior.", attackId: "AT-3" },
-  { id: "AT-4", eyebrow: "AML", title: "Shell entity", description: "Pay an opaque company in a secrecy jurisdiction.", expected: "Shell and jurisdiction signals accumulate in the AML score.", attackId: "AT-4" },
-  { id: "AT-5", eyebrow: "Credentials", title: "PEP signal", description: "Issue a valid credential containing a politically exposed person flag.", expected: "Compliance reads the credential signal and escalates risk.", attackId: "AT-5" },
+  { id: "AT-6", eyebrow: "Identity", title: "Rogue agent", description: "Try to initiate a payment from a wallet with no Know Your Agent credential.", expected: "G1 KYA refuses the request before compliance runs.", attackId: "AT-6", gateLabel: "G1 · KYA" },
+  { id: "AT-2", eyebrow: "Credentials", title: "Forged KYC", description: "Accept a recipient credential from an attacker-controlled issuer.", expected: "The trusted-issuer check rejects the credential chain.", attackId: "AT-2", gateLabel: "KYC Issuer" },
+  { id: "AT-1", eyebrow: "Compliance", title: "Sanctioned counterparty", description: "Attempt a direct transfer to a known sanctioned address.", expected: "G2 sanctions hard-blocks it; approval cannot override it.", attackId: "AT-1", gateLabel: "G2 · Sanctions" },
+  { id: "AT-3", eyebrow: "AML", title: "Threshold structuring", description: "Shape a payment to 90% of the approval threshold.", expected: "The STRC typology detects just-under-threshold behavior.", attackId: "AT-3", gateLabel: "STRC / AML" },
+  { id: "AT-4", eyebrow: "AML", title: "Shell entity", description: "Pay an opaque company in a secrecy jurisdiction.", expected: "Shell and jurisdiction signals accumulate in the AML score.", attackId: "AT-4", gateLabel: "SHLL / AML" },
+  { id: "AT-5", eyebrow: "Credentials", title: "PEP signal", description: "Issue a valid credential containing a politically exposed person flag.", expected: "Compliance reads the credential signal and escalates risk.", attackId: "AT-5", gateLabel: "PEP Weight" },
 ];
 
 function ResultPill({ state }: { state: RunState }) {
@@ -43,6 +44,52 @@ function GuardrailTrail({ result }: { result: DemoAttackResult }) {
           <div><strong>{step.guardrail.replaceAll("_", " ")}</strong><small>{step.detail}</small></div>
         </div>
       ))}
+    </div>
+  );
+}
+
+type VizState = "running" | "blocked" | "escalated" | "settled";
+
+function AttackViz({ state, result, gateLabel }: {
+  state: RunState;
+  result?: DemoAttackResult;
+  gateLabel: string;
+}) {
+  if (state === "ready" || state === "error") return null;
+
+  let vizState: VizState = "running";
+  if (state !== "running" && result) {
+    if (result.outcome === "blocked") vizState = "blocked";
+    else if (result.outcome === "escalated") vizState = "escalated";
+    else vizState = "settled";
+  }
+
+  const activeGateLabel = result
+    ? (result.guardrailTrail.find((s) => !s.passed)?.guardrail.replaceAll("_", " ") ?? gateLabel)
+    : gateLabel;
+
+  const responseLabel = state !== "running" && result ? result.outcome.toUpperCase() : "···";
+
+  return (
+    <div className={`attack-viz attack-viz--${vizState}`}>
+      <div className="attack-viz-node">
+        <span>Agent</span>
+        <strong>Treasury</strong>
+      </div>
+      <div className="attack-viz-track">
+        <div className="attack-viz-packet" />
+      </div>
+      <div className="attack-viz-gate">
+        <span>guard</span>
+        <strong>{activeGateLabel}</strong>
+      </div>
+      <div className="attack-viz-track attack-viz-track--return">
+        <div className="attack-viz-response">{responseLabel}</div>
+      </div>
+      <div className="attack-viz-node">
+        <span>Merchant</span>
+        <strong>Receiver</strong>
+      </div>
     </div>
   );
 }
@@ -133,6 +180,7 @@ export function DemoLabPage() {
             <button className="demo-run" type="button" onClick={runAutonomousPayment} disabled={states.autonomous === "running"}>
               {states.autonomous === "running" ? "Agent is evaluating…" : agentRun ? "Run another cycle" : "Run autonomous cycle"}
             </button>
+            <AttackViz state={states.autonomous ?? "ready"} result={agentRun ? { outcome: "settled", guardrailTrail: [], depthReached: 4, pointsEarned: 0, attackId: "", scenarioName: "", teamName: "", verdict: "", timestamp: "" } : undefined} gateLabel="x402 · Policy" />
             {errors.autonomous && <p className="demo-error" role="alert">{errors.autonomous}</p>}
           </div>
           <div className="demo-proof-panel">
@@ -180,6 +228,7 @@ export function DemoLabPage() {
                 <button className="demo-run demo-run-secondary" type="button" onClick={() => runAttack(scenario)} disabled={state === "running"}>
                   {state === "running" ? "Running…" : result ? "Run again" : "Test guardrails"}
                 </button>
+                <AttackViz state={state} result={result} gateLabel={scenario.gateLabel} />
                 {errors[scenario.id] && <p className="demo-error" role="alert">{errors[scenario.id]}</p>}
                 {result && <div className="demo-result"><div className="demo-result-head"><strong>{result.outcome}</strong><span>Depth {result.depthReached}/4 · {result.pointsEarned} pts</span></div><GuardrailTrail result={result} /><p>{result.verdict}</p></div>}
               </article>
@@ -200,6 +249,7 @@ export function DemoLabPage() {
             <div className="demo-equation"><div><span>Invoice</span><strong>500</strong></div><b>−</b><div><span>Paid</span><strong>480</strong></div><b>=</b><div className="demo-loss"><span>Covered loss</span><strong>20 RLUSD</strong></div></div>
             <p>The claim endpoint derives all financial facts server-side, applies eligibility and capacity rules, and tops up the merchant.</p>
             <button className="demo-run" type="button" onClick={runCover} disabled={states.cover === "running"}>{states.cover === "running" ? "Reconciling…" : coverResult ? "Run another claim" : "Simulate & settle claim"}</button>
+            <AttackViz state={states.cover ?? "ready"} result={coverResult ? { outcome: "settled", guardrailTrail: [], depthReached: 4, pointsEarned: 0, attackId: "", scenarioName: "", teamName: "", verdict: "", timestamp: "" } : undefined} gateLabel="Reconciler" />
             {errors.cover && <p className="demo-error" role="alert">{errors.cover}</p>}
           </div>
           <div className="demo-proof-panel">

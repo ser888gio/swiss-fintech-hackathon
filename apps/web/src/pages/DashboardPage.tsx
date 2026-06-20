@@ -14,6 +14,7 @@ import type {
 } from "@treasury/shared";
 
 import { api } from "../lib/api.js";
+import { formatMoney as money } from "../lib/utils.js";
 
 interface Props {
   payments: Payment[];
@@ -32,15 +33,6 @@ const STATUS_LABEL: Record<Payment["status"], string> = {
   blocked: "Blocked by policy",
   failed: "Failed",
 };
-
-function money(amount: number | string, currency = "USD") {
-  const value = Number(amount);
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: value % 1 === 0 ? 0 : 2,
-  }).format(Number.isFinite(value) ? value : 0);
-}
 
 function shortAddress(value: string) {
   return value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-5)}` : value;
