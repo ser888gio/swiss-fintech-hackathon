@@ -195,10 +195,15 @@ function QuotePanel({ onBound }: { onBound: () => void }) {
         </label>
       </div>
 
-      <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem", fontSize: "0.8rem" }}>
-        <input type="checkbox" checked={form.firstSeen}
-          onChange={(e) => setForm((f) => ({ ...f, firstSeen: e.target.checked }))} />
-        First-time counterparty (novelty uplift)
+      <label className="checkbox-label" style={{ marginBottom: "0.75rem", marginTop: 0 }}>
+        <input
+          type="checkbox"
+          checked={form.firstSeen}
+          onChange={(e) => setForm((f) => ({ ...f, firstSeen: e.target.checked }))}
+        />
+        <span>
+          First-time counterparty <span className="muted">(novelty uplift)</span>
+        </span>
       </label>
 
       <div style={{ marginBottom: "0.75rem" }}>
