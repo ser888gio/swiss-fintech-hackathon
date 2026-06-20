@@ -1,11 +1,132 @@
-import { useCallback, useEffect, useState, type ChangeEvent } from "react";
-import type { MPTStatus, TreasuryAgentRun, TreasuryGoal, TreasuryGoalCreate, VaultStatus } from "@treasury/shared";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
+import type { MPTStatus, Payment, TreasuryAgentRun, TreasuryGoal, TreasuryGoalCreate, VaultStatus } from "@treasury/shared";
 
 import { api } from "../lib/api.js";
 
 // XRP-only: the agent transacts natively in XRP so there is no FX step.
 const CURRENCIES = ["XRP"];
 type BusyKey = "goal" | "run" | "vault" | "mpt";
+
+// Payments above this lock on-chain and require a physical Firefly approval —
+// mirrors POLICY_THRESHOLD_USD on the backend. These are the agentic
+// transactions whose step trail matters most to a reviewer.
+const FIREFLY_THRESHOLD = 500;
+
+const STATUS_LABEL: Record<Payment["status"], string> = {
+  routing: "Routing",
+  settled: "Settled",
+  pending_approval: "Locked · Firefly",
+  released: "Released",
+  blocked: "Refused",
+  failed: "Failed",
+};
+
+type StepState = "pass" | "flag" | "block" | "info";
+interface TxStep {
+  label: string;
+  detail: string;
+  state: StepState;
+}
+
+// Derive the deterministic decision pipeline from a payment so the agentic side
+// shows *what* the agent did and *why*, not just that a goal fired.
+function buildSteps(p: Payment): TxStep[] {
+  const steps: TxStep[] = [];
+  const { intent, routeQuote: route, compliance, policyDecision: policy, status } = p;
+
+  if (route) {
+    steps.push({
+      label: "Route",
+      detail: `${route.pathSummary}${route.sendMax != null ? ` · SendMax ${route.sendMax.toLocaleString()}` : ""}`,
+      state: "info",
+    });
+  }
+
+  if (compliance) {
+    const kyc = compliance.credential?.checked
+      ? compliance.credential.verified ? " · KYC verified" : " · KYC missing"
+      : "";
+    const top = compliance.sanctionsMatches[0];
+    steps.push({
+      label: "Compliance",
+      detail: `AML ${compliance.amlScore}/100 · ${compliance.explanation}${kyc}${top ? ` · OpenSanctions ${Math.round(top.score * 100)}%` : ""}`,
+      state: compliance.sanctioned ? "block" : compliance.flags.length > 0 ? "flag" : "pass",
+    });
+  }
+
+  if (policy) {
+    if (policy.blocked) {
+      steps.push({ label: "Policy", detail: policy.blockReason ?? "Blocked outright", state: "block" });
+    } else if (policy.requiresApproval) {
+      steps.push({
+        label: "Policy",
+        detail: `Escalated (${policy.ruleFired ?? "rule"}) — ${policy.reasons.join("; ")}`,
+        state: "flag",
+      });
+    } else {
+      steps.push({
+        label: "Policy",
+        detail: `Auto-settle — at/below ${FIREFLY_THRESHOLD} ${intent.currency} threshold, low risk`,
+        state: "pass",
+      });
+    }
+  }
+
+  if (status === "settled" || status === "released") {
+    steps.push({ label: "Settlement", detail: "Delivered on-ledger", state: "pass" });
+  } else if (status === "pending_approval") {
+    steps.push({
+      label: "Firefly veto",
+      detail: `Locked in escrow${p.escrowSequence != null ? ` (seq ${p.escrowSequence})` : ""} — awaiting physical hardware approval`,
+      state: "flag",
+    });
+  } else if (status === "blocked") {
+    steps.push({ label: "Settlement", detail: "Not executed — blocked", state: "block" });
+  } else if (status === "failed") {
+    steps.push({ label: "Settlement", detail: "Submission failed", state: "block" });
+  } else {
+    steps.push({ label: "Settlement", detail: "Routing…", state: "info" });
+  }
+
+  return steps;
+}
+
+const STEP_SYMBOL: Record<StepState, string> = { pass: "✓", flag: "⚠", block: "✗", info: "•" };
+
+function AgenticTxCard({ payment }: { payment: Payment }) {
+  const { intent, status } = payment;
+  const large = intent.amount > FIREFLY_THRESHOLD;
+  const steps = buildSteps(payment);
+  return (
+    <article className={`agentic-tx status-${status}`}>
+      <header className="agentic-tx-head">
+        <strong>{intent.amount.toLocaleString()} {intent.currency}</strong>
+        <span className="badge">{STATUS_LABEL[status]}</span>
+        {large && (
+          <span className="firefly-tag">🔒 &gt;{FIREFLY_THRESHOLD} {intent.currency} · Firefly hardware veto</span>
+        )}
+      </header>
+      <p className="muted agentic-buying">
+        Buying: <strong>{intent.purpose.replace(/_/g, " ")}</strong> · {intent.reference} → {intent.receiverName} ({intent.receiverCountry})
+      </p>
+      <ol className="agentic-steps">
+        {steps.map((s, i) => (
+          <li key={i} className={`agentic-step step-${s.state}`}>
+            <span className="step-mark">{STEP_SYMBOL[s.state]}</span>
+            <span className="step-label">{s.label}</span>
+            <span className="step-detail">{s.detail}</span>
+          </li>
+        ))}
+      </ol>
+      {payment.auditExplanation && <p className="audit">{payment.auditExplanation}</p>}
+      {payment.explorerUrl && (
+        <a href={payment.explorerUrl} target="_blank" rel="noreferrer" className="agentic-tx-link">
+          View on explorer ↗
+        </a>
+      )}
+    </article>
+  );
+}
 
 const DEFAULT_GOAL: TreasuryGoalCreate = {
   name: "Monthly supplier payment",
@@ -25,6 +146,7 @@ const DEFAULT_GOAL: TreasuryGoalCreate = {
 export function TreasuryPage() {
   const [goals, setGoals] = useState<TreasuryGoal[]>([]);
   const [runs, setRuns] = useState<TreasuryAgentRun[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [vault, setVault] = useState<VaultStatus | null>(null);
   const [mpt, setMpt] = useState<MPTStatus | null>(null);
   const [form, setForm] = useState<TreasuryGoalCreate>(DEFAULT_GOAL);
@@ -40,14 +162,16 @@ export function TreasuryPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const [g, r, v, m] = await Promise.all([
+      const [g, r, p, v, m] = await Promise.all([
         api.listTreasuryGoals(),
         api.listTreasuryRuns(),
+        api.listPayments().catch(() => [] as Payment[]),
         api.getVaultStatus().catch(() => null),
         api.getMptStatus().catch(() => null),
       ]);
       setGoals(g);
       setRuns(r);
+      setPayments(p);
       setVault(v);
       setMpt(m);
     } catch (cause) {
@@ -97,6 +221,8 @@ export function TreasuryPage() {
 
   const field = (key: keyof TreasuryGoalCreate) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((prev) => ({ ...prev, [key]: e.target.type === "number" ? Number(e.target.value) : e.target.value }));
+
+  const paymentsById = useMemo(() => new Map(payments.map((p) => [p.id, p])), [payments]);
 
   return (
     <section className="send-flow" aria-label="Autonomous treasury agent">
@@ -218,6 +344,14 @@ export function TreasuryPage() {
                     <li key={i} className="muted">{line}</li>
                   ))}
                 </ul>
+                {run.paymentsInitiated.length > 0 && (
+                  <div className="agentic-tx-list">
+                    {run.paymentsInitiated.map((pid) => {
+                      const p = paymentsById.get(pid);
+                      return p ? <AgenticTxCard key={pid} payment={p} /> : null;
+                    })}
+                  </div>
+                )}
               </div>
             </article>
           ))}

@@ -6,7 +6,8 @@
   "workspaces": [
     "apps/web",
     "apps/firefly-bridge",
-    "packages/shared"
+    "packages/shared",
+    "packages/insurance-sdk"
   ],
   "scripts": {
     "dev:web": "npm run dev --workspace apps/web",

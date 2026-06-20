@@ -10,12 +10,15 @@ from ..config import get_settings
 from ..schemas import (
     AgentRiskState,
     BindRequest,
+    CapitalDepositRequest,
+    CapitalWithdrawRequest,
     ClaimRequest,
     DelegationGrant,
     DelegationGrantCreate,
     InsurancePayoutRecord,
     InsurancePremiumRecord,
     InsuranceQuoteRequest,
+    LpPosition,
     MPTAttestationRecord,
     MPTAuthorizeRequest,
     MPTStatus,
@@ -355,8 +358,37 @@ async def insurance_bind(req: BindRequest) -> InsurancePremiumRecord:
         return await insurance_tool.bind(req)
     except insurance_tool.CoverUnavailable as exc:
         raise HTTPException(status_code=409, detail=f"cover {exc.decision}: {exc.reason}")
+    except insurance_tool.GuardrailRefused as exc:
+        raise HTTPException(status_code=403, detail=f"Guardrail {exc.guardrail} blocked: {exc.reason}")
     except insurance_tool.InsuranceError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/insurance/capital/deposit", response_model=LpPosition, status_code=201)
+async def insurance_capital_deposit(req: CapitalDepositRequest) -> LpPosition:
+    """LP contributes first-loss capital to the pool (G1/G2 gated)."""
+    _require_insurance()
+    try:
+        return await insurance_tool.deposit_capital(req)
+    except insurance_tool.GuardrailRefused as exc:
+        raise HTTPException(status_code=403, detail=f"Guardrail {exc.guardrail} blocked: {exc.reason}")
+    except insurance_tool.InsuranceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/insurance/capital/withdraw", response_model=LpPosition, status_code=201)
+async def insurance_capital_withdraw(req: CapitalWithdrawRequest) -> LpPosition:
+    """LP recalls capital from the pool."""
+    _require_insurance()
+    try:
+        return await insurance_tool.withdraw_capital(req)
+    except insurance_tool.InsuranceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/insurance/capital", response_model=list[LpPosition])
+async def list_insurance_capital() -> list[LpPosition]:
+    return insurance_tool.list_positions()
 
 
 @router.get("/insurance/premiums", response_model=list[InsurancePremiumRecord])

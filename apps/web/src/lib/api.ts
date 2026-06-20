@@ -3,6 +3,8 @@ import type {
   AgentRiskState,
   ApprovalChallenge,
   BindRequest,
+  CapitalDepositRequest,
+  CapitalWithdrawRequest,
   ClaimRequest,
   CredentialIssueRequest,
   CredentialLogEntry,
@@ -13,6 +15,7 @@ import type {
   InsurancePayoutRecord,
   InsurancePremiumRecord,
   InsuranceQuoteRequest,
+  LpPosition,
   MPTAttestationRecord,
   MPTAuthorizeRequest,
   MPTStatus,
@@ -179,4 +182,18 @@ export const api = {
     request<PoolStatus>("/treasury/insurance/pool"),
   getAgentRisk: (address: string) =>
     request<AgentRiskState>(`/treasury/insurance/agents/${address}/risk`),
+
+  // Insurance first-loss capital providers (LPs).
+  listInsuranceCapital: () =>
+    request<LpPosition[]>("/treasury/insurance/capital"),
+  depositInsuranceCapital: (req: CapitalDepositRequest) =>
+    request<LpPosition>("/treasury/insurance/capital/deposit", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+  withdrawInsuranceCapital: (req: CapitalWithdrawRequest) =>
+    request<LpPosition>("/treasury/insurance/capital/withdraw", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
 };
