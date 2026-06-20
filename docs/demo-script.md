@@ -18,6 +18,13 @@ XRPL feature map, business model/go-to-market, and credible Mainnet path. Reserv
 - A cached successful run's explorer links open in a backup tab (in case testnet
   is flaky). Backup screencap recorded.
 
+## Narrative discipline
+
+The demo is one story: **autonomous intent -> deterministic controls -> XRPL
+settlement -> hardware-governed exception**. x402, delegation, lending,
+insurance, and red-team views are supporting evidence, not five competing
+products. Mention them only after the four core outcomes land.
+
 ## The seven beats
 
 1. **Open the dashboard.** Invoice queue, live agent log streaming. "This agent
@@ -26,7 +33,9 @@ XRPL feature map, business model/go-to-market, and credible Mainnet path. Reserv
 2. **$500 vendor invoice.** Let the autonomous treasury cycle detect the due
    invoice and initiate it—do not click a human “Pay” button. Agent narrates: routes via
    `ripple_path_find`, compliance clears (AML 12/100), policy says auto-settle.
-   Direct Payment lands in ~4s. **Show the testnet explorer link.**
+   Direct Payment lands in ~4s. **Show the agent run/goal, payment id, and
+   Testnet explorer link as one continuous evidence chain.** This is the
+   challenge-qualification moment.
 
 3. **Sanctioned counterparty.** Submit an invoice to `ACME-SHELL-CO`. Card turns
    red: **REFUSED — counterparty on sanctions list**. "Notice it did *not* go to
@@ -53,6 +62,31 @@ XRPL feature map, business model/go-to-market, and credible Mainnet path. Reserv
    "Download audit receipt" on any card — JSON with route, AML score, rule fired,
    Firefly signature, receipt hash. "Hand this to your auditor; they recompute
    the hash and verify nothing was altered."
+
+## Optional 45-second expansion
+
+Only if the core flow is complete and time remains:
+
+1. Open the x402 service-payment record: show the requirement was read before
+   policy, the agent scope was evaluated, spend was reserved, and invoice-bound
+   proof unlocked the response.
+2. Show Demo Lab rejecting one host/scope or delegation attack. Explain that the
+   same deterministic boundary generalizes beyond treasury payments.
+3. Mention XLS-65/XLS-66 trade finance as a Devnet extension. Show it live only
+   when the verification report contains real Vault/Loan explorer evidence.
+
+Do not tour every page. The physical veto, sanctions refusal, tamper rejection,
+and autonomous transaction are the memorable product.
+
+## Claims to explain proactively
+
+- **Testnet settlement scaling:** policy and audit preserve the business amount,
+  while a configured demo scale may submit a smaller faucet-funded ledger
+  amount. Say this before opening the explorer and show the scale in the log.
+- **Hardware boundary:** the current signature is enforced by the governed API
+  immediately before `EscrowFinish`; it is not an XRPL crypto-condition.
+- **Mock versus real:** no explorer URL means simulation. Never call a synthetic
+  hash, simulated merchant, self-issued IOU, or software signer production proof.
 
 ## The two lines to land
 

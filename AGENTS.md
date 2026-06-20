@@ -21,18 +21,19 @@ XLS-65/XLS-66 is optional and must not displace the guarded payment MVP.
 
 ## Mental model
 
-The product *presents* a team of agents. The implementation is **one backend
-workflow** (`apps/api/app/agents/orchestrator.py`) that runs an LLM tool-use
-loop. The LLM's only jobs are (1) call the right tools in order and (2) narrate
-what happened in plain language. Every consequential decision is made by
-deterministic code inside a tool.
+The product *presents* a team of agents. The implementation uses **one backend
+workflow** (`apps/api/app/agents/orchestrator.py`) with a fixed deterministic
+tool sequence. `apps/api/app/agents/treasury_agent.py` evaluates scheduled goals
+and invokes that workflow as its only payment actuator. The LLM may narrate the
+result, but it does not choose the tool order, policy outcome, transaction, or
+signature. Every consequential decision is made by deterministic code.
 
 ```
 payment intent
       │
       ▼
 ┌──────────────────────────────────────────────┐
-│  Treasury Orchestrator  (LLM tool-use loop)   │  ← narrates only
+│ Treasury Orchestrator (fixed workflow)        │
 └──────────────────────────────────────────────┘
    │        │            │            │
    ▼        ▼            ▼            ▼
@@ -145,6 +146,42 @@ credential checks, Firefly approval verification, or audit trail.
 | **Simulated merchant router** | Deterministic | `app/routes/merchants.py` | Represents five distinct counterparties inside the existing API deploy and releases resources only after exact validated-ledger verification. |
 
 ## The policy boundary (the core innovation)
+
+### Unified guardrails
+
+`app/policy/guardrail.py` is the orchestrator-facing source of truth. Callers
+pre-fetch facts and pass them into a pure evaluator. It dispatches only the
+checks relevant to the workflow context, returns an ordered `guardrail_trail`,
+and stops at the first block or review result.
+
+| Guardrail | Meaning | Current status |
+|---|---|---|
+| **G1 KYA** | Agent holds the required accepted credential | Wired for service payments, delegation funding, and loan underwriting |
+| **G2 sanctions** | Counterparty is not sanctioned | Wired as a hard block for payments and applicable financial contexts |
+| **G3 AML enrichment** | External VASP/AML enrichment | Placeholder (`reason=not_wired`); do not claim a live provider |
+| **G4 scope** | Amount, velocity, host/type and configured agent restrictions | Wired; spend reservations provide retry/concurrency safety |
+| **G5 delegation** | Child spend fits the remaining grant | Wired for delegation and delegated-agent paths |
+| **G6 threshold** | Amount/AML threshold determines allow vs. review | Wired; review becomes escrow/Firefly for payments and a no-pay result for x402 |
+| **G7 hardware veto** | Release requires the registered Firefly signature | Enforced in `release_payment`, immediately before `EscrowFinish` |
+
+Current dispatch contexts include `payment`, `agent_payment`,
+`service_payment`, `delegation_fund`, `loan_underwrite`, and
+`insurance_payout`. The separate `app/ars/constraint_engine.py` implements an
+ARS abstraction with different G1-G7 labels; do not conflate its numbering with
+the orchestrator-facing dispatcher.
+
+### Extended components
+
+| Component | Determinism | Module | Responsibility |
+|---|---|---|---|
+| **Autonomous treasury agent** | Deterministic; optional LLM narration | `app/agents/treasury_agent.py` | Evaluates scheduled goals and invokes the orchestrator as its only payment actuator. |
+| **Agent scope engine** | Deterministic, pure | `app/policy/scope.py` | Enforces transaction/day limits and optional host, service, asset, network, category, and merchant restrictions. |
+| **KYA credentials** | Deterministic | `app/credentials/kya/` | Issues and verifies scoped agent identities using XRPL Credentials. |
+| **Delegation tool** | Deterministic | `app/tools/delegation.py` | Funds child wallets and enforces expiry, per-transaction, daily, and total grants. |
+| **Reservation system** | Deterministic | `app/store.py`, `app/ars/` | Reserves, commits, or releases spend so retries and concurrent runs cannot silently reuse allowance. |
+| **Trade finance** | Deterministic; optional | `app/tools/trade_finance.py` | Receivable registration, early supplier payment, repayment, and optional Vault/Loan operations. |
+| **Vault and lending** | Deterministic; optional Devnet extension | `app/tools/vault.py`, `app/tools/lending.py` | Constructs XLS-65/XLS-66 transactions in real mode; disabled by default and not demonstrated without explorer evidence. |
+| **Insurance / Cover** | Deterministic pricing and policy; optional | `app/insurance/`, `app/cover/` | Extends the same control boundary to agent risk cover; not part of the guarded-payment MVP. |
 
 Defined once, in code, and unit-tested. The LLM cannot reach past it.
 

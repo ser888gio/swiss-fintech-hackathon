@@ -34,13 +34,20 @@ browser → API, and the API verifies it before releasing funds.
 
 ## Request flow — small payment (auto-settle)
 
-1. Web posts a payment intent to `POST /payments`.
+1. A user posts an intent to `POST /payments`, or the deterministic treasury
+   agent fires a due goal and invokes the same orchestrator without a human pay
+   click.
 2. API runs the orchestrator: `get_fx_path` → `check_compliance` →
    `evaluate_policy`.
 3. Policy returns `requires_approval = false`.
 4. Execution tool submits a direct token Payment on XRPL testnet.
 5. Audit tool writes the full decision trail + tx hash to Postgres.
 6. Web shows the settled payment with an explorer link.
+
+For challenge qualification, preserve one evidence chain from `agent_run_id`
+and goal to payment id, guardrail trail, validated transaction hash, and explorer
+URL. A transaction hash proves settlement, but not that the autonomous agent
+initiated it.
 
 ## Request flow — large/flagged payment (hardware veto)
 
@@ -60,6 +67,72 @@ browser → API, and the API verifies it before releasing funds.
 > The verification step at (8) is the whole point. If it is skipped or faked, the
 > "hardware veto" is theatre. It must be a real secp256k1 verify against a key
 > registered before the demo.
+
+### Trust-boundary precision
+
+The current Option C design is an **application-enforced cryptographic veto**.
+XRPL locks the funds in escrow, and the supported API workflow refuses to call
+`EscrowFinish` until the Firefly signature verifies. The signature is not itself
+an XRPL escrow condition: a party controlling the treasury signing key could
+construct an `EscrowFinish` outside this API after `FinishAfter`. Public claims
+should therefore say "the governed workflow cannot release without the device,"
+not "the ledger makes release impossible without the device." Crypto-condition
+escrow or XRPL multisignature is the future ledger-enforced upgrade.
+
+## Unified guardrail boundary
+
+The orchestrator-facing evaluator is `apps/api/app/policy/guardrail.py`. Callers
+fetch facts, the pure evaluator runs only the checks relevant to the context,
+and the first failed check returns `block` or `review`.
+
+| ID | Control | Enforcement |
+|---|---|---|
+| G1 | KYA credential | Required for scoped agent/service contexts |
+| G2 | Sanctions | Hard block; no approval path |
+| G3 | External AML/VASP enrichment | Placeholder today (`not_wired`) |
+| G4 | Agent scope and velocity | Per-tx/day plus configured service restrictions |
+| G5 | Delegation budget | Child-agent grant limits |
+| G6 | Amount/AML threshold | Auto-settle vs. review/escrow; x402 never enters approval |
+| G7 | Firefly veto | Checked at release immediately before `EscrowFinish` |
+
+The separate `apps/api/app/ars/constraint_engine.py` supplies an ARS abstraction
+for additional roles. Its G1-G7 labels are not interchangeable with this table.
+
+## Request flow - autonomous x402 service payment
+
+1. An agent requests a service and receives an HTTP 402 requirement.
+2. The API validates the network, asset, issuer, facilitator, destination,
+   invoice, and positive amount before moving funds.
+3. G1 verifies agent identity and G4 checks the complete scope, including rolling
+   spend and merchant/service restrictions.
+4. G6 evaluates the price before settlement. A review is a no-pay outcome because
+   an HTTP service request cannot wait inside an approval queue.
+5. Spend is reserved under an agent/idempotency key.
+6. The Python API submits the RLUSD Payment with SourceTag and invoice memo.
+7. The service is retried with invoice-bound ledger proof and must confirm
+   success before the reservation is committed.
+
+The built-in merchant router is a simulated counterparty surface. It can verify
+real validated-ledger proof, but it is not an external merchant integration when
+running inside the same API deployment.
+
+## Request flow - delegation
+
+1. A parent creates a grant for a child agent wallet.
+2. KYA, scope, grant expiry, per-transaction, daily, and total budgets are checked.
+3. Real mode funds the child with an XRPL Payment; mock mode returns a synthetic
+   hash and no explorer URL.
+4. Child payments carry the child identity and scope through the same
+   orchestrator and reservation boundary.
+
+## Optional Credit & Lending extension
+
+The trade-finance state machine registers a receivable, withdraws liquidity from
+an XLS-65 vault, pays the supplier early at a discount, optionally creates an
+XLS-66 loan, and replenishes the pool on repayment. These modules are disabled
+by default and support deterministic mock mode. Treat the pillar as demonstrated
+only when the verification report contains Devnet transaction hashes and
+explorer URLs for the actual Vault/Loan operations.
 
 ## Request flow — sanctioned counterparty (refused in code)
 

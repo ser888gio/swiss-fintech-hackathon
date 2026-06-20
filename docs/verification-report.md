@@ -1,5 +1,26 @@
 # Verification report — `main` on XRPL Testnet
 
+> **Historical evidence plus current gap check.** The transaction matrix below
+> records the original Testnet run. Since then the repository added autonomous
+> goals, unified guardrails, KYA, x402, delegation, vault/lending, trade finance,
+> insurance, and Demo Lab flows. Those features are not automatically verified
+> by the hashes below. Add a dated explorer row for every feature claimed live.
+
+## Current verification status (2026-06-20)
+
+- Backend suite: **309 passed, 3 failed**. The failures are guardrail contract
+  drift: one G4/G6 ordering expectation and two scope `rule_fired` identifier
+  expectations. Do not claim a green suite until these are reconciled.
+- Existing hashes prove a direct XRP Payment, EscrowCreate, and EscrowFinish.
+  They do not prove the payment originated from a recorded autonomous-agent run.
+- RLUSD, accepted Credentials, external x402 settlement, real Firefly hardware,
+  and XLS-65/XLS-66 Devnet operations require separate dated explorer evidence.
+  Code paths and deterministic mock hashes are not ledger verification.
+- Required autonomous proof bundle: `agent_run_id`, goal id, payment id, ordered
+  guardrail trail, validated transaction hash, network, and explorer URL.
+
+## Original Testnet run
+
 Status of the plan in `docs/verification-plan.md`. Network: XRPL **Testnet**
 (`wss://s.altnet.rippletest.net:51233`). Treasury (reused fx-sentinel HOT
 wallet): **`rLJEyCHnzFqVyqRKKtb76NN1scRMWimtGM`**, ~203 XRP funded.
