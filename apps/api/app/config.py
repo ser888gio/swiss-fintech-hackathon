@@ -112,8 +112,11 @@ class Settings(BaseSettings):
     # audit log records the scaling. 1.0 = no scaling (production default).
     testnet_settlement_scale: float = 1.0
 
-    # When true, the deliberate-tamper demo endpoint is available. Never enable
-    # in production — it exists solely to prove signature binding on stage.
+    # Enables all judge-facing Demo Lab routes: the six red-team attack scenarios
+    # (/redteam/attack), the leaderboard, and the deliberate-tamper payment
+    # endpoint. These routes execute real tools with controlled inputs — they are
+    # safe by design but expose attack surface that must never be on in production.
+    # Set to true locally or on a throwaway Railway deployment for demos only.
     demo_mode: bool = False
 
     # Autonomous treasury agent. `agent_max_amount_usd` is a defense-in-depth cap:
