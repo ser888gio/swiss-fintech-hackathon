@@ -63,6 +63,19 @@ class Settings(BaseSettings):
     opensanctions_match_threshold: float = 0.85
     public_intel_enabled: bool = False
 
+    # Plaid Monitor — AML/PEP/sanctions watchlist screening.
+    # When client_id + secret + a program ID are set, Plaid Monitor replaces
+    # OpenSanctions for that entity type (individual or company). Falls back to
+    # OpenSanctions / demo list when credentials or program IDs are absent.
+    # plaid_env controls the base URL: sandbox | development | production
+    plaid_client_id: str = ""
+    plaid_secret: str = ""
+    plaid_env: str = "sandbox"
+    plaid_watchlist_program_id_individual: str = ""
+    plaid_watchlist_program_id_entity: str = ""
+    # IDV template created in Plaid Dashboard → Identity Verification → Templates
+    plaid_idv_template_id: str = ""
+
     # Hex secp256k1 public key the Firefly device signs with; release is refused
     # unless the approval signature verifies against this key.
     firefly_public_key: str = ""

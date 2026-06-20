@@ -82,12 +82,45 @@ class PublicIntelResult(CamelModel):
     summary: str
 
 
+class VerificationStepStatus(str, Enum):
+    """Outcome of a single KYC verification step — mirrors Plaid IDV step statuses."""
+    pass_   = "pass"
+    fail    = "fail"
+    flagged = "flagged"   # issue found (e.g. PEP match, adverse media)
+    skip    = "skip"      # step not performed
+    pending = "pending"
+
+
+class VerificationSteps(CamelModel):
+    """Per-step KYC outcomes encoded in the XRPL Credential URI field.
+
+    Models the same verification steps as Plaid IDV + Plaid Monitor:
+      documentary  →  government ID scanned and authenticated
+      selfie       →  liveness confirmed, face matches ID
+      kyc          →  name / DOB cross-referenced against records
+      sanctions    →  screened against OFAC / EU / UN lists
+      pep          →  politically exposed person check
+    """
+    documentary: VerificationStepStatus = VerificationStepStatus.skip
+    selfie: VerificationStepStatus      = VerificationStepStatus.skip
+    kyc: VerificationStepStatus         = VerificationStepStatus.skip
+    sanctions: VerificationStepStatus   = VerificationStepStatus.skip
+    pep: VerificationStepStatus         = VerificationStepStatus.skip
+    ref: str = ""
+    issued_on: str = ""
+
+
 class CredentialStatus(CamelModel):
     """Result of an XRPL Credentials (XLS-70) KYC lookup for the receiver.
 
     `checked` is False when the credential layer is disabled. `verified` is True
     only when the subject holds an *accepted*, non-expired credential of the
     configured type issued by the trusted issuer.
+
+    `verification_steps` is decoded from the credential URI field when present.
+    It carries per-step outcomes (documentary, selfie, sanctions, PEP) modelled
+    on Plaid IDV's step schema — giving compliance granular signal beyond a
+    binary verified/unverified flag.
     """
 
     checked: bool
@@ -98,6 +131,7 @@ class CredentialStatus(CamelModel):
     expiration: datetime | None = None
     uri: str | None = None
     reason: str
+    verification_steps: VerificationSteps | None = None
 
 
 class CredentialRecordStatus(str, Enum):
