@@ -141,6 +141,7 @@ credential checks, Firefly approval verification, or audit trail.
 | **Execution tool** | Deterministic | `app/tools/execution.py` | Direct token Payment, or escrow/lock for large payments. |
 | **Firefly approval tool** | Deterministic | `app/tools/firefly.py` | Builds the approval challenge, verifies the Firefly signature, then triggers release. |
 | **Audit tool** | LLM-assisted | `app/tools/audit.py` | Writes a human-readable explanation of each decision to Postgres. |
+| **Audit PDF renderer** | Deterministic, read-only | `app/tools/receipt_pdf.py` | Renders a terminal payment's canonical decision trail and integrity hash as a downloadable PDF. |
 | **Shared wallet tool** | Deterministic, read-only | `app/tools/wallet.py` | Derives only the configured treasury public address server-side and reads its XRP/token balances and validated transaction history from Testnet and Devnet. |
 | **x402 service-payment tool** | Deterministic | `app/tools/x402.py` | Fetches and validates a 402 requirement, submits a direct RLUSD Payment with `xrpl-py`, and retries with invoice-bound ledger proof. Policy and agent reservations are enforced by the orchestrator before settlement. |
 | **Simulated merchant router** | Deterministic | `app/routes/merchants.py` | Represents five distinct counterparties inside the existing API deploy and releases resources only after exact validated-ledger verification. |

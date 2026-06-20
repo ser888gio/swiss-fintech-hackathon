@@ -192,6 +192,10 @@ See `apps/api/app/schemas.py` (Pydantic) and `packages/shared/src/types.ts`
 - `GET /payments/{id}/receipt` — returns the canonical-JSON receipt plus its
   `receiptHash` for any payment in a terminal state (`settled`, `released`,
   `blocked`). An auditor recomputes the hash to verify nothing was altered.
+- `GET /payments/{id}/receipt.pdf` — downloads the same terminal decision trail
+  as a human-readable audit report. It explains why the deterministic policy
+  accepted or refused the payment and includes compliance, guardrails,
+  settlement evidence, and the receipt integrity hash.
 - `POST /payments/{id}/release-tampered` — **DEMO ONLY**, gated by `DEMO_MODE`.
   Rebuilds the approval digest from a tampered copy of the payment (amount ×1000)
   and verifies the *real* signature against it. Always returns `403` — proving the

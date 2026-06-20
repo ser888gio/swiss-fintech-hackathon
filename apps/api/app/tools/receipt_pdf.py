@@ -9,7 +9,7 @@ never re-derives or re-decides anything.
 from __future__ import annotations
 
 import io
-from datetime import datetime
+from datetime import datetime, timezone
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -55,7 +55,7 @@ def build_receipt_pdf(payment: Payment) -> bytes:
         Paragraph("Treasury Payment — Audit Report", _TITLE),
         Paragraph(
             f"Payment {payment.id} &nbsp;·&nbsp; status: {receipt.status.value} &nbsp;·&nbsp; "
-            f"generated {_iso(datetime.utcnow())}Z",
+            f"generated {_iso(datetime.now(timezone.utc))}",
             _SUBTITLE,
         ),
         HRFlowable(width="100%", thickness=0.75, color=colors.HexColor("#1f3b57"), spaceBefore=6, spaceAfter=2),

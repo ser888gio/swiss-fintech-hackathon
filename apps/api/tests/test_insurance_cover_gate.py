@@ -156,3 +156,54 @@ async def test_cover_disabled_leaves_existing_flow_unchanged(monkeypatch):
 
     assert payment.cover is None
     assert payment.status.value == "settled"
+
+
+@pytest.mark.anyio
+async def test_insurance_decline_is_the_decision_explained_in_audit(monkeypatch):
+    from app.tools import audit, compliance, credentials, routing
+    from app.tools import insurance as insurance_tool
+
+    async def fake_route(intent, currency):
+        return RouteQuote(source_amount=1500, dest_amount=1500, rate=1.0, path_summary="1:1", estimated_fee=0)
+
+    async def fake_kyc(subject):
+        return CredentialStatus(checked=False, verified=False, reason="disabled")
+
+    audited = {}
+
+    async def fake_audit(route, screen, decision, **kwargs):
+        audited["decision"] = decision
+        audited["payment_id"] = kwargs.get("payment_id")
+        return f"Payment refused: {decision.block_reason}"
+
+    monkeypatch.setattr(orchestrator, "get_settings", lambda: _settings())
+    monkeypatch.setattr(routing, "get_fx_path", fake_route)
+    monkeypatch.setattr(credentials, "verify_kyc", fake_kyc)
+    monkeypatch.setattr(
+        compliance,
+        "check_compliance",
+        lambda intent, credential=None: ComplianceResult(
+            aml_score=10, sanctioned=False, flags=[], explanation="clean"
+        ),
+    )
+    monkeypatch.setattr(audit, "write_audit", fake_audit)
+    monkeypatch.setattr(
+        insurance_tool,
+        "quote",
+        lambda request: PremiumQuote(
+            decision=QuoteDecision.decline,
+            premium="0.000000",
+            lines={},
+            pd=0.99,
+            credibility=1.0,
+            reason="Risk exceeds insurance appetite.",
+            receipt_hash="c" * 64,
+        ),
+    )
+
+    payment = await orchestrator.process_payment(_intent(coverRequired=True))
+
+    assert payment.status.value == "blocked"
+    assert audited["payment_id"] == payment.id
+    assert audited["decision"].rule_fired == "insurance_decline"
+    assert payment.audit_explanation == "Payment refused: Risk exceeds insurance appetite."
