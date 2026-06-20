@@ -84,6 +84,7 @@ function AttackViz({ state, result, gateLabel }: {
         <strong>{activeGateLabel}</strong>
       </div>
       <div className="attack-viz-track attack-viz-track--return">
+        <div className="attack-viz-packet" />
         <div className="attack-viz-response">{responseLabel}</div>
       </div>
       <div className="attack-viz-node">
