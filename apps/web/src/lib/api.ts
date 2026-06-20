@@ -75,6 +75,36 @@ function getApiBaseUrl(): string {
 
 const BASE_URL = getApiBaseUrl();
 
+export interface DemoGuardrailHit {
+  guardrail: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface DemoAttackResult {
+  attackId: string;
+  scenarioName: string;
+  teamName: string;
+  outcome: "blocked" | "escalated" | "settled";
+  depthReached: number;
+  pointsEarned: number;
+  guardrailTrail: DemoGuardrailHit[];
+  verdict: string;
+  timestamp: string;
+}
+
+interface DemoAttackWireResult {
+  attack_id: string;
+  scenario_name: string;
+  team_name: string;
+  outcome: "blocked" | "escalated" | "settled";
+  depth_reached: number;
+  points_earned: number;
+  guardrail_trail: DemoGuardrailHit[];
+  verdict: string;
+  timestamp: string;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -242,7 +272,12 @@ export const api = {
   listAgentRuns: (agentId: string) => request<TreasuryAgentRun[]>(`/agents/${agentId}/runs`),
   getAgentStats: (agentId: string) => request<AgentDashboardStats>(`/agents/${agentId}/stats`),
   seedMaersk: () => request<Agent[]>("/agents/seed-maersk", { method: "POST" }),
-  runController: () => request<TreasuryAgentRun>("/agents/controller/run", { method: "POST" }),
+  runController: (force = false, simulate = false) => {
+    const query = new URLSearchParams();
+    if (force) query.set("force", "true");
+    if (simulate) query.set("simulate", "true");
+    return request<TreasuryAgentRun>(`/agents/controller/run${query.size ? `?${query}` : ""}`, { method: "POST" });
+  },
   listServicePayments: (agentId?: string) => request<ServicePaymentRecord[]>(
     `/agents/service-payments/history${agentId ? `?agent_id=${encodeURIComponent(agentId)}` : ""}`
   ),
@@ -261,8 +296,32 @@ export const api = {
   coverPool: () =>
     request<CoverPoolStatus>("/cover/pool"),
   coverRunDemo41: () =>
-    request<{ scenario: string; description: string; payout: CoverPayout; narration: string }>(
+    request<{ scenario: string; settlement_mode: string; description: string; payout: { amount_paid: string }; narration: string | null }>(
       "/cover/demo/underpayment", { method: "POST" }
-    ),
+    ).then((result) => ({
+      scenario: result.scenario,
+      settlementMode: result.settlement_mode,
+      description: result.description,
+      payout: { amountPaid: result.payout.amount_paid },
+      narration: result.narration,
+    })),
+
+  // Judge-facing demo lab. These routes execute the backend's real deterministic
+  // tools with controlled demo inputs; DEMO_MODE must be enabled for red-team runs.
+  runDemoAttack: (attackId: string, teamName = "Hackathon Judge") =>
+    request<DemoAttackWireResult>("/redteam/attack", {
+      method: "POST",
+      body: JSON.stringify({ attack_id: attackId, team_name: teamName }),
+    }).then((result): DemoAttackResult => ({
+      attackId: result.attack_id,
+      scenarioName: result.scenario_name,
+      teamName: result.team_name,
+      outcome: result.outcome,
+      depthReached: result.depth_reached,
+      pointsEarned: result.points_earned,
+      guardrailTrail: result.guardrail_trail,
+      verdict: result.verdict,
+      timestamp: result.timestamp,
+    })),
 };
 

@@ -911,6 +911,9 @@ export function ARSPage() {
   return (
     <div className="ars-root">
       <div className="ars-left">
+        <div style={{ padding: "0.55rem 0.75rem", marginBottom: "1rem", borderBottom: "1px solid var(--border)", color: "var(--muted)", fontSize: "0.82rem", lineHeight: 1.5 }}>
+          <strong style={{ color: "var(--paper)" }}>Agentic Payment Infrastructure (ARS)</strong> — four advanced payment primitives in one view: trade-finance early-supplier payment (XLS-65/66), Bayesian insurance pricing, x402 pay-per-request service calls, and agent-to-agent budget delegation. All paths share the same six-guardrail chain (KYA → sanctions → scope → delegation → threshold → <a href="https://firefly.app/" target="_blank" rel="noreferrer" style={{ color: "var(--orange)", textDecoration: "none" }}>Firefly</a>); deterministic code enforces every rule. Every on-chain event appears in the live log on the right.
+        </div>
         <div className="send-topbar" style={{ marginBottom: "1.5rem" }}>
           <div>
             <span className="eyebrow">ARS · Agentic Risk Standard</span>

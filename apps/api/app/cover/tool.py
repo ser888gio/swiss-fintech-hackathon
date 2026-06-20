@@ -67,7 +67,7 @@ def quote(req: CoverQuoteRequest) -> CoverQuote:
 
 # ── Bind ──────────────────────────────────────────────────────────────────────
 
-async def bind(req: CoverBindRequest) -> CoverPolicy:
+async def bind(req: CoverBindRequest, *, simulate_settlement: bool = False) -> CoverPolicy:
     """Re-quote, reserve capacity, settle premium, create policy."""
     settings = get_settings()
     if not settings.cover_enabled:
@@ -89,7 +89,10 @@ async def bind(req: CoverBindRequest) -> CoverPolicy:
     per_claim_d = Decimal(q.per_claim_limit).quantize(_Q2)
 
     # Settle premium from treasury wallet → pool account
-    tx_hash, explorer_url = await _settle_premium(req.agent_address, premium, settings)
+    if simulate_settlement:
+        tx_hash, explorer_url = xrpl_client.mock_tx_hash("cover_demo_premium", req.agent_address), None
+    else:
+        tx_hash, explorer_url = await _settle_premium(req.agent_address, premium, settings)
 
     now = datetime.now(timezone.utc)
     policy_id = str(uuid.uuid4())
@@ -129,7 +132,7 @@ async def bind(req: CoverBindRequest) -> CoverPolicy:
 
 # ── Claim ─────────────────────────────────────────────────────────────────────
 
-async def settle_claim(evidence: CoverClaimEvidence) -> CoverPayout:
+async def settle_claim(evidence: CoverClaimEvidence, *, simulate_settlement: bool = False) -> CoverPayout:
     """Load immutable records, reconcile, validate, settle payout."""
     settings = get_settings()
     if not settings.cover_enabled:
@@ -213,7 +216,10 @@ async def settle_claim(evidence: CoverClaimEvidence) -> CoverPayout:
     )
 
     # Settle on-ledger
-    tx_hash, explorer_url = await _settle_payout(destination, payout_amount, evidence.payment_id, settings)
+    if simulate_settlement:
+        tx_hash, explorer_url = xrpl_client.mock_tx_hash("cover_demo_payout", evidence.payment_id), None
+    else:
+        tx_hash, explorer_url = await _settle_payout(destination, payout_amount, evidence.payment_id, settings)
 
     # Update policy in-place (decrement cover_remaining)
     now = datetime.now(timezone.utc)

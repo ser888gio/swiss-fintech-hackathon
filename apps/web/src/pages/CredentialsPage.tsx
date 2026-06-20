@@ -101,6 +101,9 @@ export function CredentialsPage() {
   return (
     <section className="send-flow" aria-label="Credential issuing agent">
       <div className="send-left">
+        <div style={{ padding: "0.55rem 0.75rem", marginBottom: "1rem", borderBottom: "1px solid var(--border)", color: "var(--muted)", fontSize: "0.82rem", lineHeight: 1.5 }}>
+          <strong style={{ color: "var(--paper)" }}>Credentials (XLS-70)</strong> — issue and manage XRPL verifiable credentials (KYC attestations) for counterparties. Payments to addresses without a valid credential trigger a compliance AML flag that locks the payment until the credential is accepted on-ledger. This page lets you issue credentials, accept them as the subject, and verify them — removing the compliance gate and allowing the payment to proceed or scale normally (still subject to policy thresholds and <a href="https://firefly.app/" target="_blank" rel="noreferrer" style={{ color: "var(--orange)", textDecoration: "none" }}>Firefly</a> approval if needed).
+        </div>
         <div className="send-topbar">
           <div>
             <span className="eyebrow">Credential agent · XLS-70</span>

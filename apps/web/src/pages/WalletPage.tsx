@@ -112,6 +112,9 @@ export function WalletPage() {
 
   return (
     <section className="wallet-page" aria-label="Shared treasury wallet">
+      <div style={{ padding: "0.55rem 0.75rem", marginBottom: "1rem", borderBottom: "1px solid var(--border)", color: "var(--muted)", fontSize: "0.82rem", lineHeight: 1.5 }}>
+        <strong style={{ color: "var(--paper)" }}>Wallet</strong> — live view of the shared XRPL treasury address. Balances (RLUSD stablecoin, XRP native, XLS-65 vault tokens) and validated transaction history are read directly from the ledger across testnet and devnet. Private keys never reach this page — signing is done server-side, and all <a href="https://firefly.app/" target="_blank" rel="noreferrer" style={{ color: "var(--orange)", textDecoration: "none" }}>Firefly</a> confirmations (for payments above the policy threshold) happen via the local Bridge device.
+      </div>
       <header className="wallet-hero">
         <div>
           <span className="eyebrow">Connected shared wallet</span>

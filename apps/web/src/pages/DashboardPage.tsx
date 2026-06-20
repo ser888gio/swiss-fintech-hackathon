@@ -223,6 +223,11 @@ export function DashboardPage({ payments, approvingId, resolvingKycId, onApprove
   return (
     <div className="dashboard-page operations-dashboard">
 
+      {/* ── Page intro ────────────────────────────────────────────────────── */}
+      <div style={{ padding: "0.55rem 0.75rem", marginBottom: "1rem", borderBottom: "1px solid var(--border)", color: "var(--muted)", fontSize: "0.82rem", lineHeight: 1.5 }}>
+        <strong style={{ color: "var(--paper)" }}>Operations Dashboard</strong> — your real-time treasury command centre. Monitor XRPL balances, resolve <a href="https://firefly.app/" target="_blank" rel="noreferrer" style={{ color: "var(--orange)", textDecoration: "none" }}>Firefly</a>-locked payments (a secure hardware device that acts as a veto layer for large/sensitive payments), track upcoming obligations, and watch autonomous agents settle routine payments without human intervention. Every decision is deterministic and auditable.
+      </div>
+
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section className="operations-hero">
         <div>

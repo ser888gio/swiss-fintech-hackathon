@@ -742,6 +742,10 @@ export function TreasuryPage() {
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+      {/* Page intro */}
+      <div style={{ padding: "0.55rem 0.75rem", marginBottom: "1rem", borderBottom: "1px solid var(--border)", color: "var(--muted)", fontSize: "0.82rem", lineHeight: 1.5 }}>
+        <strong style={{ color: "var(--paper)" }}>Agent Builder</strong> — create and manage autonomous payment agents with deterministic policy guardrails. Each agent has a daily budget, per-transaction cap, and an approval threshold encoded in code; payments above that threshold are locked on-chain and require <a href="https://firefly.app/" target="_blank" rel="noreferrer" style={{ color: "var(--orange)", textDecoration: "none" }}>Firefly</a> hardware approval (a secure veto device) before funds move. The agent explains; code decides; no one, including the agent, can move a large payment without the device in hand. Use "Seed Maersk fleet" to load a ready-made 5-agent demo.
+      </div>
       {/* Page header */}
       <div style={{ marginBottom: "1rem", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>

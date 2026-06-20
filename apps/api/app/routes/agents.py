@@ -10,12 +10,13 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from ..agents import orchestrator, treasury_agent
 from ..config import get_settings
-from ..policy.scope import GLOBAL_AUTO_SETTLE_CEILING_USD, AgentScope
+from ..policy.scope import GLOBAL_AUTO_SETTLE_CEILING_USD, AgentScope, evaluate_scope
 from ..schemas import (
     Agent,
     AgentCreate,
@@ -166,11 +167,68 @@ async def seed_maersk(request: Request) -> list[Agent]:
 
 
 @router.post("/controller/run", response_model=TreasuryAgentRun)
-async def run_controller() -> TreasuryAgentRun:
+async def run_controller(force: bool = False, simulate: bool = False) -> TreasuryAgentRun:
     settings = get_settings()
     if not settings.agent_enabled:
         raise HTTPException(status_code=403, detail="autonomous agent is disabled")
     started = datetime.now(timezone.utc)
+    # Judge-demo runs must be repeatable. Reset only the seeded fleet goals'
+    # cadence timestamps; all policy, credential, reservation, and settlement
+    # checks still execute normally below.
+    if force:
+        for agent_id in MAERSK_SUBAGENTS:
+            for goal in treasury_agent.list_agent_goals(agent_id):
+                treasury_agent.add_agent_goal(
+                    agent_id, goal.model_copy(update={"last_triggered_at": None})
+                )
+    if simulate:
+        evaluated = 0
+        eligible: list[str] = []
+        skipped: list[str] = []
+        trail: list[str] = []
+        for agent_id in MAERSK_SUBAGENTS:
+            agent = _agents.get(agent_id)
+            if not agent or agent.status != AgentStatus.active:
+                continue
+            scope = _build_scope(agent)
+            for goal in treasury_agent.list_agent_goals(agent_id):
+                evaluated += 1
+                host = urlparse(goal.service_url).netloc if goal.service_url else None
+                decision = evaluate_scope(
+                    Decimal(str(goal.amount)), scope, Decimal("0"),
+                    service_host=host,
+                    service_type=goal.service_type,
+                    asset=goal.currency,
+                    network=agent.allowed_network,
+                    category=goal.category or goal.purpose,
+                    payee_is_known_merchant=True,
+                )
+                if decision.allowed:
+                    eligible.append(f"SIM-{agent_id}-{goal.id[:8]}")
+                    trail.append(
+                        f"[{agent_id}] {goal.name}: ELIGIBLE — scope, asset, host, "
+                        f"per-transaction and daily limits passed ({goal.amount:g} {goal.currency})."
+                    )
+                else:
+                    skipped.append(goal.id)
+                    outcome = "ESCALATE" if decision.requires_approval else "BLOCK"
+                    trail.append(
+                        f"[{agent_id}] {goal.name}: {outcome} — "
+                        f"{decision.rule_fired}: {'; '.join(decision.reasons)}"
+                    )
+        now = datetime.now(timezone.utc)
+        return TreasuryAgentRun(
+            id=str(uuid.uuid4()), started_at=started, completed_at=now,
+            goals_evaluated=evaluated, goals_triggered=len(eligible),
+            payments_initiated=eligible, payments_skipped=skipped,
+            trigger_log=trail,
+            narration=(
+                f"Simulation evaluated {evaluated} due service goals through the deterministic "
+                f"agent scope policy. {len(eligible)} are eligible for autonomous x402 settlement; "
+                f"{len(skipped)} require escalation or are blocked. No funds moved in this judge simulation."
+            ),
+            status="simulated", agent_id="maersk-controller",
+        )
     runs: list[TreasuryAgentRun] = []
     for agent_id in MAERSK_SUBAGENTS:
         agent = _agents.get(agent_id)

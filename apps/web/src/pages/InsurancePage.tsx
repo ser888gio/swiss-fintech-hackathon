@@ -429,6 +429,9 @@ export function InsurancePage() {
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto" }}>
+      <div style={{ padding: "0.55rem 0.75rem", marginBottom: "1rem", borderBottom: "1px solid var(--border)", color: "var(--muted)", fontSize: "0.82rem", lineHeight: 1.5 }}>
+        <strong style={{ color: "var(--paper)" }}>Insurance Pricing &amp; Risk Engine</strong> — price actuarial cover for agent payments using a Bayesian PD model (Beta conjugate prior) that updates dynamically with every observed default. The agent's payments are protected by deterministic guardrails and <a href="https://firefly.app/" target="_blank" rel="noreferrer" style={{ color: "var(--orange)", textDecoration: "none" }}>Firefly</a> hardware approval for sensitive transactions; this cover backs rare edge-case errors. Look up an agent's current risk state (α/β posteriors, credibility %, score band), quote and bind a premium on-chain, and review the full history of collected premiums and settled claims.
+      </div>
       <h2 style={{ marginBottom: "0.25rem" }}>Insurance Pricing &amp; Risk Engine</h2>
       <p className="muted" style={{ marginBottom: "1.5rem" }}>
         Actuarial cover for agent payments. Premiums are priced on a Bayesian PD model;

@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from . import db, store
 from .config import get_settings
-from .routes import credentials, health, merchants, payments, treasury, wallet
+from .routes import credentials, health, merchants, payments, redteam, treasury, wallet
 from .routes import cover as cover_routes
 from .routes.agents import router as agents_router, load_agents_from_db
 
@@ -66,6 +66,7 @@ app.include_router(wallet.router)
 app.include_router(agents_router)
 app.include_router(merchants.router)
 app.include_router(cover_routes.router)
+app.include_router(redteam.router)
 
 
 def _cors_headers(request: Request) -> dict[str, str]:

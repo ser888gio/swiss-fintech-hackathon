@@ -80,6 +80,9 @@ export function CoverPage() {
 
   return (
     <div className="cover-page">
+      <div style={{ padding: "0.55rem 0.75rem", marginBottom: "1rem", borderBottom: "1px solid var(--border)", color: "var(--muted)", fontSize: "0.82rem", lineHeight: 1.5 }}>
+        <strong style={{ color: "var(--paper)" }}>Agent Cover</strong> — annual captive insurance for losses caused by autonomous payment errors. The agent's decisions are deterministic and guarded by <a href="https://firefly.app/" target="_blank" rel="noreferrer" style={{ color: "var(--orange)", textDecoration: "none" }}>Firefly</a> hardware veto on large payments, but this cover backs mistakes in rare edge cases. Get a premium quote, bind a policy against the first-loss pool, and track verified claim payouts — all recorded on XRPL. One premium covers the period; claims remain deterministic and auditable.
+      </div>
       <header className="cover-hero">
         <div>
           <span className="eyebrow">Agent risk infrastructure</span>

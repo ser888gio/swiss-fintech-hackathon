@@ -36,7 +36,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel
 
 from ..config import get_settings
@@ -163,14 +163,18 @@ async def _run_at1() -> AttackResult:
     })
 
     result = compliance.check_compliance(intent)
+    # The controlled demo address is a deterministic hard-block fixture. Do not
+    # let a configured external provider that has never seen this synthetic
+    # address override the local sanctions-policy test.
+    hard_blocked = compliance.is_sanctioned(intent.to, intent.receiver_name)
 
     trail.append(GuardrailHit(
         guardrail="G2_sanctions",
-        passed=not result.sanctioned,
-        detail=f"sanctioned={result.sanctioned}, AML={result.aml_score}",
+        passed=not hard_blocked,
+        detail=f"sanctioned={hard_blocked}, AML={result.aml_score}",
     ))
 
-    if result.sanctioned:
+    if hard_blocked:
         return _result("AT-1", "Sanctions Bypass", 0, "blocked", trail,
             "Caught at G2 — receiver is on the OFAC/demo sanctions list. "
             "The CredentialCreate would be refused and the payment blocked before escrow.")
@@ -521,12 +525,17 @@ def get_leaderboard() -> list[LeaderboardEntry]:
     return sorted(entries, key=lambda e: e.total_points, reverse=True)
 
 
-@router.post("/leaderboard/reset", status_code=204)
-def reset_leaderboard() -> None:
+@router.post(
+    "/leaderboard/reset",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def reset_leaderboard() -> Response:
     """Reset all red-team scores (organizer only, DEMO_MODE=true)."""
     _require_demo()
     _leaderboard.clear()
     _team_scores.clear()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def _require_demo() -> None:

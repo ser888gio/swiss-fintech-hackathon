@@ -29,7 +29,11 @@ export function TransferPage({
   onTamperRetry,
 }: Props) {
   return (
-    <div className="transfer-layout">
+    <>
+      <div style={{ padding: "0.55rem 0.75rem", marginBottom: "1rem", borderBottom: "1px solid var(--border)", color: "var(--muted)", fontSize: "0.82rem", lineHeight: 1.5 }}>
+        <strong style={{ color: "var(--paper)" }}>New Payment</strong> — initiate a cross-border XRPL payment. Amounts within your policy threshold settle autonomously in seconds; larger or compliance-flagged amounts lock on-chain and require <a href="https://firefly.app/" target="_blank" rel="noreferrer" style={{ color: "var(--orange)", textDecoration: "none" }}>Firefly</a> (a secure hardware device that acts as a veto layer) approval via the Bridge before funds move. Policy rules are deterministic code, not LLM decisions. Every transaction is recorded in the audit trail on the right.
+      </div>
+      <div className="transfer-layout">
       <NewPaymentForm onSubmit={onSubmit} disabled={busy} />
 
       <aside className="transfer-audit">
@@ -55,5 +59,6 @@ export function TransferPage({
         )}
       </aside>
     </div>
+    </>
   );
 }

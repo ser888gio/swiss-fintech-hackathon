@@ -13,8 +13,9 @@ const InsurancePage = lazy(() => import("./pages/InsurancePage.js").then((module
 const TransferPage = lazy(() => import("./pages/TransferPage.js").then((module) => ({ default: module.TransferPage })));
 const TreasuryPage = lazy(() => import("./pages/TreasuryPage.js").then((module) => ({ default: module.TreasuryPage })));
 const WalletPage = lazy(() => import("./pages/WalletPage.js").then((module) => ({ default: module.WalletPage })));
+const DemoLabPage = lazy(() => import("./pages/DemoLabPage.js").then((module) => ({ default: module.DemoLabPage })));
 
-type Route = "/" | "/transfer" | "/credentials" | "/treasury" | "/ars" | "/insurance" | "/wallet" | "/cover";
+type Route = "/" | "/transfer" | "/credentials" | "/treasury" | "/ars" | "/insurance" | "/wallet" | "/cover" | "/demo";
 
 function currentRoute(): Route {
   if (window.location.pathname === "/transfer") return "/transfer";
@@ -24,6 +25,7 @@ function currentRoute(): Route {
   if (window.location.pathname === "/insurance") return "/insurance";
   if (window.location.pathname === "/wallet") return "/wallet";
   if (window.location.pathname === "/cover") return "/cover";
+  if (window.location.pathname === "/demo") return "/demo";
   return "/";
 }
 
@@ -64,6 +66,7 @@ export function App() {
       : path === "/insurance" ? "/insurance"
       : path === "/wallet" ? "/wallet"
       : path === "/cover" ? "/cover"
+      : path === "/demo" ? "/demo"
       : "/";
     if (window.location.pathname !== nextRoute) {
       window.history.pushState({}, "", nextRoute);
@@ -185,6 +188,9 @@ export function App() {
             <p className="brand-copy">Deterministic payment controls with an AI orchestration layer.</p>
           </div>
           <div className="app-nav-links">
+            <a className={route === "/demo" ? "active" : ""} href="/demo" aria-current={route === "/demo" ? "page" : undefined} onClick={(event) => followLink(event, "/demo")}>
+              Demo Lab
+            </a>
             <a className={route === "/" ? "active" : ""} href="/" aria-current={route === "/" ? "page" : undefined} onClick={(event) => followLink(event, "/")}>
               Dashboard
             </a>
@@ -248,6 +254,7 @@ export function App() {
           {route === "/cover" && <CoverPage />}
           {route === "/insurance" && <InsurancePage />}
           {route === "/wallet" && <WalletPage />}
+          {route === "/demo" && <DemoLabPage />}
         </Suspense>
       </main>
 

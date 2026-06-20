@@ -151,7 +151,7 @@ async def demo_underpayment() -> dict:
             per_claim_limit="500",
             term_days=365,
             quote=q,
-        ))
+        ), simulate_settlement=True)
     else:
         policy = active[0]
 
@@ -192,10 +192,11 @@ async def demo_underpayment() -> dict:
     payout = await cover_tool.settle_claim(CoverClaimEvidence(
         policy_id=policy.id,
         payment_id=payment_id,
-    ))
+    ), simulate_settlement=True)
 
     return {
         "scenario": "demo_4_1_underpayment",
+        "settlement_mode": "simulation",
         "description": (
             "Agent hallucinated $480 against a $500 invoice. "
             "Payment auto-settled (below $500 threshold — no Firefly needed). "
