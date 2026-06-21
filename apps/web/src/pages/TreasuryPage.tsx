@@ -194,33 +194,41 @@ function AutoInsureFields({ value, onChange }: {
     onChange(mode === "on" ? { ...CUSTOM_AUTO_INSURE, ...config, mode } : { ...config, mode });
   };
   return (
-    <fieldset style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "0.7rem", display: "grid", gap: "0.55rem" }}>
-      <legend style={{ fontSize: "0.75rem", fontWeight: 700, padding: "0 0.25rem" }}>Auto-insure</legend>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.6rem", fontSize: "0.73rem" }}>
+    <fieldset style={{ border: "none", padding: 0, display: "grid", gap: "0.55rem" }}>
+      <legend style={{ fontSize: "0.75rem", fontWeight: 700, padding: 0, marginBottom: "0.25rem" }}>Auto-insure</legend>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.6rem" }}>
         {(["inherit", "off", "on"] as const).map((mode) => (
-          <label key={mode} style={{ display: "flex", alignItems: "center", gap: "0.35rem", whiteSpace: "nowrap" }}>
-            <input type="radio" name="auto-insure-mode" checked={config.mode === mode} onChange={() => setMode(mode)} />
-            {mode === "inherit" ? "Inherit global" : mode === "off" ? "Off" : "Custom"}
+          <label key={mode} style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.74rem", cursor: "pointer" }}>
+            <input type="radio" name="auto-insure-mode" checked={config.mode === mode} onChange={() => setMode(mode)} style={{ cursor: "pointer" }} />
+            <span>{mode === "inherit" ? "Inherit global" : mode === "off" ? "Off" : "Custom"}</span>
           </label>
         ))}
       </div>
       {config.mode === "on" && (
-        <div style={{ display: "grid", gap: "0.5rem" }}>
+        <div style={{ display: "grid", gap: "0.5rem", marginTop: "0.25rem" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
-            <label style={{ fontSize: "0.72rem" }}><span className="muted">Amount threshold (USD)</span>
-              <input type="number" min="0" value={config.amountThresholdUsd ?? ""} onChange={(e) => onChange({ ...config, amountThresholdUsd: e.target.value === "" ? null : Number(e.target.value) })} style={{ width: "100%" }} />
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.15rem", fontSize: "0.75rem" }}>
+              <span className="muted">Amount threshold (USD)</span>
+              <input type="number" min="0" value={config.amountThresholdUsd ?? ""} onChange={(e) => onChange({ ...config, amountThresholdUsd: e.target.value === "" ? null : Number(e.target.value) })} style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.3rem 0.5rem", fontSize: "0.75rem" }} />
             </label>
-            <label style={{ fontSize: "0.72rem" }}><span className="muted">Cover package</span>
-              <select value={config.package ?? "Essential"} onChange={(e) => onChange({ ...config, package: e.target.value as AutoInsureConfig["package"] })} style={{ width: "100%" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.15rem", fontSize: "0.75rem" }}>
+              <span className="muted">Cover package</span>
+              <select value={config.package ?? "Essential"} onChange={(e) => onChange({ ...config, package: e.target.value as AutoInsureConfig["package"] })} style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.3rem 0.5rem", fontSize: "0.75rem" }}>
                 <option>Essential</option><option>Standard</option><option>Full-Stack</option>
               </select>
             </label>
           </div>
-          <label style={{ fontSize: "0.72rem" }}><input type="checkbox" checked={config.insureNewCounterparty ?? true} onChange={(e) => onChange({ ...config, insureNewCounterparty: e.target.checked })} /> Insure new counterparties</label>
-          <label style={{ fontSize: "0.72rem" }}><input type="checkbox" checked={config.insureUnverifiedCounterparty ?? true} onChange={(e) => onChange({ ...config, insureUnverifiedCounterparty: e.target.checked })} /> Insure unverified counterparties</label>
+          <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.74rem", cursor: "pointer" }}>
+            <input type="checkbox" checked={config.insureNewCounterparty ?? true} onChange={(e) => onChange({ ...config, insureNewCounterparty: e.target.checked })} style={{ cursor: "pointer" }} />
+            <span>Insure new counterparties</span>
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.74rem", cursor: "pointer" }}>
+            <input type="checkbox" checked={config.insureUnverifiedCounterparty ?? true} onChange={(e) => onChange({ ...config, insureUnverifiedCounterparty: e.target.checked })} style={{ cursor: "pointer" }} />
+            <span>Insure unverified counterparties</span>
+          </label>
         </div>
       )}
-      <small className="muted">Quote and premium binding run automatically before settlement.</small>
+      <small className="muted" style={{ fontSize: "0.7rem", marginTop: "0.15rem" }}>Quote and premium binding run automatically before settlement.</small>
     </fieldset>
   );
 }
