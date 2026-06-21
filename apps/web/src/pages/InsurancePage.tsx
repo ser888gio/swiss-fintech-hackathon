@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useState, type ChangeEvent, type CSSProperties } from "react";
 import type {
   AgentRiskState,
   BindRequest,
@@ -60,10 +60,10 @@ const LINE_META: Record<CoverLine, { label: string; desc: string; badge: string;
   },
 };
 
-const PACKAGES: { id: InsurancePackage; tagline: string; color: string }[] = [
-  { id: "Essential", tagline: "Merchant default protection only", color: "#2a6b3b" },
-  { id: "Standard", tagline: "Cross-border corridors + FX + mandate", color: "#5a4a1e" },
-  { id: "Full-Stack", tagline: "All lines incl. credit & reputation", color: "#4a1e4a" },
+const PACKAGES: { id: InsurancePackage; tagline: string; eyebrow: string; color: string }[] = [
+  { id: "Essential", eyebrow: "Core protection", tagline: "Merchant default protection for routine agent spend", color: "#2f8f62" },
+  { id: "Standard", eyebrow: "Most selected", tagline: "Cross-border protection with FX and mandate cover", color: "#d1671f" },
+  { id: "Full-Stack", eyebrow: "Maximum scope", tagline: "Every line, including credit and reputation risk", color: "#9b6fd6" },
 ];
 
 const SCORE_BANDS = ["ELITE", "HIGH", "STANDARD", "HIGH_RISK"];
@@ -101,14 +101,14 @@ function decisionClass(d: string) {
 // ── Pool Status ───────────────────────────────────────────────────────────────
 
 function PoolPanel({ pool }: { pool: PoolStatus | null }) {
-  if (!pool) return <p className="muted" style={{ fontSize: "0.82rem" }}>Loading pool…</p>;
+  if (!pool) return <div className="insurance-pool-loading" role="status">Loading vault telemetry…</div>;
 
   const capPct = Math.min(100, pool.capacityRatio * 100);
   const capColor = capPct > 70 ? "#2a9d5c" : capPct > 35 ? "#d1671f" : "#c0392b";
 
   return (
-    <div style={{ display: "grid", gap: "1rem" }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem" }}>
+    <div className="insurance-pool-content">
+      <div className="insurance-pool-metrics">
         {[
           ["First-loss capital", `${money(pool.firstLoss)} ${pool.currency}`],
           ["LP capital", `${money(pool.lpCapital)} ${pool.currency}`],
@@ -116,19 +116,24 @@ function PoolPanel({ pool }: { pool: PoolStatus | null }) {
           ["Payouts out", `${money(pool.payoutsMade)} ${pool.currency}`],
           ["Vault balance", `${money(pool.vaultBalance)} ${pool.currency}`],
         ].map(([label, value]) => (
-          <div key={label}>
-            <span className="eyebrow" style={{ fontSize: "0.68rem" }}>{label}</span>
-            <p style={{ margin: "0.15rem 0 0", fontWeight: 700, fontSize: "0.9rem" }}>{value}</p>
+          <div className="insurance-pool-metric" key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
           </div>
         ))}
       </div>
-      <div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem" }}>
-          <span className="muted" style={{ fontSize: "0.75rem" }}>Pool capacity</span>
-          <span style={{ fontSize: "0.75rem", color: capColor, fontWeight: 700 }}>{capPct.toFixed(1)}%</span>
+      <div className="insurance-capacity">
+        <div className="insurance-capacity-copy">
+          <div>
+            <span className="eyebrow">Available capacity</span>
+            <strong>{capPct.toFixed(1)}%</strong>
+          </div>
+          <span className="insurance-capacity-state" style={{ color: capColor }}>
+            <i style={{ background: capColor }} /> {capPct > 70 ? "Healthy" : capPct > 35 ? "Watch" : "Constrained"}
+          </span>
         </div>
-        <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 4, height: 6 }}>
-          <div style={{ width: `${capPct}%`, background: capColor, borderRadius: 4, height: "100%", transition: "width 0.4s" }} />
+        <div className="insurance-capacity-track" aria-label={`${capPct.toFixed(1)}% pool capacity`}>
+          <div style={{ width: `${capPct}%`, background: capColor }} />
         </div>
       </div>
     </div>
@@ -246,28 +251,23 @@ function QuotePanel({ onBound }: { onBound: () => void }) {
           <strong>Cover packages</strong>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem", marginBottom: "0.75rem" }}>
-          {PACKAGES.map(({ id, tagline, color }) => {
+          {PACKAGES.map(({ id, eyebrow, tagline, color }) => {
             const active = form.selectedPackage === id;
             return (
               <button
                 key={id}
                 type="button"
                 onClick={() => selectPackage(id)}
-                style={{
-                  textAlign: "left",
-                  padding: "0.75rem 1rem",
-                  borderRadius: 8,
-                  border: `2px solid ${active ? color : "var(--border)"}`,
-                  background: active ? `${color}33` : "rgba(255,255,255,0.03)",
-                  cursor: "pointer",
-                  transition: "border-color 0.15s, background 0.15s",
-                }}
+                className={`insurance-package${active ? " is-active" : ""}`}
+                style={{ "--package-color": color } as CSSProperties}
+                aria-pressed={active}
               >
-                <div style={{ fontWeight: 800, fontSize: "0.9rem", color: active ? "var(--paper)" : "var(--muted)", marginBottom: "0.2rem" }}>{id}</div>
-                <div style={{ fontSize: "0.72rem", color: "var(--muted)", lineHeight: 1.4 }}>{tagline}</div>
-                <div style={{ marginTop: "0.5rem", display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
+                <div className="insurance-package-topline"><span>{eyebrow}</span><i>{active ? "Selected" : "Select"}</i></div>
+                <strong>{id}</strong>
+                <p>{tagline}</p>
+                <div className="insurance-package-lines">
                   {INSURANCE_PACKAGE_LINES[id].map((l) => (
-                    <span key={l} style={{ fontSize: "0.62rem", padding: "0.1rem 0.35rem", borderRadius: 4, background: `${color}55`, color: "var(--paper)" }}>
+                    <span key={l}>
                       {LINE_META[l].badge}
                     </span>
                   ))}
@@ -698,51 +698,71 @@ export function InsurancePage() {
     { id: "history", label: `Portfolio (${premiums.length + payouts.length})` },
   ];
 
-  return (
-    <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-      {/* Header */}
-      <div style={{ marginBottom: "1.5rem" }}>
-        <h2 style={{ marginBottom: "0.25rem" }}>Agent Insurance Protocol</h2>
-        <p className="muted" style={{ fontSize: "0.82rem", maxWidth: 880 }}>
-          Actuarial underwriting for autonomous agent payments. Every claim is verifiable against the
-          on-ledger memo + Ed25519 audit chain — no committee, no court.
-        </p>
-      </div>
+  const capPct = pool ? Math.min(100, pool.capacityRatio * 100) : null;
+  const portfolioEvents = premiums.length + payouts.length;
 
-      {/* Pool status — always visible */}
-      <section className="queue ars-panel" style={{ marginBottom: "1.5rem" }} aria-label="Pool status">
-        <div className="section-heading" style={{ marginBottom: "0.75rem" }}>
-          <span className="eyebrow">Insurance Vault (XLS-65)</span>
-          <strong>Pool Status</strong>
+  return (
+    <div className="insurance-page">
+      <header className="insurance-hero">
+        <div className="insurance-hero-copy">
+          <div className="insurance-live-pill"><span /> Insurance protocol live</div>
+          <p className="insurance-kicker">Autonomous risk infrastructure</p>
+          <h1>Put every agent payment<br /><em>inside a safety net.</em></h1>
+          <p className="insurance-intro">
+            Deterministic underwriting for autonomous commerce. Price risk, bind cover, and settle
+            verified claims against an auditable XRPL trail.
+          </p>
+          <div className="insurance-trust-row" aria-label="Protocol safeguards">
+            <span><b>01</b> Code-priced</span>
+            <span><b>02</b> Vault-backed</span>
+            <span><b>03</b> Ledger-verifiable</span>
+          </div>
+        </div>
+        <div className="insurance-hero-stats" aria-label="Insurance overview">
+          <div className="insurance-hero-stat insurance-hero-stat-primary">
+            <span>Vault balance</span>
+            <strong>{pool ? money(pool.vaultBalance) : "—"}</strong>
+            <small>{pool?.currency ?? "USD"} backing active cover</small>
+          </div>
+          <div className="insurance-hero-stat">
+            <span>Capacity</span>
+            <strong>{capPct === null ? "—" : `${capPct.toFixed(1)}%`}</strong>
+            <small>available for new exposure</small>
+          </div>
+          <div className="insurance-hero-stat">
+            <span>Ledger events</span>
+            <strong>{portfolioEvents}</strong>
+            <small>premiums and settled claims</small>
+          </div>
+        </div>
+      </header>
+
+      <section className="insurance-pool" aria-label="Pool status">
+        <div className="insurance-section-title">
+          <div><span className="eyebrow">Insurance Vault · XLS-65</span><h2>Capital health</h2></div>
+          <span className="insurance-proof-pill">On-ledger accounting</span>
         </div>
         <PoolPanel pool={pool} />
       </section>
 
-      {/* Tab navigation */}
-      <div style={{ display: "flex", gap: "0.4rem", marginBottom: "1.25rem" }}>
+      <nav className="insurance-tabs" aria-label="Insurance workspace">
         {tabs.map((t) => (
           <button key={t.id} type="button"
             onClick={() => setTab(t.id)}
-            style={{
-              padding: "0.35rem 1rem",
-              borderRadius: 6,
-              border: `1px solid ${tab === t.id ? "var(--orange)" : "var(--border)"}`,
-              background: tab === t.id ? "var(--orange)" : "rgba(255,255,255,0.04)",
-              color: tab === t.id ? "#000" : "var(--muted)",
-              fontWeight: tab === t.id ? 800 : 600,
-              fontSize: "0.82rem",
-              cursor: "pointer",
-              transition: "all 0.12s",
-            }}
+            className={tab === t.id ? "is-active" : ""}
+            aria-current={tab === t.id ? "page" : undefined}
           >
+            <span>{String(tabs.indexOf(t) + 1).padStart(2, "0")}</span>
             {t.label}
           </button>
         ))}
-      </div>
+      </nav>
 
-      {tab === "quote" && <QuotePanel onBound={() => void refresh()} />}
-      {tab === "risk" && <AgentRiskPanel />}
-      {tab === "history" && <HistoryPanel premiums={premiums} payouts={payouts} />}
+      <div className="insurance-workspace">
+        {tab === "quote" && <QuotePanel onBound={() => void refresh()} />}
+        {tab === "risk" && <AgentRiskPanel />}
+        {tab === "history" && <HistoryPanel premiums={premiums} payouts={payouts} />}
+      </div>
     </div>
   );
 }
