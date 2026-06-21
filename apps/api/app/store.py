@@ -389,8 +389,8 @@ def _row_to_payment(row: PaymentRecord) -> Payment:
         audit_explanation=row.audit_explanation,
         receipt_hash=row.receipt_hash,
         agent_id=getattr(row, "agent_id", None),
-        created_at=row.created_at,
-        updated_at=row.updated_at,
+        created_at=_ensure_utc(row.created_at),
+        updated_at=_ensure_utc(row.updated_at),
     )
 
 
