@@ -26,11 +26,15 @@ from app.schemas import (
     CredentialLogEntry,
     CredentialRecord,
     CredentialRecordStatus,
+    InsurancePremiumRecord,
     Payment,
+    PaymentCoverage,
     PaymentIntent,
     PaymentStatus,
     PolicyDecision,
+    PremiumQuote,
     PublicIntelResult,
+    QuoteDecision,
     RouteQuote,
 )
 
@@ -111,6 +115,30 @@ def _payment(payment_id: str = "pay-001", status: PaymentStatus = PaymentStatus.
         explorer_url_secondary="https://test.bithomp.com/explorer/" + "A" * 64,
         receipt_hash="deadbeef",
         audit_explanation="Auto-settled at EUR→USD 1.09.",
+        coverage=PaymentCoverage(
+            status="bound",
+            required_by="policy",
+            quote=PremiumQuote(
+                decision=QuoteDecision.offer,
+                premium="12.00",
+                lines={"merchant_default": "12.00"},
+                pd=0.03,
+                credibility=0.5,
+                reason="Coverage offered.",
+                receipt_hash="B" * 64,
+            ),
+            premium=InsurancePremiumRecord(
+                id="premium-001",
+                job_id=payment_id,
+                agent_address="rSender",
+                premium_amount="12.00",
+                currency="RLUSD",
+                tx_hash="C" * 64,
+                explorer_url="https://testnet.xrpl.org/transactions/" + "C" * 64,
+                score_band="STANDARD",
+                created_at=now,
+            ),
+        ),
         created_at=now,
         updated_at=now,
     )
@@ -160,6 +188,10 @@ async def test_payment_persist_and_load(sqlite_store):
     assert loaded.compliance.aml_score == 25
     assert loaded.policy_decision is not None
     assert loaded.policy_decision.requires_approval is False
+    assert loaded.coverage.status.value == "bound"
+    assert loaded.coverage.required_by == "policy"
+    assert loaded.coverage.premium is not None
+    assert loaded.coverage.premium.tx_hash == "C" * 64
 
 
 async def test_payment_update_overwrites_row(sqlite_store):

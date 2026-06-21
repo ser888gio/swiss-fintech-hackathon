@@ -1,29 +1,13 @@
 # @treasury/insurance-sdk
 
-A typed, **multi-party** client for the agent-default insurance protocol. One
-client per party so integrations read like the protocol:
+A typed client for the agent-default insurance protocol. Quote and bind are
+internal deterministic steps in payment processing; callers may mandate cover
+and insurers may monitor or settle verified claims:
 
 ```ts
 import { createInsuranceProtocol } from "@treasury/insurance-sdk";
 
 const insurance = createInsuranceProtocol({ baseUrl: "http://localhost:8000" });
-
-// ── Capital Provider (LP): seed the first-loss pool ──────────────────────────
-await insurance.lp.depositCapital({ lpAddress: "rLP…", amount: "50000" });
-
-// ── Agent: price and bind cover for a job ────────────────────────────────────
-const quote = await insurance.agent.quoteCover({
-  agentAddress: "rAGENT…",
-  amount: "20000",
-  scoreBand: "STANDARD",
-  activeLines: ["merchant_default", "mandate_breach"],
-});
-if (quote.decision === "OFFER") {
-  const premium = await insurance.agent.bindCover({
-    agentAddress: "rAGENT…", jobId: "job-1", amount: "20000", scoreBand: "STANDARD",
-  });
-  console.log(premium.txHash, premium.guardrailTrail); // on-ledger + compliance trail
-}
 
 // ── Counterparty: mandate cover on a payment (pure) ──────────────────────────
 const intent = insurance.merchant.requireCover(paymentIntent, { aboveUsd: 10000 });
@@ -35,20 +19,17 @@ const payout = await insurance.insurer.settleClaim({
 });
 
 // ── Read models ──────────────────────────────────────────────────────────────
-await insurance.insurer.pool();          // PoolStatus (first-loss, LP capital, flows)
-await insurance.agent.getRisk("rAGENT…"); // AgentRiskState (PD, credibility)
+await insurance.insurer.pool();          // operator first-loss capital + flows
 ```
 
 ## Parties → methods
 
 | Party | Client | Methods |
 |---|---|---|
-| Agent | `insurance.agent` | `quoteCover`, `bindCover`, `getRisk` |
 | Counterparty | `insurance.merchant` | `requireCover` (pure) |
-| Capital Provider (LP) | `insurance.lp` | `depositCapital`, `withdrawCapital`, `positions` |
 | Insurer (Pool) | `insurance.insurer` | `settleClaim`, `pool`, `premiums`, `payouts` |
 
-Every settlement / claim / capital call returns a `guardrailTrail`
+Every settlement or claim returns a `guardrailTrail`
 (`GuardrailResult[]`) recording the compliance checks (G1 KYA, G2 sanctions,
 decide(PAYOUT), collusion). Non-2xx responses throw `InsuranceProtocolError`
 with the HTTP status and server detail.

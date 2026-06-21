@@ -190,15 +190,6 @@ class Settings(BaseSettings):
     trade_finance_discount_rate_default: float = 0.02
     trade_finance_source_tag: int = 20260530
 
-    # ARS Insurance pricing engine.
-    insurance_enabled: bool = True
-    insurance_premium_cap: float = 5000.0
-    insurance_lambda_expense: float = 0.12
-    insurance_lambda_capital: float = 0.08
-    insurance_lambda_risk_max: float = 0.22
-    insurance_tau_days: float = 30.0
-    insurance_cover_required_above_usd: float | None = None
-
     # ARS XLS-66 Lending (LoanBroker / LoanSet / LoanCreate / LoanRepay).
     # Amendment-gated — Devnet only at build time. If the amendment check fails
     # at demo time, flip this to false and fall back to XLS-65 early payment.
@@ -222,6 +213,9 @@ class Settings(BaseSettings):
     insurance_lambda_risk_max: float = 0.30
     insurance_tau_days: float = 120.0
     insurance_cover_required_above_usd: float = 10_000.0
+    insurance_auto_new_cpty: bool = True
+    insurance_auto_unverified_cpty: bool = True
+    insurance_default_package: str = "Essential"
     # insurance_use_vault=True settles the pool on-ledger via XLS-65
     # VaultDeposit/VaultWithdraw (Devnet, needs an issued asset + trust line).
     # False (default) settles premium/payout as direct token Payments, which works
@@ -230,7 +224,7 @@ class Settings(BaseSettings):
     insurance_vault_address: str = ""      # pool account: premium payee / payout source
     insurance_source_tag: int = 20260530
     # When true, an agent must pass G1 KYA (hold an accepted KYC credential) to
-    # bind cover, and an LP must pass it to add capital. Default false keeps the
+    # bind cover. Default false keeps the
     # check advisory (surfaced in the guardrail trail) so demos run without
     # pre-credentialing every wallet. G2 sanctions is always hard-enforced.
     insurance_enforce_kya: bool = False

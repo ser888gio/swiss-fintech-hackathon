@@ -5,7 +5,7 @@ import type {
   AgentDashboardStats,
   AgentStatus,
   AgentUpdate,
-  InsurancePayoutRecord,
+  AutoInsureConfig,
   Payment,
   PoolStatus,
   RuntimeStatus,
@@ -74,11 +74,7 @@ function LogPanel({ lines, running }: { lines: LogLine[]; running: boolean }) {
 
 // ── Payment outcome card ──────────────────────────────────────────────────────
 
-function PaymentOutcomeCard({ payment, onClaim, claiming }: {
-  payment: Payment;
-  onClaim: (p: Payment) => void;
-  claiming: boolean;
-}) {
+function PaymentOutcomeCard({ payment }: { payment: Payment }) {
   const color = isSettled(payment.status) ? "#6ee7b7" : payment.status === "pending_approval" ? "var(--orange)" : payment.status === "blocked" ? "#f87171" : "var(--muted)";
   return (
     <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: "1rem 1.25rem", background: "rgba(255,255,255,0.03)", display: "grid", gap: "0.5rem" }}>
@@ -102,11 +98,16 @@ function PaymentOutcomeCard({ payment, onClaim, claiming }: {
           }
         </div>
       )}
-      {isSettled(payment.status) && payment.cover?.decision === "OFFER" && (
-        <button type="button" onClick={() => onClaim(payment)} disabled={claiming}
-          style={{ padding: "0.25rem 0.75rem", fontSize: "0.75rem", borderRadius: 6, border: "1px solid rgba(248,113,113,0.4)", background: "rgba(248,113,113,0.08)", color: "#f87171", cursor: claiming ? "not-allowed" : "pointer", opacity: claiming ? 0.5 : 1 }}>
-          {claiming ? "Filing claim…" : "Simulate Claim (Merchant Default)"}
-        </button>
+      {payment.coverage.status === "bound" && payment.coverage.quote && (
+        <div style={{ padding: "0.45rem 0.65rem", border: "1px solid rgba(147,197,253,0.35)", borderRadius: 8, background: "rgba(147,197,253,0.06)", fontSize: "0.75rem" }}>
+          <strong style={{ color: "#93c5fd" }}>Coverage bound automatically</strong>
+          <span className="muted" style={{ marginLeft: "0.6rem" }}>
+            Premium {money(payment.coverage.quote.premium)} · receipt {hashShort(payment.coverage.quote.receiptHash)}
+          </span>
+          {payment.coverage.premium?.explorerUrl && (
+            <a href={payment.coverage.premium.explorerUrl} target="_blank" rel="noreferrer" style={{ marginLeft: "0.6rem" }}>Premium proof ↗</a>
+          )}
+        </div>
       )}
     </div>
   );
@@ -119,7 +120,7 @@ function PoolStrip({ pool }: { pool: PoolStatus | null }) {
   return (
     <div style={{ display: "flex", gap: "2rem", flexWrap: "wrap", padding: "0.6rem 1rem", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", borderRadius: 8, marginBottom: "1rem", alignItems: "center" }}>
       <span className="eyebrow" style={{ marginRight: "0.25rem" }}>Insurance pool</span>
-      {[["LP Capital", `${money(pool.lpCapital)} ${pool.currency}`],
+      {[["First-loss capital", `${money(pool.firstLoss)} ${pool.currency}`],
         ["Premiums", `${money(pool.premiumsCollected)} ${pool.currency}`],
         ["Payouts", `${money(pool.payoutsMade)} ${pool.currency}`]].map(([l, v]) => (
         <div key={l} style={{ display: "flex", gap: "0.35rem", alignItems: "baseline" }}>
@@ -169,10 +170,59 @@ const DEFAULT_AGENT: AgentCreate = {
   allowedAssets: ["RLUSD"],
   allowedNetwork: "xrpl:1",
   requireKnownMerchant: false,
+  autoInsure: { mode: "inherit" },
 };
 
 function toSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
+const CUSTOM_AUTO_INSURE: AutoInsureConfig = {
+  mode: "on",
+  amountThresholdUsd: 10_000,
+  insureNewCounterparty: true,
+  insureUnverifiedCounterparty: true,
+  package: "Essential",
+};
+
+function AutoInsureFields({ value, onChange }: {
+  value: AutoInsureConfig | null | undefined;
+  onChange: (next: AutoInsureConfig) => void;
+}) {
+  const config = value ?? { mode: "inherit" as const };
+  const setMode = (mode: AutoInsureConfig["mode"]) => {
+    onChange(mode === "on" ? { ...CUSTOM_AUTO_INSURE, ...config, mode } : { ...config, mode });
+  };
+  return (
+    <fieldset style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "0.7rem", display: "grid", gap: "0.55rem" }}>
+      <legend style={{ fontSize: "0.75rem", fontWeight: 700, padding: "0 0.25rem" }}>Auto-insure</legend>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", fontSize: "0.73rem" }}>
+        {(["inherit", "off", "on"] as const).map((mode) => (
+          <label key={mode} style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+            <input type="radio" name="auto-insure-mode" checked={config.mode === mode} onChange={() => setMode(mode)} />
+            {mode === "inherit" ? "Inherit global" : mode === "off" ? "Off" : "Custom"}
+          </label>
+        ))}
+      </div>
+      {config.mode === "on" && (
+        <div style={{ display: "grid", gap: "0.5rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+            <label style={{ fontSize: "0.72rem" }}><span className="muted">Amount threshold (USD)</span>
+              <input type="number" min="0" value={config.amountThresholdUsd ?? ""} onChange={(e) => onChange({ ...config, amountThresholdUsd: e.target.value === "" ? null : Number(e.target.value) })} style={{ width: "100%" }} />
+            </label>
+            <label style={{ fontSize: "0.72rem" }}><span className="muted">Cover package</span>
+              <select value={config.package ?? "Essential"} onChange={(e) => onChange({ ...config, package: e.target.value as AutoInsureConfig["package"] })} style={{ width: "100%" }}>
+                <option>Essential</option><option>Standard</option><option>Full-Stack</option>
+              </select>
+            </label>
+          </div>
+          <label style={{ fontSize: "0.72rem" }}><input type="checkbox" checked={config.insureNewCounterparty ?? true} onChange={(e) => onChange({ ...config, insureNewCounterparty: e.target.checked })} /> Insure new counterparties</label>
+          <label style={{ fontSize: "0.72rem" }}><input type="checkbox" checked={config.insureUnverifiedCounterparty ?? true} onChange={(e) => onChange({ ...config, insureUnverifiedCounterparty: e.target.checked })} /> Insure unverified counterparties</label>
+        </div>
+      )}
+      <small className="muted">Quote and premium binding run automatically before settlement.</small>
+    </fieldset>
+  );
 }
 
 function AgentCreateForm({ onCreated, onCancel }: { onCreated: (a: Agent) => void; onCancel: () => void }) {
@@ -241,6 +291,7 @@ function AgentCreateForm({ onCreated, onCancel }: { onCreated: (a: Agent) => voi
         {numField("maxDailySpend", "Max per day (USD)")}
         {numField("requiresApprovalAbove", "Approval above (USD)", "≤ max per tx")}
       </div>
+      <AutoInsureFields value={form.autoInsure} onChange={(autoInsure) => setForm((p) => ({ ...p, autoInsure }))} />
       {err && <p role="alert" style={{ color: "#f87171", fontSize: "0.75rem", margin: 0 }}>{err}</p>}
       <button type="button" className="primary-action" disabled={saving} onClick={() => void submit()}
         style={{ minHeight: "unset", padding: "0.4rem", fontSize: "0.82rem", borderRadius: 8 }}>
@@ -356,6 +407,7 @@ function PolicyCard({ agent, onEdit }: { agent: Agent; onEdit: () => void }) {
           ["Global ceiling", "$500"],
           ["Currency", agent.currency ?? "RLUSD"],
           ["Network", agent.allowedNetwork ?? "XRPL"],
+          ["Auto-insure", agent.autoInsure?.mode === "off" ? "Off" : agent.autoInsure?.mode === "on" ? `Custom · ${agent.autoInsure.package ?? "Essential"}` : "Global rule"],
         ].map(([l, v]) => (
           <div key={l}>
             <span className="muted">{l}: </span>
@@ -395,6 +447,7 @@ function PolicyEditor({ agent, onSaved, onCancel }: { agent: Agent; onSaved: (a:
     allowedCategories: agent.allowedCategories ?? null,
     allowedAddresses: agent.allowedAddresses ?? null,
     blockedAddresses: agent.blockedAddresses ?? [],
+    autoInsure: agent.autoInsure ?? { mode: "inherit" },
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -436,6 +489,7 @@ function PolicyEditor({ agent, onSaved, onCancel }: { agent: Agent; onSaved: (a:
         <input name="allowed-addresses" autoComplete="off" value={(f.allowedAddresses ?? []).join(", ")} onChange={setArr("allowedAddresses")} spellCheck={false}
           style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text)", padding: "0.25rem 0.4rem", fontSize: "0.74rem" }} />
       </label>
+      <AutoInsureFields value={f.autoInsure} onChange={(autoInsure) => setF((p) => ({ ...p, autoInsure }))} />
       <label style={{ fontSize: "0.74rem", display: "flex", flexDirection: "column", gap: "0.12rem" }}>
         <span className="muted">Blocked addresses (comma-sep)</span>
         <input name="blocked-addresses" autoComplete="off" value={(f.blockedAddresses ?? []).join(", ")} onChange={setArr("blockedAddresses")} spellCheck={false}
@@ -493,8 +547,6 @@ function AgentDetail({ agent, onAgentUpdated, onAgentDeleted }: {
   const [logLines, setLogLines] = useState<LogLine[]>([]);
   const [running, setRunning] = useState(false);
   const [runPayments, setRunPayments] = useState<Payment[]>([]);
-  const [claimResults, setClaimResults] = useState<Record<string, InsurancePayoutRecord>>({});
-  const [claimingId, setClaimingId] = useState<string | null>(null);
   const [editingPolicy, setEditingPolicy] = useState(false);
   const [pausing, setPausing] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -519,7 +571,6 @@ function AgentDetail({ agent, onAgentUpdated, onAgentDeleted }: {
     setRunning(true);
     setLogLines([]);
     setRunPayments([]);
-    setClaimResults({});
     addLine({ kind: "heading", text: `[${ts()}] Agent cycle started — ${agent.name}` });
     addLine({ kind: "info", text: `Evaluating ${goals.length} goal(s)…` });
     let run: TreasuryAgentRun;
@@ -558,27 +609,6 @@ function AgentDetail({ agent, onAgentUpdated, onAgentDeleted }: {
     await refresh();
     setRunning(false);
   }, [agent.id, agent.name, goals.length, addLine, refresh]);
-
-  const simulateClaim = useCallback(async (payment: Payment) => {
-    setClaimingId(payment.id);
-    try {
-      const payout = await api.settleClaim({
-        jobId: payment.id,
-        agentAddress: payment.intent.from,
-        merchant: payment.intent.to,
-        merchantName: payment.intent.receiverName,
-        merchantCountry: payment.intent.receiverCountry,
-        scoreBand: "STANDARD",
-        currency: payment.intent.currency,
-        claimAmount: String(payment.intent.amount),
-        collateralAvailable: "0.000000",
-      });
-      setClaimResults((p) => ({ ...p, [payment.id]: payout }));
-      await refresh();
-    } catch (e) {
-      addLine({ kind: "error", text: `Claim failed: ${String(e)}` });
-    } finally { setClaimingId(null); }
-  }, [addLine, refresh]);
 
   const togglePause = async () => {
     setPausing(true);
@@ -650,17 +680,7 @@ function AgentDetail({ agent, onAgentUpdated, onAgentDeleted }: {
         <div>
           <span className="eyebrow" style={{ display: "block", marginBottom: "0.6rem" }}>Payment outcomes ({runPayments.length})</span>
           <div style={{ display: "grid", gap: "0.6rem" }}>
-            {runPayments.map((p) => (
-              <div key={p.id}>
-                <PaymentOutcomeCard payment={p} onClaim={simulateClaim} claiming={claimingId === p.id} />
-                {claimResults[p.id] && (
-                  <div style={{ marginTop: "0.4rem", border: "1px solid rgba(248,113,113,0.35)", borderRadius: 10, padding: "0.75rem 1rem", background: "rgba(248,113,113,0.05)" }}>
-                    <span style={{ color: "#f87171", fontWeight: 800, fontSize: "0.82rem" }}>Claim settled</span>
-                    <span className="muted" style={{ marginLeft: "0.75rem", fontSize: "0.78rem" }}>{money(claimResults[p.id].totalPaid)} {claimResults[p.id].currency} paid</span>
-                  </div>
-                )}
-              </div>
-            ))}
+            {runPayments.map((payment) => <PaymentOutcomeCard key={payment.id} payment={payment} />)}
           </div>
         </div>
       )}

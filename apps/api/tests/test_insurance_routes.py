@@ -4,6 +4,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+from app.schemas import BindRequest, InsuranceQuoteRequest
 from app.tools import insurance as ins
 
 
@@ -15,38 +16,30 @@ def reset_insurance_state():
 
 
 @pytest.mark.anyio
-async def test_quote_bind_claim_and_pool():
+async def test_pricing_is_internal_while_claim_and_pool_remain_public():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        quote_res = await client.post(
-            "/treasury/insurance/quote",
-            json={
-                "agentAddress": "rAGENT",
-                "scoreBand": "STANDARD",
-                "txnContext": {
-                    "category": "supplier_payment",
-                    "tenorBand": "lt_30d",
-                    "cptyBand": "known",
-                    "firstSeen": False,
-                    "amount": "1200.000000",
-                    "activeLines": ["merchant_default"],
-                },
-            },
-        )
-        assert quote_res.status_code == 200
-        quote = quote_res.json()
-        assert quote["decision"] == "OFFER"
+        assert (await client.post("/treasury/insurance/quote", json={})).status_code == 404
+        assert (await client.post("/treasury/insurance/bind", json={})).status_code == 404
 
-        bind_res = await client.post(
-            "/treasury/insurance/bind",
-            json={
-                "jobId": "job-001",
-                "agentAddress": "rAGENT",
-                "scoreBand": "STANDARD",
-                "currency": "USD",
-                "quote": quote,
+        quote = ins.quote(InsuranceQuoteRequest.model_validate({
+            "agentAddress": "rAGENT",
+            "scoreBand": "STANDARD",
+            "txnContext": {
+                "category": "supplier_payment",
+                "tenorBand": "lt_30d",
+                "cptyBand": "known",
+                "firstSeen": False,
+                "amount": "1200.000000",
+                "activeLines": ["merchant_default"],
             },
-        )
-        assert bind_res.status_code == 201
+        }))
+        await ins.bind(BindRequest(
+            job_id="job-001",
+            agent_address="rAGENT",
+            score_band="STANDARD",
+            currency="USD",
+            quote=quote,
+        ))
 
         claim_res = await client.post(
             "/treasury/insurance/claim",

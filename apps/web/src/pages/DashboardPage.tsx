@@ -160,6 +160,8 @@ export function DashboardPage({ payments, approvingId, resolvingKycId, onApprove
       result: STATUS_LABEL[p.status],
       why: p.policyDecision?.reasons[0] ?? p.auditExplanation ?? "—",
       proof: p.explorerUrl,
+      coverage: p.coverage.status,
+      coverageReason: p.coverage.requiredBy,
       time: p.createdAt,
       status: p.status,
     }));
@@ -170,6 +172,8 @@ export function DashboardPage({ payments, approvingId, resolvingKycId, onApprove
       result: sp.status === "settled" ? "Settled" : "Blocked",
       why: "x402 mandate",
       proof: sp.explorerUrl ?? null,
+      coverage: "not_required" as const,
+      coverageReason: null,
       time: sp.createdAt,
       status: sp.status as string,
     }));
@@ -180,6 +184,8 @@ export function DashboardPage({ payments, approvingId, resolvingKycId, onApprove
       result: c.status.replace(/_/g, " "),
       why: c.auditExplanation ?? `Credential ${c.status}`,
       proof: c.acceptExplorerUrl ?? c.explorerUrl ?? null,
+      coverage: "not_required" as const,
+      coverageReason: null,
       time: c.updatedAt,
       status: c.status,
     }));
@@ -484,6 +490,9 @@ export function DashboardPage({ payments, approvingId, resolvingKycId, onApprove
                 </div>
                 <p>
                   <span className={`dashboard-status status-${row.status}`}>{row.result}</span>
+                  {row.coverage === "bound" && <span title={`Covered because: ${row.coverageReason ?? "deterministic policy"}`} style={{ marginLeft: 6, fontSize: ".7rem", color: "#93c5fd", fontWeight: 700 }}>Covered</span>}
+                  {row.coverage === "review" && <span style={{ marginLeft: 6, fontSize: ".7rem", color: "var(--orange)", fontWeight: 700 }}>Cover review</span>}
+                  {row.coverage === "declined" && <span style={{ marginLeft: 6, fontSize: ".7rem", color: "var(--alert)", fontWeight: 700 }}>Cover declined</span>}
                   {row.why !== "—" && <span style={{ marginLeft: 6, fontSize: ".7rem", color: "var(--muted)" }}>{row.why}</span>}
                 </p>
                 {row.proof ? (
@@ -610,7 +619,7 @@ export function DashboardPage({ payments, approvingId, resolvingKycId, onApprove
             <div><dt>Premiums collected</dt><dd>{money(pool.premiumsCollected)}</dd></div>
             <div><dt>Claims paid</dt><dd>{money(pool.payoutsMade)}</dd></div>
           </dl>
-          <button className="dashboard-primary" type="button" onClick={() => onNavigate("/insurance")}>Open insurance desk</button>
+          <p className="muted">Coverage is quoted and bound automatically when a payment carries a counterparty cover requirement.</p>
         </section>
       )}
     </div>

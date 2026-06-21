@@ -94,18 +94,6 @@ def breaches_capacity(ctx: QuoteContext, pool: PoolState, P: PricePolicy) -> boo
     return required > pool.first_loss
 
 
-def cover_requirement(cover_required: bool, amount_usd: float, threshold_usd: float | None) -> str:
-    """Counterparty cover-requirement gate (spec §3): NONE | REQUIRED.
-
-    A merchant/lender can mandate cover, optionally only above an amount.
-    """
-    if not cover_required:
-        return "NONE"
-    if threshold_usd is None or amount_usd >= threshold_usd:
-        return "REQUIRED"
-    return "NONE"
-
-
 def _receipt_hash(ctx: QuoteContext, premium: Decimal, pd: float, z: float, lines: dict[str, str]) -> str:
     """Canonical, reproducible hash of the quote inputs/outputs (spec §7)."""
     payload = {

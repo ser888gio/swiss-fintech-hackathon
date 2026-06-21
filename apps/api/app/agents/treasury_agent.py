@@ -218,7 +218,11 @@ async def run(goals: list[TreasuryGoal] | None = None) -> TreasuryAgentRun:
 
 # ── Per-business-agent run ────────────────────────────────────────────────────
 
-async def run_for_agent(agent_id: str, agent_scope: "AgentScope") -> TreasuryAgentRun:
+async def run_for_agent(
+    agent_id: str,
+    agent_scope: "AgentScope",
+    agent_cover=None,
+) -> TreasuryAgentRun:
     """Run one evaluation cycle for a specific business agent.
 
     Evaluates only this agent's goals against the agent's own policy (scope).
@@ -273,7 +277,10 @@ async def run_for_agent(agent_id: str, agent_scope: "AgentScope") -> TreasuryAge
                     continue
                 intent = _build_intent(goal, settings)
                 payment = await orchestrator.process_payment(
-                    intent, agent_id=agent_id, agent_scope=agent_scope
+                    intent,
+                    agent_id=agent_id,
+                    agent_scope=agent_scope,
+                    agent_cover=agent_cover,
                 )
             except orchestrator.GuardrailBlocked as exc:
                 trigger_log.append(f"  blocked: {exc.reason}")

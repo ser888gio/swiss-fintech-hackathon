@@ -238,7 +238,9 @@ async def run_controller(force: bool = False, simulate: bool = False) -> Treasur
     for agent_id in MAERSK_SUBAGENTS:
         agent = _agents.get(agent_id)
         if agent and agent.status == AgentStatus.active:
-            runs.append(await treasury_agent.run_for_agent(agent_id, _build_scope(agent)))
+            runs.append(await treasury_agent.run_for_agent(
+                agent_id, _build_scope(agent), agent.auto_insure
+            ))
     payments = [payment for run in runs for payment in run.payments_initiated]
     skipped = [goal for run in runs for goal in run.payments_skipped]
     trail = [f"[{run.agent_id}] {line}" for run in runs for line in run.trigger_log]
@@ -271,6 +273,8 @@ async def get_agent(agent_id: str) -> Agent:
 async def update_agent(agent_id: str, req: AgentUpdate) -> Agent:
     agent = _get_or_404(agent_id)
     patch = req.model_dump(exclude_none=True, by_alias=False)
+    if req.auto_insure is not None:
+        patch["auto_insure"] = req.auto_insure
     if any(k in patch for k in ("max_single_payment", "max_daily_spend", "requires_approval_above")):
         new_single = patch.get("max_single_payment", agent.max_single_payment)
         new_daily = patch.get("max_daily_spend", agent.max_daily_spend)
@@ -327,7 +331,7 @@ async def run_agent(agent_id: str) -> TreasuryAgentRun:
         raise HTTPException(status_code=403, detail="autonomous agent is disabled (AGENT_ENABLED=false)")
     scope = _build_scope(agent)
     try:
-        return await treasury_agent.run_for_agent(agent_id, scope)
+        return await treasury_agent.run_for_agent(agent_id, scope, agent.auto_insure)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
 
@@ -489,6 +493,7 @@ async def _persist_agent(agent: Agent) -> None:
                 allowed_hosts=agent.allowed_hosts,
                 blocked_hosts=agent.blocked_hosts,
                 require_known_merchant=agent.require_known_merchant,
+                auto_insure=agent.auto_insure.model_dump(mode="json") if agent.auto_insure else None,
                 policy_revision=agent.policy_revision,
                 created_at=agent.created_at,
                 updated_at=agent.updated_at,
@@ -501,6 +506,8 @@ async def _persist_agent(agent: Agent) -> None:
 
 
 def _row_to_agent(row) -> Agent:
+    from ..schemas import AutoInsureConfig
+
     return Agent(
         id=row.id,
         name=row.name,
@@ -518,6 +525,7 @@ def _row_to_agent(row) -> Agent:
         allowed_hosts=row.allowed_hosts,
         blocked_hosts=row.blocked_hosts or [],
         require_known_merchant=row.require_known_merchant or False,
+        auto_insure=AutoInsureConfig(**row.auto_insure) if getattr(row, "auto_insure", None) else None,
         policy_revision=row.policy_revision,
         created_at=row.created_at,
         updated_at=row.updated_at,

@@ -9,21 +9,19 @@ import { DashboardPage } from "./pages/DashboardPage.js";
 //const ARSPage = lazy(() => import("./pages/ARSPage.js").then((module) => ({ default: module.ARSPage })));
 const CoverPage = lazy(() => import("./pages/CoverPage.js").then((module) => ({ default: module.CoverPage })));
 const CredentialsPage = lazy(() => import("./pages/CredentialsPage.js").then((module) => ({ default: module.CredentialsPage })));
-const InsurancePage = lazy(() => import("./pages/InsurancePage.js").then((module) => ({ default: module.InsurancePage })));
 const TransferPage = lazy(() => import("./pages/TransferPage.js").then((module) => ({ default: module.TransferPage })));
 const TreasuryPage = lazy(() => import("./pages/TreasuryPage.js").then((module) => ({ default: module.TreasuryPage })));
 const WalletPage = lazy(() => import("./pages/WalletPage.js").then((module) => ({ default: module.WalletPage })));
 const DemoLabPage = lazy(() => import("./pages/DemoLabPage.js").then((module) => ({ default: module.DemoLabPage })));
 const SanctionsPage = lazy(() => import("./pages/SanctionsPage.js").then((module) => ({ default: module.SanctionsPage })));
 
-type Route = "/" | "/transfer" | "/credentials" | "/treasury" | "/insurance" | "/wallet" | "/cover" | "/demo" | "/sanctions";
+type Route = "/" | "/transfer" | "/credentials" | "/treasury" | "/wallet" | "/cover" | "/demo" | "/sanctions";
 
 function currentRoute(): Route {
   if (window.location.pathname === "/transfer") return "/transfer";
   if (window.location.pathname === "/credentials") return "/credentials";
   if (window.location.pathname === "/treasury") return "/treasury";
   //if (window.location.pathname === "/ars") return "/ars";
-  if (window.location.pathname === "/insurance") return "/insurance";
   if (window.location.pathname === "/wallet") return "/wallet";
   if (window.location.pathname === "/cover") return "/cover";
   if (window.location.pathname === "/demo") return "/demo";
@@ -65,7 +63,6 @@ export function App() {
       : path === "/credentials" ? "/credentials"
       : path === "/treasury" ? "/treasury"
       //: path === "/ars" ? "/ars"
-      : path === "/insurance" ? "/insurance"
       : path === "/wallet" ? "/wallet"
       : path === "/cover" ? "/cover"
       : path === "/demo" ? "/demo"
@@ -206,9 +203,6 @@ export function App() {
             <a className={route === "/cover" ? "active" : ""} href="/cover" aria-current={route === "/cover" ? "page" : undefined} onClick={(event) => followLink(event, "/cover")}>
               Agent Cover
             </a>
-            <a className={route === "/insurance" ? "active" : ""} href="/insurance" aria-current={route === "/insurance" ? "page" : undefined} onClick={(event) => followLink(event, "/insurance")}>
-              Insurance
-            </a>
             {/* <a className={route === "/ars" ? "active" : ""} href="/ars" aria-current={route === "/ars" ? "page" : undefined} onClick={(event) => followLink(event, "/ars")}>
               ARS
             </a> */}
@@ -258,7 +252,6 @@ export function App() {
           {route === "/treasury" && <TreasuryPage />}
           {/* {route === "/ars" && <ARSPage />} */}
           {route === "/cover" && <CoverPage />}
-          {route === "/insurance" && <InsurancePage />}
           {route === "/wallet" && <WalletPage />}
           {route === "/demo" && <DemoLabPage />}
           {route === "/sanctions" && <SanctionsPage />}

@@ -3,13 +3,8 @@ import type {
   AgentCreate,
   AgentDashboardStats,
   AgentLogEntry,
-  AgentRiskState,
   AgentUpdate,
   ApprovalChallenge,
-  BindRequest,
-  CapitalDepositRequest,
-  CapitalWithdrawRequest,
-  ClaimRequest,
   CoverBindRequest,
   CoverClaimEvidence,
   CoverPolicy,
@@ -25,15 +20,12 @@ import type {
   DelegationGrantCreate,
   InsurancePayoutRecord,
   InsurancePremiumRecord,
-  InsuranceQuoteRequest,
-  LpPosition,
   MPTAttestationRecord,
   MPTAuthorizeRequest,
   MPTStatus,
   Payment,
   PaymentIntent,
   PoolStatus,
-  PremiumQuote,
   QuoteRequest,
   Receivable,
   ReceivableCreate,
@@ -218,42 +210,13 @@ export const api = {
   revokeDelegation: (grantId: string) =>
     request<DelegationGrant>(`/treasury/delegations/${grantId}`, { method: "DELETE" }),
 
-  // Insurance pricing & risk engine.
-  quoteInsurance: (req: InsuranceQuoteRequest) =>
-    request<PremiumQuote>("/treasury/insurance/quote", { method: "POST", body: JSON.stringify(req) }),
-  bindInsurance: (req: BindRequest) =>
-    request<InsurancePremiumRecord>("/treasury/insurance/bind", { method: "POST", body: JSON.stringify(req) }),
+  // Insurance monitoring. Quote and bind are internal payment-workflow steps.
   listInsurancePremiums: () =>
     request<InsurancePremiumRecord[]>("/treasury/insurance/premiums"),
-  // Backward-compatible aliases still used by some pages.
-  listPremiums: () =>
-    request<InsurancePremiumRecord[]>("/treasury/insurance/premiums"),
-  claimInsurance: (req: ClaimRequest) =>
-    request<InsurancePayoutRecord>("/treasury/insurance/claim", { method: "POST", body: JSON.stringify(req) }),
-  settleClaim: (req: ClaimRequest) =>
-    request<InsurancePayoutRecord>("/treasury/insurance/claim", { method: "POST", body: JSON.stringify(req) }),
   listInsurancePayouts: () =>
-    request<InsurancePayoutRecord[]>("/treasury/insurance/payouts"),
-  listPayouts: () =>
     request<InsurancePayoutRecord[]>("/treasury/insurance/payouts"),
   getInsurancePool: () =>
     request<PoolStatus>("/treasury/insurance/pool"),
-  getAgentRisk: (address: string) =>
-    request<AgentRiskState>(`/treasury/insurance/agents/${address}/risk`),
-
-  // Insurance first-loss capital providers (LPs).
-  listInsuranceCapital: () =>
-    request<LpPosition[]>("/treasury/insurance/capital"),
-  depositInsuranceCapital: (req: CapitalDepositRequest) =>
-    request<LpPosition>("/treasury/insurance/capital/deposit", {
-      method: "POST",
-      body: JSON.stringify(req),
-    }),
-  withdrawInsuranceCapital: (req: CapitalWithdrawRequest) =>
-    request<LpPosition>("/treasury/insurance/capital/withdraw", {
-      method: "POST",
-      body: JSON.stringify(req),
-    }),
 
   // Business-defined payment agents.
   listAgents: () => request<Agent[]>("/agents"),

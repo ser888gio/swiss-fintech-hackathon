@@ -310,6 +310,7 @@ class AgentRecord(Base):
     allowed_hosts: Mapped[list | None] = mapped_column(JSON, nullable=True)
     blocked_hosts: Mapped[list | None] = mapped_column(JSON, nullable=True)
     require_known_merchant: Mapped[bool] = mapped_column(Boolean, default=False)
+    auto_insure: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     policy_revision: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(

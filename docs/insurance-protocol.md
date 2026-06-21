@@ -14,9 +14,8 @@ well-defined, multi-party system that integrators can build against via the
 | Party | Who | Does | Holds / receives |
 |---|---|---|---|
 | **Principal** | The human/org that owns an agent | Delegates a budget; relies on cover to protect its reputation | A portable `ScoreBand` (reputation) — *preserved* when an insured sub-agent defaults |
-| **Agent** | An autonomous sub-agent that transacts | Requests a quote, **binds** cover (pays the premium) | Active cover for a job; a default-propensity posterior that reprices it |
+| **Agent** | An autonomous sub-agent that transacts | Submits payments through deterministic policy | Active cover for a job; a default-propensity posterior that reprices it |
 | **Counterparty** | Merchant or lender on the other side | May **mandate** cover as a condition; is the **beneficiary** of a payout | Payout on a covered default (net of recovery) |
-| **Capital Provider (LP)** | Liquidity provider | **Deposits** first-loss capital, **withdraws** it; earns premium | A pool **share**; pro-rata premium income; absorbs losses first |
 | **Insurer (Pool)** | The protocol itself | Prices, binds, gates and pays claims; runs the waterfall | The `InsuranceVault` first-loss capital |
 | **Operator** | The deployment running this service | Holds the signing wallet; enforces the deterministic boundary | — |
 
@@ -34,9 +33,8 @@ the policy kernel; the LLM never decides any of them.
 
 | Action (party) | Gate | Enforcement |
 |---|---|---|
-| **Agent binds cover** | **G1 KYA** (agent holds an accepted KYC credential) · **G2 sanctions** (agent not listed) | G2 hard-blocks; G1 is enforced when `INSURANCE_ENFORCE_KYA=true`, else surfaced advisory |
+| **Payment workflow binds cover** | **G1 KYA** (agent holds an accepted KYC credential) · **G2 sanctions** (agent not listed) | G2 hard-blocks; G1 is enforced when `INSURANCE_ENFORCE_KYA=true`, else surfaced advisory |
 | **Counterparty mandates cover** | **G2 sanctions** (counterparty screened) | Surfaced on the quote/bind trail |
-| **LP deposits capital** | **G1 KYA** · **G2 sanctions** (LP screened) | G2 hard-blocks a sanctioned LP |
 | **Insurer settles claim** | **decide(PAYOUT)**: policy limit + AML · **collusion guard** (repeat agent↔counterparty payouts) | Hard gate — refuses before any draw |
 
 Each action returns a **guardrail trail** (`GuardrailResult[]`) recording exactly
@@ -46,28 +44,30 @@ which checks ran and their outcome, so every decision is auditable.
 
 ## 3. Protocol lifecycle
 
+Before pricing, pure code resolves the treasury-wide auto-insure defaults with
+the agent's optional override. Cover is required by the first matching rule:
+agent opt-out, counterparty mandate, new/unverified counterparty risk, or amount
+threshold. The resulting authority is persisted as `coverage.requiredBy`.
+
 ### 3.1 Happy path (covered job completes cleanly)
 
 ```
- LP            Agent          Counterparty        Insurer (Pool)         XRPL
- │ depositCapital ─────────────────────────────────▶│  G1+G2 → Payment→pool   ──▶ tx
- │                │ requireCover(txn) ───────────────▶│                          (cover_required)
- │                │ quoteCover ──────────────────────▶│  price()  → PremiumQuote (OFFER)
- │                │ bindCover ───────────────────────▶│  G1+G2 → premium settles ──▶ tx
- │                │ …job settles (payment)…           │  posterior nudges DOWN
- │ earns premium ◀────────────── pool grows ──────────│
+ Agent          Payment policy       Insurer (Pool)         XRPL
+ │ submit intent ─────▶│ threshold/mandate gate                  │
+ │                     │ quote internally ─▶ PremiumQuote        │
+ │                     │ bind internally ──▶ premium settles ───▶ tx
+ │                     │ settle payment only after binding       │
 ```
 
 ### 3.2 Default path (covered job defaults)
 
 ```
- Agent          Counterparty        Insurer (Pool)              LP            XRPL
+ Agent          Counterparty        Insurer (Pool)                            XRPL
    │ (defaults)        │ fileClaim ──▶│ decide(PAYOUT) + collusion gate
    │                   │              │ waterfall:
    │                   │              │   collateral recovery
    │                   │◀── payout ───│   first-loss pool draw ───────────────────▶ tx
    │ posterior ▲ (reprice)            │   principal score PRESERVED
-   │                   │              │   LP capital absorbs the loss ◀── share ▼ ──│
 ```
 
 The price moves with the agent because the posterior moves with the agent; the
@@ -82,15 +82,11 @@ All money is a decimal **string**; all responses carry a `guardrailTrail`.
 
 | Interaction | Request | Response |
 |---|---|---|
-| `quoteCover` | `InsuranceQuoteRequest { agentAddress, amount, scoreBand, activeLines[], txn }` | `PremiumQuote { decision, premium, lines, pd, credibility, receiptHash }` |
-| `bindCover` | `BindRequest { agentAddress, jobId, amount, … }` | `InsurancePremiumRecord { premiumAmount, txHash, explorerUrl, guardrailTrail }` |
-| `requireCover` | a `PaymentIntent` with `coverRequired` / `coverRequiredAboveUsd` | the gate auto-binds at settle time |
-| `depositCapital` | `CapitalDepositRequest { lpAddress, amount }` | `LpPosition { capital, sharePct, txHash, explorerUrl, guardrailTrail }` |
-| `withdrawCapital` | `CapitalWithdrawRequest { lpAddress, amount }` | `LpPosition { … }` |
+| internal quote → bind | payment facts + deterministic policy result | persisted `PaymentCoverage { status, requiredBy, quote, premium }` |
+| `requireCover` | a `PaymentIntent` with `coverRequired` / `coverRequiredAboveUsd` | the gate auto-binds before settlement |
 | `fileClaim` / `settleClaim` | `ClaimRequest { jobId, agentAddress, merchant, line, loss, collateral }` | `InsurancePayoutRecord { collateralSlashed, poolDrawn, totalPaid, txHash, explorerUrl, guardrailTrail }` |
 
-Read models: `GET /pool` → `PoolStatus`, `GET /agents/{a}/risk` → `AgentRiskState`,
-`GET /capital` → `LpPosition[]`.
+Read models: `GET /pool` → `PoolStatus`, `GET /agents/{a}/risk` → `AgentRiskState`.
 
 ---
 
@@ -98,11 +94,7 @@ Read models: `GET /pool` → `PoolStatus`, `GET /agents/{a}/risk` → `AgentRisk
 
 | Party | SDK method | HTTP |
 |---|---|---|
-| Agent | `agent.quoteCover()` | `POST /treasury/insurance/quote` |
-| Agent | `agent.bindCover()` | `POST /treasury/insurance/bind` |
-| Agent | `agent.getRisk(addr)` | `GET /treasury/insurance/agents/{addr}/risk` |
 | Counterparty | `merchant.requireCover(intent)` | builds the `coverRequired` payment intent |
-| Capital Provider | `lp.depositCapital()` / `lp.withdrawCapital()` / `lp.positions()` | `POST/GET /treasury/insurance/capital*` |
 | Insurer | `insurer.settleClaim()` | `POST /treasury/insurance/claim` |
 | Insurer | `insurer.pool()` / `insurer.premiums()` / `insurer.payouts()` | `GET /treasury/insurance/{pool,premiums,payouts}` |
 
@@ -113,8 +105,8 @@ Read models: `GET /pool` → `PoolStatus`, `GET /agents/{a}/risk` → `AgentRisk
 1. **Deterministic boundary** — pricing, gating and the waterfall are pure/code;
    the LLM only narrates.
 2. **Reproducible quotes** — every quote carries a `receiptHash` over its inputs.
-3. **Capital is first-loss** — LP capital absorbs losses before the principal's
-   reputation; the principal's `ScoreBand` is preserved on an insured default.
+3. **Capital is first-loss** — operator-funded pool capital absorbs losses before
+   the principal's reputation; the principal's `ScoreBand` is preserved.
 4. **Auditable** — every party action returns a guardrail trail and (in real
    mode) an on-ledger transaction with an explorer link.
 5. **Solvency-aware** — a quote is `REVIEW` (not `OFFER`) when exposure exceeds

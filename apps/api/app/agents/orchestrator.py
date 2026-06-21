@@ -17,20 +17,23 @@ from decimal import Decimal
 
 from .. import store
 from ..config import get_settings
-from ..insurance import engine as insurance_engine
+from ..insurance.cover_policy import evaluate_cover, resolve_cover_rule
 from ..policy import engine
 from ..tools import insurance as insurance_tool
 from ..policy.guardrail import evaluate_guardrails
 from ..policy.scope import AgentScope, evaluate_scope
 from ..schemas import (
     AgentLogEntry,
+    AutoInsureConfig,
     BindRequest,
     CoverLine,
+    CoverageStatus,
     ConstraintResult,
     DelegationGrantCreate,
     InsuranceQuoteRequest,
     GuardrailResult,
     Payment,
+    PaymentCoverage,
     PaymentIntent,
     PaymentStatus,
     PolicyDecision,
@@ -52,6 +55,7 @@ async def process_payment(
     intent: PaymentIntent,
     agent_id: str | None = None,
     agent_scope: "AgentScope | None" = None,
+    agent_cover: AutoInsureConfig | None = None,
 ) -> Payment:
     settings = get_settings()
     payment_id = str(uuid.uuid4())
@@ -160,31 +164,57 @@ async def process_payment(
         ),
     )
 
-    if settings.insurance_enabled and insurance_engine.cover_requirement(
-        intent.cover_required,
-        amount_usd,
-        intent.cover_required_above_usd
-        if intent.cover_required_above_usd is not None
-        else settings.insurance_cover_required_above_usd,
-    ) == "REQUIRED":
+    counterparty_verified = bool(credential.verified)
+    counterparty_is_new = (
+        not counterparty_verified
+        and not (
+            agent_scope is not None
+            and agent_scope.allowed_addresses is not None
+            and intent.to in agent_scope.allowed_addresses
+        )
+    )
+    cover_rule = resolve_cover_rule(settings, agent_cover)
+    cover_decision = evaluate_cover(
+        rule=cover_rule,
+        amount_usd=Decimal(str(amount_usd)),
+        counterparty_cover_required=intent.cover_required,
+        counterparty_threshold_usd=(
+            Decimal(str(intent.cover_required_above_usd))
+            if intent.cover_required_above_usd is not None
+            else None
+        ),
+        counterparty_is_new=counterparty_is_new,
+        counterparty_verified=counterparty_verified,
+    )
+    if settings.insurance_enabled and cover_decision.required:
+        risk_state = insurance_tool.get_agent_risk_state(intent.from_account)
+        score_band = risk_state.score_band if risk_state else "STANDARD"
+        cpty_band = "unverified" if not counterparty_verified else "new" if counterparty_is_new else "verified"
         quote_request = InsuranceQuoteRequest(
             agent_address=intent.from_account,
-            score_band="STANDARD",
+            score_band=score_band,
             txn_context={
                 "category": intent.purpose,
-                "tenorBand": "short",
-                "cptyBand": "standard" if intent.receiver_entity_type.value == "company" else "elevated",
-                "firstSeen": False,
+                "tenorBand": "instant",
+                "cptyBand": cpty_band,
+                "firstSeen": counterparty_is_new,
                 "amount": f"{amount_usd:.6f}",
                 "amountZ": min(amount_usd / max(settings.policy_threshold_usd, 1.0), 3.0),
                 "velocityZ": 0.0,
                 "concentrationZ": 0.0,
-                "activeLines": [CoverLine.merchant_default],
+                "activeLines": [],
+                "package": cover_decision.package,
             },
         )
         quote = insurance_tool.quote(quote_request)
-        payment.cover = quote
+        payment.coverage = PaymentCoverage(
+            status=CoverageStatus.review,
+            required_by=cover_decision.required_by,
+            quote=quote,
+            reason=quote.reason,
+        )
         if quote.decision.value == "DECLINE":
+            payment.coverage.status = CoverageStatus.declined
             payment.policy_decision = decision.model_copy(
                 update={
                     "blocked": True,
@@ -213,6 +243,13 @@ async def process_payment(
                     currency=settings.token_currency,
                     quote=quote,
                 )
+            )
+            payment.coverage = PaymentCoverage(
+                status=CoverageStatus.bound,
+                required_by=cover_decision.required_by,
+                quote=quote,
+                premium=premium,
+                reason="Coverage quoted and bound before payment settlement.",
             )
             _log(
                 payment_id,
@@ -269,6 +306,13 @@ async def _settle(payment: Payment, route, intent: PaymentIntent, memo: "executi
     payment.explorer_url = result.explorer_url
     payment.explorer_url_secondary = _secondary_explorer(result.tx_hash, result.explorer_url)
     _log(payment.id, f"Auto-settled. Tx {result.tx_hash[:12]}…")
+    if payment.coverage.status is CoverageStatus.bound:
+        insurance_tool.record_outcome(
+            intent.from_account,
+            defaulted=False,
+            exposure_weight=1.0,
+            score_band="STANDARD",
+        )
     payment.receipt_hash = receipt.compute_receipt_hash(payment)
 
 
@@ -311,6 +355,13 @@ async def release_payment(payment_id: str, signature: str) -> Payment:
     payment.explorer_url_secondary = _secondary_explorer(result.tx_hash, result.explorer_url)
     payment.updated_at = _now()
     _log(payment_id, f"Firefly signature verified. Released. Tx {result.tx_hash[:12]}…")
+    if payment.coverage.status is CoverageStatus.bound:
+        insurance_tool.record_outcome(
+            payment.intent.from_account,
+            defaulted=False,
+            exposure_weight=1.0,
+            score_band="STANDARD",
+        )
     payment.receipt_hash = receipt.compute_receipt_hash(payment)
     return store.save(payment)
 

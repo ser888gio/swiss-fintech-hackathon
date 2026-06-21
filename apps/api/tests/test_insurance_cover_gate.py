@@ -15,6 +15,10 @@ def _settings(**overrides):
         "policy_compliance_flag_score": 60,
         "insurance_enabled": True,
         "insurance_cover_required_above_usd": None,
+        "insurance_tau_days": 120.0,
+        "insurance_auto_new_cpty": False,
+        "insurance_auto_unverified_cpty": False,
+        "insurance_default_package": "Essential",
         "use_mock_xrpl": True,
     }
     data.update(overrides)
@@ -51,7 +55,17 @@ def reset_store():
 
 
 @pytest.mark.anyio
-async def test_cover_required_auto_binds_before_settle(monkeypatch):
+@pytest.mark.parametrize(
+    ("intent_overrides", "policy_threshold", "auto_risk", "required_by"),
+    [
+        ({"coverRequired": True}, None, False, "counterparty"),
+        ({}, 1000.0, False, "policy"),
+        ({}, None, True, "risk"),
+    ],
+)
+async def test_required_cover_auto_binds_before_settle(
+    monkeypatch, intent_overrides, policy_threshold, auto_risk, required_by
+):
     from app.tools import audit, compliance, credentials, execution, routing
     from app.tools import insurance as insurance_tool
 
@@ -70,7 +84,11 @@ async def test_cover_required_auto_binds_before_settle(monkeypatch):
     async def fake_execute(*args, **kwargs):
         return ExecutionResult(tx_hash="A" * 64, explorer_url=None, status="settled")
 
-    monkeypatch.setattr(orchestrator, "get_settings", lambda: _settings())
+    monkeypatch.setattr(orchestrator, "get_settings", lambda: _settings(
+        insurance_cover_required_above_usd=policy_threshold,
+        insurance_auto_new_cpty=auto_risk,
+        insurance_auto_unverified_cpty=auto_risk,
+    ))
     monkeypatch.setattr(routing, "get_fx_path", fake_route)
     monkeypatch.setattr(routing, "convert_to_usd", fake_usd)
     monkeypatch.setattr(credentials, "verify_kyc", fake_kyc)
@@ -112,9 +130,13 @@ async def test_cover_required_auto_binds_before_settle(monkeypatch):
     monkeypatch.setattr(insurance_tool, "quote", fake_quote)
     monkeypatch.setattr(insurance_tool, "bind", fake_bind)
 
-    payment = await orchestrator.process_payment(_intent(coverRequired=True))
+    payment = await orchestrator.process_payment(_intent(**intent_overrides))
 
-    assert payment.cover is not None
+    assert payment.coverage.status.value == "bound"
+    assert payment.coverage.required_by == required_by
+    assert payment.coverage.quote is not None
+    assert payment.coverage.premium is not None
+    assert payment.coverage.premium.tx_hash == "B" * 64
     assert payment.status.value == "settled"
     assert calls == ["quote", "bind"]
 
@@ -154,7 +176,7 @@ async def test_cover_disabled_leaves_existing_flow_unchanged(monkeypatch):
 
     payment = await orchestrator.process_payment(_intent())
 
-    assert payment.cover is None
+    assert payment.coverage.status.value == "not_required"
     assert payment.status.value == "settled"
 
 
