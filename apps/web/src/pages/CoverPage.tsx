@@ -290,7 +290,7 @@ export function CoverPage() {
                 </label>
                 <label>
                   Per-claim limit (RLUSD)
-                  <input type="number" min="50" value={perClaimLimit} onChange={(e) => setPerClaimLimit(e.target.value)} />
+                  <input type="number" min="1" step="1" value={perClaimLimit} onChange={(e) => setPerClaimLimit(e.target.value)} />
                 </label>
                 <button
                   className="dashboard-primary"
