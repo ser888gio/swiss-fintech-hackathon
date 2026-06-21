@@ -184,5 +184,5 @@ _CONTEXT_GUARDRAILS: dict[str, list[str]] = {
     "service_payment":  ["G1_kya", "G4_scope"],
     "delegation_fund":  ["G1_kya", "G4_scope", "G5_delegation"],
     "loan_underwrite":  ["G1_kya", "G2_sanctions", "G6_threshold"],
-    "insurance_payout": ["G2_sanctions", "G6_threshold"],
+    "insurance_payout": ["G2_sanctions", "G3_aml", "G6_threshold", "G7_hardware_veto"],
 }

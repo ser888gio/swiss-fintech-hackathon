@@ -127,6 +127,12 @@ LINE_PARAMS: dict[str, LineParams] = {
     "mandate_breach": LineParams(
         lgd=0.95, floor=Decimal("1.00"), limit=Decimal("100000"), recovery_rate=0.85
     ),
+    # peril: FX slippage — delivered amount < intended amount beyond tolerance.
+    # Parametric: loss is read off on-ledger delivered_amount vs route_quote.
+    # LGD=1.0 (the shortfall IS the loss); low floor; limit per cross-border ticket.
+    "fx_slippage": LineParams(
+        lgd=1.0, floor=Decimal("0.25"), limit=Decimal("10000"), recovery_rate=1.0
+    ),
     # Cover module peril: agent hallucinated a wrong amount or wrong recipient.
     # Static rate line (not PD-driven); LGD=1.0 so the full loss is covered.
     "hallucination": LineParams(
@@ -136,6 +142,17 @@ LINE_PARAMS: dict[str, LineParams] = {
     "non_delivery": LineParams(
         lgd=0.80, floor=Decimal("0.50"), limit=Decimal("100000"), recovery_rate=0.90
     ),
+}
+
+
+# ── Insurance packages (named product bundles) ────────────────────────────────
+# Each package bundles a set of cover lines into a sellable product tier.
+# The tool layer expands `package` → `active_lines` when a request names a package.
+
+INSURANCE_PACKAGES: dict[str, list[str]] = {
+    "Essential": ["merchant_default"],
+    "Standard": ["merchant_default", "fx_slippage", "mandate_breach"],
+    "Full-Stack": ["merchant_default", "fx_slippage", "mandate_breach", "principal_score", "lender_credit"],
 }
 
 # Fraction of transaction amount used as the exposure base for principal-score

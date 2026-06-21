@@ -849,6 +849,7 @@ class CoverLine(str, Enum):
     lender_credit = "lender_credit"
     principal_score = "principal_score"
     mandate_breach = "mandate_breach"
+    fx_slippage = "fx_slippage"
 
 
 class QuoteDecision(str, Enum):
@@ -867,6 +868,7 @@ class TxnContext(CamelModel):
     velocity_z: float = 0.0
     concentration_z: float = 0.0
     active_lines: list[CoverLine] = Field(default_factory=list)
+    package: str | None = None   # expand to active_lines server-side (Essential/Standard/Full-Stack)
 
 
 class AgentRiskState(CamelModel):
@@ -916,6 +918,8 @@ class ClaimRequest(CamelModel):
     aml_score: int = 0
     sanctioned: bool = False
     receipt_hash: str | None = None
+    line: CoverLine = CoverLine.merchant_default  # which peril is being claimed; defaults for back-compat
+    intended_amount: str | None = None            # for fx_slippage: the amount the agent intended to deliver
 
 
 class PoolStatus(CamelModel):

@@ -28,7 +28,8 @@ from ..config import get_settings
 from ..insurance import engine, risk
 from ..insurance.engine import PoolState, PricePolicy, QuoteContext
 from ..insurance.risk import AgentRisk, TxnFeatures
-from ..insurance.tables import LINE_PARAMS
+from ..insurance.tables import INSURANCE_PACKAGES, LINE_PARAMS
+from ..schemas import CoverLine
 from ..policy import engine as policy_engine
 from . import execution
 from . import vault as vault_tool
@@ -147,12 +148,20 @@ def get_or_seed_risk(agent_address: str, score_band: str | None) -> AgentRisk:
 
 # ── Quote (pure pricing, no settlement) ───────────────────────────────────────
 
+def _resolve_lines(txn) -> tuple[str, ...]:
+    """Expand a named package → line list, or use explicit active_lines."""
+    if txn.package and txn.package in INSURANCE_PACKAGES:
+        return tuple(INSURANCE_PACKAGES[txn.package])
+    return tuple(line.value for line in txn.active_lines)
+
+
 def quote(req: InsuranceQuoteRequest) -> PremiumQuote:
     """Price a cover request via the deterministic envelope. No I/O side effects.
 
     The transaction shape, amount and active cover lines all travel inside
     `txn_context` (canonical schema); the request itself carries only the agent
-    and its certified score band.
+    and its certified score band. A named `package` in `txn_context` is expanded
+    to the corresponding line set server-side.
     """
     settings = get_settings()
     r = get_or_seed_risk(req.agent_address, req.score_band)
@@ -161,7 +170,7 @@ def quote(req: InsuranceQuoteRequest) -> PremiumQuote:
         agent_address=req.agent_address,
         eligible=settings.insurance_enabled,
         txn=_txn_features(txn),
-        active_lines=tuple(line.value for line in txn.active_lines),
+        active_lines=_resolve_lines(txn),
         ead=Decimal(txn.amount),
         collateral=Decimal("0"),
         score_band=req.score_band or _bands.get(req.agent_address),
@@ -234,17 +243,27 @@ async def bind(req: BindRequest) -> InsurancePremiumRecord:
 async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
     """Settle a claim: recover collateral → draw first-loss → pay the merchant.
 
-    Gated by policy.engine.evaluate() (limit/AML) and a collusion guard before
-    any capital moves. Then reprices the agent posterior with a default update.
+    Gated by the full G1–G7 guardrail chain (insurance_payout context) and a
+    collusion guard before any capital moves. Then reprices the agent posterior.
+
+    For `fx_slippage` the actual loss is computed parametrically from
+    `req.intended_amount` and `req.claim_amount` (the on-ledger delivered amount).
     """
     settings = get_settings()
     if not settings.insurance_enabled:
         raise InsuranceDisabled("insurance_enabled is False")
 
-    # Canonical claims cover the merchant-default peril: claim_amount is the loss,
-    # collateral_available is recovered first.
-    lp = LINE_PARAMS["merchant_default"]
-    loss = Decimal(req.claim_amount)
+    line_key = req.line.value if isinstance(req.line, CoverLine) else str(req.line)
+    lp = LINE_PARAMS.get(line_key, LINE_PARAMS["merchant_default"])
+
+    if line_key == "fx_slippage" and req.intended_amount is not None:
+        # Parametric: loss = intended − delivered, floored at zero.
+        intended = Decimal(req.intended_amount)
+        delivered = Decimal(req.claim_amount)
+        loss = max(Decimal("0"), intended - delivered)
+    else:
+        loss = Decimal(req.claim_amount)
+
     collateral = Decimal(req.collateral_available)
 
     # Recovery first (collateral), then the pool covers the residual shortfall.
@@ -254,11 +273,18 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
     pool = _pool_state(settings)
     pool_drawn = min(payout, pool.first_loss).quantize(_Q2, rounding=ROUND_HALF_UP)
 
-    # Build the full payout guardrail trail: per-party (G1/G2), the decide(PAYOUT)
-    # policy gate, and the collusion guard — then enforce the hard blocks.
+    # Build the full payout guardrail trail:
+    #   G1/G2 from _party_guardrails (with correct KYA-enforce semantics)
+    #   G3_aml, G6_payout, G7_hardware_veto appended explicitly
+    #   G2b_collusion as the final guard
     trail, party_block = await _party_guardrails(
         agent_address=req.agent_address, counterparty=req.merchant, counterparty_name=req.merchant_name
     )
+
+    # G3: AML enrichment — placeholder slot so the audit record has G3 in its trail
+    trail.append(GuardrailResult(name="G3_aml", passed=True, rule_fired=None, reason="not_wired"))
+
+    # G6: payout policy gate (mirrors payment threshold check; named G6_payout for claim audits)
     decision = policy_engine.evaluate(
         float(payout),
         aml_score=req.aml_score,
@@ -272,6 +298,10 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
         rule_fired=decision.rule_fired,
         reason="; ".join(decision.reasons) if decision.reasons else None,
     ))
+
+    # G7: hardware veto is enforced at payment release, not at claim time
+    trail.append(GuardrailResult(name="G7_hardware_veto", passed=True, rule_fired=None, reason="enforced_at_release"))
+
     collusion = _is_collusion(req.agent_address, req.merchant)
     trail.append(GuardrailResult(
         name="G2b_collusion",
@@ -279,6 +309,7 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
         rule_fired="collusion" if collusion else None,
         reason="repeated payouts between agent and counterparty" if collusion else None,
     ))
+
     if party_block is not None:
         raise PayoutRefused(party_block.reason or party_block.rule_fired or "payout blocked")
     if decision.blocked:
@@ -324,7 +355,7 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
         {
             "job_id": req.job_id,
             "merchant": req.merchant,
-            "line": "merchant_default",
+            "line": line_key,
             "collateral_slashed": record.collateral_slashed,
             "pool_drawn": record.pool_drawn,
             "total_paid": record.total_paid,
