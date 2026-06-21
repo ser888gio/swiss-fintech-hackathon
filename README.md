@@ -85,6 +85,10 @@ the Firefly, press the button, the signature verifies, the escrow releases. Both
 transactions are live on testnet with explorer links, every decision explained in
 plain language. Full script in [`docs/demo-script.md`](docs/demo-script.md).
 
+### Demo
+
+[![Pixie Treasury Veto Demo](pixie_treasury_veto.gif)](pixie_treasury_veto.mp4)
+
 The submission also includes public documentation, a demo video, explicit XRPL
 feature/amendment mapping, a maximum-10-slide deck, and a 5–10 minute live pitch
 and demo followed by 3 minutes of Q&A, as required by [`challenge.md`](challenge.md).
