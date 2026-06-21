@@ -81,6 +81,14 @@ async def issue(request: CredentialIssueRequest) -> CredentialRecord:
         # tecDUPLICATE means the credential already exists on-ledger — re-issuing
         # is a no-op, not a failure. Reflect its real state so the flow is
         # idempotent (a subject can be "issued KYC" again without an error).
+        if "tecNO_TARGET" in str(exc):
+            record.status = CredentialRecordStatus.failed
+            record.refused_reason = (
+                f"Subject account {request.subject} does not exist on the ledger — "
+                "fund the account first (minimum base reserve: 10 XRP on Testnet)."
+            )
+            _log(record_id, f"Failed: subject account not funded on-ledger (tecNO_TARGET).")
+            return _touch(record)
         if "tecDUPLICATE" in str(exc):
             _log(record_id, "Credential already exists on-ledger (tecDUPLICATE); checking its status.")
             status = await credentials.verify_kyc(request.subject)

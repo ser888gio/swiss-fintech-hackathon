@@ -24,11 +24,9 @@ const SUBJECTS = [
 
 export function CredentialsPage() {
   const [records, setRecords] = useState<CredentialRecord[]>([]);
-  const [subjectIndex, setSubjectIndex] = useState(1); // default: no-credential subject — shows the gate
   const [subject, setSubject] = useState(SUBJECTS[1].account);
   const [subjectName, setSubjectName] = useState(SUBJECTS[1].name);
   const [credentialType, setCredentialType] = useState("KYC");
-  const [uri, setUri] = useState("https://kyc.example/vc/123");
   const [autoAccept, setAutoAccept] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,12 +44,6 @@ export function CredentialsPage() {
     void refresh();
   }, [refresh]);
 
-  useEffect(() => {
-    const selected = SUBJECTS[subjectIndex];
-    setSubject(selected.account);
-    setSubjectName(selected.name);
-  }, [subjectIndex]);
-
   const submit = useCallback(async () => {
     setBusy(true);
     setError(null);
@@ -60,7 +52,7 @@ export function CredentialsPage() {
         subject: subject.trim(),
         subjectName: subjectName.trim() || null,
         credentialType: credentialType.trim() || null,
-        uri: uri.trim() || null,
+        uri: null,
         autoAccept,
       };
       await api.issueCredential(req);
@@ -70,7 +62,7 @@ export function CredentialsPage() {
     } finally {
       setBusy(false);
     }
-  }, [subject, subjectName, credentialType, uri, autoAccept, refresh]);
+  }, [subject, subjectName, credentialType, autoAccept, refresh]);
 
   const act = useCallback(
     async (action: () => Promise<CredentialRecord>) => {
@@ -130,16 +122,6 @@ export function CredentialsPage() {
             <strong>Subject &amp; type</strong>
           </div>
           <label>
-            <span>Saved subject</span>
-            <select name="saved-subject" autoComplete="off" value={subjectIndex} onChange={(e) => setSubjectIndex(Number(e.target.value))} disabled={busy}>
-              {SUBJECTS.map((option, index) => (
-                <option key={option.account} value={index}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
             <span>Subject name</span>
             <input name="subject-name" autoComplete="off" value={subjectName} onChange={(e) => setSubjectName(e.target.value)} disabled={busy} />
           </label>
@@ -151,10 +133,6 @@ export function CredentialsPage() {
             <label>
               <span>Credential type</span>
               <input name="credential-type" autoComplete="off" value={credentialType} onChange={(e) => setCredentialType(e.target.value)} disabled={busy} />
-            </label>
-            <label>
-              <span>VC URI (off-chain)</span>
-              <input name="credential-uri" type="url" autoComplete="off" value={uri} onChange={(e) => setUri(e.target.value)} disabled={busy} spellCheck={false} />
             </label>
           </div>
           <label className="checkbox-label">
