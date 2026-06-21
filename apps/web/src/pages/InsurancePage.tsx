@@ -15,31 +15,48 @@ import { hashShort, money } from "../lib/utils.js";
 
 // ── Static metadata ───────────────────────────────────────────────────────────
 
-const LINE_META: Record<CoverLine, { label: string; desc: string; badge: string }> = {
+// Per-line max payout (sum insured) mirrors apps/api/app/insurance/tables.py
+// LINE_PARAMS[*].limit — keep in sync by hand.
+const LINE_META: Record<CoverLine, { label: string; desc: string; badge: string; limit: number }> = {
   merchant_default: {
     label: "Merchant Default",
-    desc: "Agent pays — goods never delivered. Net of collateral.",
+    desc:
+      "The agent pays a merchant up front and the goods or services are never delivered. " +
+      "The pool reimburses the lost principal after agent collateral and any on-chain recovery are applied.",
     badge: "Core",
+    limit: 100000,
   },
   fx_slippage: {
     label: "FX Slippage",
-    desc: "Delivered amount < intended. Parametric: auto-triggered from on-ledger facts.",
+    desc:
+      "On a cross-border payment the delivered amount lands below the intended amount beyond tolerance. " +
+      "Fully parametric — the shortfall is read straight off the on-ledger delivered_amount vs the route quote and paid automatically, no claim form.",
     badge: "Parametric",
+    limit: 10000,
   },
   mandate_breach: {
     label: "Mandate Breach",
-    desc: "Wrong payee, overspend, or out-of-policy transaction.",
+    desc:
+      "The agent sends to the wrong payee, overspends, or transacts outside its mandate. " +
+      "Highest moral-hazard line, so it carries the largest loss-given-default and the strictest verification against the signed policy.",
     badge: "Policy",
+    limit: 100000,
   },
   principal_score: {
     label: "Principal Score",
-    desc: "Default that would burn the principal's reputation. Pool absorbs; ScoreBand preserved.",
+    desc:
+      "A default that would otherwise burn the principal's on-chain reputation. " +
+      "The pool absorbs the hit so the agent's ScoreBand is preserved and future premiums stay stable.",
     badge: "Reputation",
+    limit: 25000,
   },
   lender_credit: {
     label: "Lender Credit",
-    desc: "Agent doesn't repay working capital. Collateral slashed first.",
+    desc:
+      "The agent draws working capital from a lender and fails to repay it. " +
+      "Posted collateral is slashed first; the pool covers the residual shortfall up to the line limit.",
     badge: "Credit",
+    limit: 250000,
   },
 };
 
@@ -80,16 +97,6 @@ function decisionClass(d: string) {
   if (d === "REVIEW") return "status-routing";
   return "status-blocked";
 }
-
-const selectStyle: React.CSSProperties = {
-  background: "rgba(255,255,255,0.05)",
-  border: "1px solid var(--border)",
-  borderRadius: 6,
-  color: "var(--paper)",
-  padding: "0.35rem 0.5rem",
-  fontSize: "0.85rem",
-  width: "100%",
-};
 
 // ── Pool Status ───────────────────────────────────────────────────────────────
 
@@ -288,35 +295,17 @@ function QuotePanel({ onBound }: { onBound: () => void }) {
             const meta = LINE_META[line];
             const active = form.activeLines.includes(line);
             return (
-              <label
-                key={line}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: "0.75rem",
-                  padding: "0.6rem 0.75rem",
-                  borderRadius: 7,
-                  border: `1px solid ${active ? "var(--orange)" : "var(--border)"}`,
-                  background: active ? "rgba(209,103,31,0.08)" : "rgba(255,255,255,0.02)",
-                  cursor: "pointer",
-                  transition: "border-color 0.12s, background 0.12s",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={active}
-                  onChange={() => toggleLine(line)}
-                  style={{ marginTop: 3, accentColor: "var(--orange)", flexShrink: 0 }}
-                />
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.15rem" }}>
-                    <span style={{ fontWeight: 700, fontSize: "0.85rem", color: active ? "var(--paper)" : "var(--muted)" }}>{meta.label}</span>
-                    <span style={{
-                      fontSize: "0.62rem", padding: "0.1rem 0.35rem", borderRadius: 4,
-                      background: "rgba(255,255,255,0.08)", color: "var(--muted)",
-                    }}>{meta.badge}</span>
+              <label key={line} className={`cover-line${active ? " is-active" : ""}`}>
+                <input type="checkbox" checked={active} onChange={() => toggleLine(line)} />
+                <div>
+                  <div className="cover-line-head">
+                    <span className="cover-line-title">{meta.label}</span>
+                    <span className="cover-line-badge">{meta.badge}</span>
+                    <span className="cover-line-limit" title="Maximum payout the pool will make on this line">
+                      up to {money(String(meta.limit))} USD
+                    </span>
                   </div>
-                  <span className="muted" style={{ fontSize: "0.75rem", lineHeight: 1.4 }}>{meta.desc}</span>
+                  <span className="cover-line-desc">{meta.desc}</span>
                 </div>
               </label>
             );
@@ -341,25 +330,25 @@ function QuotePanel({ onBound }: { onBound: () => void }) {
           </label>
           <label>
             <span>Score band</span>
-            <select name="score-band" autoComplete="off" value={form.scoreBand} onChange={field(setForm, "scoreBand")} style={selectStyle}>
+            <select name="score-band" autoComplete="off" value={form.scoreBand} onChange={field(setForm, "scoreBand")}>
               {SCORE_BANDS.map((b) => <option key={b}>{b}</option>)}
             </select>
           </label>
           <label>
             <span>Payment category</span>
-            <select name="transaction-category" autoComplete="off" value={form.category} onChange={field(setForm, "category")} style={selectStyle}>
+            <select name="transaction-category" autoComplete="off" value={form.category} onChange={field(setForm, "category")}>
               {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </label>
           <label>
             <span>Settlement tenor</span>
-            <select name="tenor-band" autoComplete="off" value={form.tenorBand} onChange={field(setForm, "tenorBand")} style={selectStyle}>
+            <select name="tenor-band" autoComplete="off" value={form.tenorBand} onChange={field(setForm, "tenorBand")}>
               {TENOR_BANDS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </label>
           <label>
             <span>Counterparty risk</span>
-            <select name="counterparty-band" autoComplete="off" value={form.cptyBand} onChange={field(setForm, "cptyBand")} style={selectStyle}>
+            <select name="counterparty-band" autoComplete="off" value={form.cptyBand} onChange={field(setForm, "cptyBand")}>
               {CPTY_BANDS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </label>
@@ -710,11 +699,11 @@ export function InsurancePage() {
   ];
 
   return (
-    <div style={{ maxWidth: 920, margin: "0 auto" }}>
+    <div style={{ maxWidth: 1100, margin: "0 auto" }}>
       {/* Header */}
       <div style={{ marginBottom: "1.5rem" }}>
         <h2 style={{ marginBottom: "0.25rem" }}>Agent Insurance Protocol</h2>
-        <p className="muted" style={{ fontSize: "0.82rem", maxWidth: 640 }}>
+        <p className="muted" style={{ fontSize: "0.82rem", maxWidth: 880 }}>
           Actuarial underwriting for autonomous agent payments. Every claim is verifiable against the
           on-ledger memo + Ed25519 audit chain — no committee, no court.
         </p>

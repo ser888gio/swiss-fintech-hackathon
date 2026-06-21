@@ -1918,13 +1918,16 @@ a {
   letter-spacing: 0.04em;
 }
 
-.ars-form-grid input {
+.ars-form-grid input,
+.ars-form-grid select {
+  width: 100%;
+  min-height: 0;
   background: rgba(255,255,255,0.05);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--text);
-  padding: 0.3rem 0.5rem;
-  font-size: 0.8rem;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.82rem;
 }
 
 .ars-tx-card {
@@ -1932,6 +1935,94 @@ a {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.75rem 1rem;
+}
+
+/* Insurance cover-line picker */
+.cover-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.85rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.cover-line:hover {
+  border-color: rgba(209, 103, 31, 0.45);
+}
+
+.cover-line.is-active {
+  border-color: var(--orange);
+  background: rgba(209, 103, 31, 0.08);
+}
+
+.cover-line input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 15px;
+  min-width: 15px;
+  height: 15px;
+  min-height: 15px;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  border-radius: 4px;
+  accent-color: var(--orange);
+  cursor: pointer;
+}
+
+.cover-line-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.cover-line-limit {
+  margin-left: auto;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.cover-line.is-active .cover-line-limit {
+  color: #2a9d5c;
+}
+
+.cover-line-title {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.cover-line.is-active .cover-line-title {
+  color: var(--paper);
+}
+
+.cover-line-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+}
+
+.cover-line.is-active .cover-line-badge {
+  background: rgba(209, 103, 31, 0.22);
+  color: var(--paper);
+}
+
+.cover-line-desc {
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--muted);
 }
 
 .ars-tx-card p.muted {
