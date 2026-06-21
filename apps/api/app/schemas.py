@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -1033,6 +1033,15 @@ class CoverPolicy(CamelModel):
     explorer_url: str | None = None
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("period_start", "period_end", "created_at", "updated_at")
+    @classmethod
+    def _ensure_utc(cls, value: datetime) -> datetime:
+        # A naive datetime (e.g. deserialized from JSON without an offset) would
+        # crash the active/expired comparison in cover.store; pin everything to UTC.
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
 
 class CoverClaimEvidence(CamelModel):
