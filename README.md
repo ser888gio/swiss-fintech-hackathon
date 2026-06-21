@@ -1,4 +1,4 @@
-# VaultGuard — AI Agent Insurance Protocol on XRPL
+# Blaiko — AI Agent Insurance Protocol on XRPL
 
 **SwissHacks 2026 · Ripple — Future of Finance on XRPL: Payments, Credit & Agent Financial Infrastructure**
 
@@ -22,7 +22,7 @@ Ripple's challenge asks teams to build a working prototype that addresses a genu
 - **Credit & Lending** — trade finance, on-chain collateral, supply chain finance (XLS-65/66)
 - **Agent Financial Infrastructure** — Know Your Agent (KYA), wallet spending policies, compliance-gated autonomous payments, agent-to-agent delegation
 
-VaultGuard targets **Agent Financial Infrastructure** with a live **Payments & FX** treasury workflow as proof.
+Blaiko targets **Agent Financial Infrastructure** with a live **Payments & FX** treasury workflow as proof.
 
 ---
 
@@ -57,7 +57,7 @@ Three failure modes nobody covers today:
 
 **Savings vs. traditional cross-border wire transfers:**
 
-| | Traditional Wire | VaultGuard |
+| | Traditional Wire | Blaiko |
 |---|---|---|
 | Settlement time | 2–5 days | ~4 seconds |
 | Fee | $25–50 + 1–3% FX spread | Near-zero, RLUSD eliminates FX spread |
@@ -214,7 +214,7 @@ External connections from the API:
 
 ## Why It's the Best Solution
 
-| Capability | VaultGuard | Traditional insurers | Nexus Mutual / Etherisc | Klaimee (YC 2026) |
+| Capability | Blaiko | Traditional insurers | Nexus Mutual / Etherisc | Klaimee (YC 2026) |
 |---|:---:|:---:|:---:|:---:|
 | Covers AI financial hallucinations | ✅ | ❌ excluded | ❌ not focused | ✅ general only |
 | On-chain parametric trigger | ✅ | ❌ | ✅ DeFi only | ❌ |

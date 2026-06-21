@@ -1,11 +1,11 @@
-# VaultGuard — Pitch Deck Content
+# Blaiko — Pitch Deck Content
 ## SwissHacks 2026 · Ripple: Future of Finance on XRPL
 
 ---
 
 ## Slide 1 — Title
 
-**VaultGuard**
+**Blaiko**
 *The first insurance protocol for AI agents making financial decisions*
 
 Built on XRPL · Powered by RLUSD · Protected by hardware
@@ -48,7 +48,7 @@ Two products in one:
 
 **Savings vs. traditional cross-border wire transfers:**
 - Wire transfer: 2–5 days, $25–50 fee, 1–3% FX spread
-- VaultGuard: ~4 seconds, near-zero fee, RLUSD eliminates FX spread
+- Blaiko: ~4 seconds, near-zero fee, RLUSD eliminates FX spread
 - For a $50M/year treasury: **estimated $500K–1.5M in annual savings**
 
 **Competitive position:** Only one competitor exists at prototype stage (Klaimee, YC 2026). They cover general AI deployment errors. We cover the specific financial transaction layer, on-chain, parametrically, on XRPL.
@@ -108,7 +108,7 @@ XRPL features in use: TokenEscrow (XLS-85) · RLUSD · Credentials/KYA (XLS-70) 
 
 **Nobody else has this combination:**
 
-| Capability | VaultGuard | Traditional insurers | Nexus Mutual / Etherisc | Klaimee (YC 2026) |
+| Capability | Blaiko | Traditional insurers | Nexus Mutual / Etherisc | Klaimee (YC 2026) |
 |---|:---:|:---:|:---:|:---:|
 | Covers AI financial hallucinations | ✅ | ❌ excluded | ❌ not focused | ✅ general only |
 | On-chain parametric trigger | ✅ | ❌ | ✅ DeFi only | ❌ |

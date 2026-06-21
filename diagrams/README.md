@@ -1,6 +1,6 @@
 # System Diagrams
 
-Auto-generated diagrams for VaultGuard — Autonomous Treasury Agent on XRPL.
+Auto-generated diagrams for Blaiko — Autonomous Treasury Agent on XRPL.
 See the [main README](../README.md) for the project overview.
 
 > Note: icons are embedded as data-URIs and render in any direct SVG viewer. On
