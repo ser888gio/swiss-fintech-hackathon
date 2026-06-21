@@ -126,40 +126,83 @@ async def demo_underpayment(req: CoverDemoUnderpaymentRequest) -> dict:
     if req.paid_amount >= req.invoice_amount:
         raise HTTPException(status_code=422, detail="paidAmount must be less than invoiceAmount")
 
-    demo_agent = settings.treasury_wallet_address or "rDEMO_AGENT"
-    demo_merchant = "rDEMO_MERCHANT_00000000000000000"
-
-    # Step 1: buy policy if the demo agent has none active
+    from decimal import Decimal as _D
     from ..cover import store as cover_store
     from ..cover.store import list_policies
 
-    # Reset demo-pair payouts so the collusion guard doesn't block repeated runs.
-    cover_store.reset_pair_payouts(demo_agent, demo_merchant)
+    shortfall = float(req.invoice_amount - req.paid_amount)
 
-    active = [
-        p for p in list_policies(agent_address=demo_agent)
-        if p.status.value == "active"
-    ]
-    if not active:
+    # Resolve agent address — real agent (from agent builder) or the demo treasury wallet.
+    agent_address: str
+    agent_label: str
+    if req.agent_id and req.agent_id != "example-treasury-agent":
+        from .agents import _agents as _registered_agents
+        agent_obj = _registered_agents.get(req.agent_id)
+        if agent_obj is None:
+            raise HTTPException(status_code=404, detail=f"Unknown agent: {req.agent_id}")
+        agent_address = req.agent_id   # agents use their id as their identifier in cover store
+        agent_label = agent_obj.name
+    else:
+        agent_address = settings.treasury_wallet_address or "rDEMO_AGENT"
+        agent_label = "Example treasury agent"
+
+    demo_merchant = "rDEMO_MERCHANT_00000000000000000"
+
+    # Reset demo-pair payouts so the collusion guard doesn't block repeated runs.
+    cover_store.reset_pair_payouts(agent_address, demo_merchant)
+
+    # Detect whether the agent has an active cover policy.
+    active_policies = [p for p in list_policies(agent_address=agent_address) if p.status.value == "active"]
+
+    is_insured = bool(active_policies)
+    insured_policy = active_policies[0] if active_policies else None
+
+    if insured_policy:
+        # Derive coverage rate from policy: per_claim_limit / shortfall, capped at 1.0.
+        pcl = float(_D(insured_policy.per_claim_limit))
+        coverage_rate = min(1.0, pcl / shortfall) if shortfall > 0 else 1.0
+        per_claim_limit = insured_policy.per_claim_limit
+        # Cancel and re-create so cover_remaining is reset between demo runs.
+        cover_store.cancel_policy(insured_policy.id)
         q = cover_tool.quote(CoverQuoteRequest(
-            agent_address=demo_agent,
+            agent_address=agent_address,
             score_band="STANDARD",
             cover_cap="5000",
-            per_claim_limit="500",
+            per_claim_limit=per_claim_limit,
             term_days=365,
         ))
         if q.decision != "OFFER":
             raise HTTPException(status_code=422, detail=f"cover not available: {q.reason}")
         policy = await cover_tool.bind(CoverBindRequest(
-            agent_address=demo_agent,
+            agent_address=agent_address,
             score_band="STANDARD",
             cover_cap="5000",
-            per_claim_limit="500",
+            per_claim_limit=per_claim_limit,
             term_days=365,
             quote=q,
         ), simulate_settlement=True)
     else:
-        policy = active[0]
+        # Uninsured agent: no policy exists — synthetic zero-coverage path.
+        coverage_rate = 1.0
+        per_claim_limit = str(round(shortfall, 2))
+
+        q = cover_tool.quote(CoverQuoteRequest(
+            agent_address=agent_address,
+            score_band="STANDARD",
+            cover_cap="5000",
+            per_claim_limit=per_claim_limit,
+            term_days=365,
+        ))
+        if q.decision != "OFFER":
+            raise HTTPException(status_code=422, detail=f"cover not available: {q.reason}")
+        policy = await cover_tool.bind(CoverBindRequest(
+            agent_address=agent_address,
+            score_band="STANDARD",
+            cover_cap="5000",
+            per_claim_limit=per_claim_limit,
+            term_days=365,
+            quote=q,
+        ), simulate_settlement=True)
 
     # Step 2: create a settled payment with an underpayment hallucination.
     # amount=$480 < expected_amount=$500, same recipient → reconcile detects underpayment.
@@ -167,7 +210,7 @@ async def demo_underpayment(req: CoverDemoUnderpaymentRequest) -> dict:
     payment_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     intent = PaymentIntent(**{
-        "from": demo_agent,
+        "from": agent_address,
         "to": demo_merchant,
         "senderName": "Demo Treasury Agent",
         "senderCountry": "CH",
@@ -202,11 +245,28 @@ async def demo_underpayment(req: CoverDemoUnderpaymentRequest) -> dict:
         payment_id=payment_id,
     ), simulate_settlement=True)
 
+    coverage_pct = round(coverage_rate * 100, 1)
+    if is_insured:
+        coverage_note = (
+            f"Agent '{agent_label}' has an active cover policy (per-claim limit ${per_claim_limit}). "
+            f"Policy covers {coverage_pct}% of the ${shortfall:.2f} shortfall."
+        )
+    else:
+        coverage_note = (
+            f"Agent '{agent_label}' has no active cover policy — uninsured. "
+            f"Full shortfall ${shortfall:.2f} is absorbed without insurance backing. "
+            "In production, the merchant would bear this loss."
+        )
+
     return {
         "scenario": "demo_4_1_underpayment",
         "settlement_mode": "simulation",
+        "is_insured": is_insured,
+        "coverage_rate": coverage_rate,
         "description": (
-            f"Agent paid ${req.paid_amount} against a ${req.invoice_amount} invoice. "
+            f"{agent_label} paid ${req.paid_amount} against a ${req.invoice_amount} invoice "
+            f"(shortfall ${shortfall:.2f}). "
+            f"{coverage_note} "
             "The deterministic reconciler detected the underpayment. "
             f"Cover pool topped up the merchant by ${payout.amount_paid}."
         ),

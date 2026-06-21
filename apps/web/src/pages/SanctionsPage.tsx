@@ -133,7 +133,6 @@ export function SanctionsPage() {
           <span className="eyebrow">Compliance · Geopolitical risk</span>
           <h1>Sanctions watchlist</h1>
         </div>
-        <span className="policy-pill">code decides · LLM narrates</span>
       </div>
 
       {/* Globe — full width, centered, above tables */}

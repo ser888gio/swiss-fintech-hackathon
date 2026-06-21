@@ -1055,6 +1055,7 @@ class CoverClaimEvidence(CamelModel):
 class CoverDemoUnderpaymentRequest(CamelModel):
     invoice_amount: Decimal = Field(default=Decimal("500"), gt=0)
     paid_amount: Decimal = Field(default=Decimal("480"), gt=0)
+    agent_id: str | None = None
 
 
 class CoverPayout(CamelModel):

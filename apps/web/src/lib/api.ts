@@ -260,15 +260,17 @@ export const api = {
     request<CoverPayout[]>(`/cover/payouts${policyId ? `?policy_id=${encodeURIComponent(policyId)}` : ""}`),
   coverPool: () =>
     request<CoverPoolStatus>("/cover/pool"),
-  coverRunDemo41: (invoiceAmount: string, paidAmount: string) =>
-    request<{ scenario: string; settlement_mode: string; description: string; payout: { amount_paid: string }; narration: string | null }>(
+  coverRunDemo41: (invoiceAmount: string, paidAmount: string, agentId?: string) =>
+    request<{ scenario: string; settlement_mode: string; is_insured: boolean; coverage_rate: number; description: string; payout: { amount_paid: string }; narration: string | null }>(
       "/cover/demo/underpayment", {
         method: "POST",
-        body: JSON.stringify({ invoiceAmount, paidAmount }),
+        body: JSON.stringify({ invoiceAmount, paidAmount, agentId }),
       }
     ).then((result) => ({
       scenario: result.scenario,
       settlementMode: result.settlement_mode,
+      isInsured: result.is_insured,
+      coverageRate: result.coverage_rate,
       description: result.description,
       payout: { amountPaid: result.payout.amount_paid },
       narration: result.narration,

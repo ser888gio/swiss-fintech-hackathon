@@ -108,12 +108,13 @@ export function DemoLabPage() {
   const [finalStates, setFinalStates] = useState<Record<string, RunState>>({});
   const [results, setResults] = useState<Record<string, DemoAttackResult>>({});
   const [agentRun, setAgentRun] = useState<TreasuryAgentRun | null>(null);
-  const [coverResult, setCoverResult] = useState<{ description: string; amount: string; narration: string | null } | null>(null);
+  const [coverResult, setCoverResult] = useState<{ description: string; amount: string; narration: string | null; isInsured: boolean; coverageRate: number } | null>(null);
   const [invoiceAmount, setInvoiceAmount] = useState("500");
   const [paidAmount, setPaidAmount] = useState("480");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState(EXAMPLE_AGENT_ID);
+  const [selectedCoverAgentId, setSelectedCoverAgentId] = useState(EXAMPLE_AGENT_ID);
   const [agentsError, setAgentsError] = useState("");
 
   useEffect(() => {
@@ -129,7 +130,7 @@ export function DemoLabPage() {
   const invoiceValue = Number(invoiceAmount);
   const paidValue = Number(paidAmount);
   const coverAmountsValid = invoiceValue > 0 && paidValue > 0 && paidValue < invoiceValue;
-  const coveredLoss = coverAmountsValid ? invoiceValue - paidValue : 0;
+  const shortfall = coverAmountsValid ? invoiceValue - paidValue : 0;
 
   const setRunning = (id: string) => {
     setStates((current) => ({ ...current, [id]: "running" }));
@@ -175,8 +176,9 @@ export function DemoLabPage() {
   const runCover = async () => {
     setRunning("cover");
     try {
-      const [result] = await Promise.all([api.coverRunDemo41(invoiceAmount, paidAmount), sleep(5000)]);
-      setCoverResult({ description: result.description, amount: result.payout.amountPaid, narration: result.narration });
+      const agentIdArg = selectedCoverAgentId === EXAMPLE_AGENT_ID ? undefined : selectedCoverAgentId;
+      const [result] = await Promise.all([api.coverRunDemo41(invoiceAmount, paidAmount, agentIdArg), sleep(5000)]);
+      setCoverResult({ description: result.description, amount: result.payout.amountPaid, narration: result.narration, isInsured: result.isInsured, coverageRate: result.coverageRate });
       setFinalStates((current) => ({ ...current, cover: "passed" }));
       setStates((current) => ({ ...current, cover: "passed" }));
     } catch (cause) {
@@ -308,12 +310,27 @@ export function DemoLabPage() {
           <div className="demo-feature-copy">
             <ResultPill state={states.cover ?? "ready"} />
             <h3>Underpayment hallucination</h3>
+            <div className="demo-agent-picker" style={{ marginBottom: "1rem" }}>
+              <label htmlFor="cover-agent-select">
+                <span className="eyebrow">Agent under test</span>
+                <select
+                  id="cover-agent-select"
+                  value={selectedCoverAgentId}
+                  onChange={(event) => setSelectedCoverAgentId(event.target.value)}
+                  disabled={states.cover === "running" || states.cover === "replaying"}
+                >
+                  <option value={EXAMPLE_AGENT_ID}>Example treasury agent</option>
+                  {agents.map((agent) => <option value={agent.id} key={agent.id}>{agent.name} ({agent.id})</option>)}
+                </select>
+              </label>
+              <p>The backend checks whether this agent has an active cover policy and derives the coverage rate from its per-claim limit. Agents without a policy are marked as uninsured.</p>
+            </div>
             <div className="demo-equation">
               <label><span>Invoice</span><input aria-label="Invoice amount" type="number" min="0.01" step="0.01" value={invoiceAmount} onChange={(event) => setInvoiceAmount(event.target.value)} /></label>
               <b>−</b>
               <label><span>Paid</span><input aria-label="Paid amount" type="number" min="0.01" step="0.01" value={paidAmount} onChange={(event) => setPaidAmount(event.target.value)} /></label>
               <b>=</b>
-              <div className="demo-loss"><span>Covered loss</span><strong>{coveredLoss.toFixed(2)} RLUSD</strong></div>
+              <div className="demo-loss"><span>Shortfall</span><strong>{shortfall.toFixed(2)} RLUSD</strong></div>
             </div>
             {!coverAmountsValid && <p className="demo-input-hint">Paid must be greater than zero and less than the invoice.</p>}
             <p>The claim endpoint derives all financial facts server-side, applies eligibility and capacity rules, and tops up the merchant.</p>
@@ -325,7 +342,19 @@ export function DemoLabPage() {
             {errors.cover && <p className="demo-error" role="alert">{errors.cover}</p>}
           </div>
           <div className="demo-proof-panel">
-            {coverResult ? <><span className="eyebrow">Settled result</span><strong className="demo-payout">+{coverResult.amount} <small>RLUSD</small></strong><p>{coverResult.description}</p>{coverResult.narration && <p className="demo-narration">“{coverResult.narration}”</p>}</> : <div className="demo-empty-proof"><strong>No claim created yet</strong><span>The result will come from the connected insurance service.</span></div>}
+            {coverResult ? (
+              <>
+                <span className="eyebrow">Settled result</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <span className={`demo-status ${coverResult.isInsured ? 'demo-passed' : 'demo-attention'}`}>
+                    {coverResult.isInsured ? `Insured · ${(coverResult.coverageRate * 100).toFixed(0)}% cover` : 'Uninsured agent'}
+                  </span>
+                </div>
+                <strong className="demo-payout">+{coverResult.amount} <small>RLUSD</small></strong>
+                <p>{coverResult.description}</p>
+                {coverResult.narration && <p className="demo-narration">"{coverResult.narration}"</p>}
+              </>
+            ) : <div className="demo-empty-proof"><strong>No claim created yet</strong><span>The result will come from the connected insurance service.</span></div>}
           </div>
         </article>
       </section>

@@ -114,6 +114,17 @@ def list_policies(agent_address: str | None = None) -> list[CoverPolicy]:
     return sorted(policies, key=lambda p: p.created_at, reverse=True)
 
 
+def cancel_policy(policy_id: str) -> None:
+    """Mark a policy as cancelled and release its reservation — demo use only."""
+    now = datetime.now(timezone.utc)
+    policy = _policies.get(policy_id)
+    if policy and policy.status == CoverPolicyStatus.active:
+        _policies[policy_id] = policy.model_copy(
+            update={"status": CoverPolicyStatus.cancelled, "updated_at": now}
+        )
+        release_reservation(policy_id)
+
+
 def _expire_stale() -> None:
     now = datetime.now(timezone.utc)
     for policy in list(_policies.values()):
