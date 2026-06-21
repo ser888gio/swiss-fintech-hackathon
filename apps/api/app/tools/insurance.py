@@ -36,14 +36,11 @@ from . import vault as vault_tool
 from ..schemas import (
     AgentRiskState,
     BindRequest,
-    CapitalDepositRequest,
-    CapitalWithdrawRequest,
     ClaimRequest,
     GuardrailResult,
     InsurancePayoutRecord,
     InsurancePremiumRecord,
     InsuranceQuoteRequest,
-    LpPosition,
     PoolStatus,
     PremiumQuote,
     QuoteDecision,
@@ -61,7 +58,6 @@ _premiums: list[InsurancePremiumRecord] = []
 _payouts: list[InsurancePayoutRecord] = []
 _pool = {"premiums": Decimal("0"), "payouts": Decimal("0")}
 _payout_pairs: dict[tuple[str, str], int] = {}   # (agent, merchant) → payout count
-_lp_capital: dict[str, Decimal] = {}             # LP address → capital contributed
 
 
 def reset_mock_state() -> None:
@@ -70,7 +66,6 @@ def reset_mock_state() -> None:
     _premiums.clear()
     _payouts.clear()
     _payout_pairs.clear()
-    _lp_capital.clear()
     _pool["premiums"] = Decimal("0")
     _pool["payouts"] = Decimal("0")
     # Reset the shared XLS-65 vault so the first-loss pool starts clean.
@@ -95,13 +90,9 @@ def _price_policy(settings) -> PricePolicy:
     )
 
 
-def _lp_total() -> Decimal:
-    return sum(_lp_capital.values(), Decimal("0"))
-
-
 def _pool_state(settings) -> PoolState:
     base = Decimal(str(settings.insurance_pool_first_loss_usd))
-    first_loss = base + _lp_total() + _pool["premiums"] - _pool["payouts"]
+    first_loss = base + _pool["premiums"] - _pool["payouts"]
     return PoolState(first_loss=max(Decimal("0"), first_loss), currency=settings.token_currency)
 
 
@@ -410,9 +401,8 @@ def get_agent_risk_state(agent_address: str) -> AgentRiskState | None:
 def get_pool_status() -> PoolStatus:
     settings = get_settings()
     base = Decimal(str(settings.insurance_pool_first_loss_usd))
-    lp_total = _lp_total()
-    first_loss = max(Decimal("0"), base + lp_total + _pool["premiums"] - _pool["payouts"])
-    denom = base + lp_total
+    first_loss = max(Decimal("0"), base + _pool["premiums"] - _pool["payouts"])
+    denom = base
     ratio = float(first_loss / denom) if denom > 0 else 0.0
     vault_balance = Decimal(str(vault_tool.get_vault_state().get("deposited") or 0))
     return PoolStatus(
@@ -422,73 +412,7 @@ def get_pool_status() -> PoolStatus:
         payouts_made=str(_pool["payouts"]),
         capacity_ratio=ratio,
         vault_balance=str(vault_balance),
-        lp_capital=str(lp_total),
     )
-
-
-# ── Capital Provider (LP) ─────────────────────────────────────────────────────
-
-async def deposit_capital(req: CapitalDepositRequest) -> LpPosition:
-    """An LP contributes first-loss capital to the pool (G1/G2 gated)."""
-    settings = get_settings()
-    if not settings.insurance_enabled:
-        raise InsuranceDisabled("insurance_enabled is False")
-    trail, blocking = await _party_guardrails(agent_address=req.lp_address)
-    if blocking is not None:
-        raise GuardrailRefused(blocking.name, blocking.reason or blocking.rule_fired or "blocked", trail)
-
-    amount = Decimal(req.amount)
-    tx_hash, explorer_url = await _settle_capital(_pool_account(settings), amount, req.lp_address, "capital_in", settings)
-    _lp_capital[req.lp_address] = _lp_capital.get(req.lp_address, Decimal("0")) + amount
-    _emit_audit("insurance_capital_deposit", {"lp_address": req.lp_address, "amount": req.amount, "tx_hash": tx_hash})
-    return _lp_position(req.lp_address, tx_hash=tx_hash, explorer_url=explorer_url, trail=trail)
-
-
-async def withdraw_capital(req: CapitalWithdrawRequest) -> LpPosition:
-    """An LP recalls capital (clamped to its contributed balance)."""
-    settings = get_settings()
-    if not settings.insurance_enabled:
-        raise InsuranceDisabled("insurance_enabled is False")
-    held = _lp_capital.get(req.lp_address, Decimal("0"))
-    amount = min(Decimal(req.amount), held).quantize(_Q2, rounding=ROUND_HALF_UP)
-    tx_hash, explorer_url = (None, None)
-    if amount > 0:
-        tx_hash, explorer_url = await _settle_capital(req.lp_address, amount, req.lp_address, "capital_out", settings)
-        _lp_capital[req.lp_address] = held - amount
-    _emit_audit("insurance_capital_withdraw", {"lp_address": req.lp_address, "amount": str(amount), "tx_hash": tx_hash})
-    return _lp_position(req.lp_address, tx_hash=tx_hash, explorer_url=explorer_url)
-
-
-def list_positions() -> list[LpPosition]:
-    return [_lp_position(addr) for addr, cap in _lp_capital.items() if cap > 0]
-
-
-def _lp_position(
-    lp_address: str, *, tx_hash: str | None = None, explorer_url: str | None = None,
-    trail: list[GuardrailResult] | None = None,
-) -> LpPosition:
-    capital = _lp_capital.get(lp_address, Decimal("0"))
-    total = _lp_total()
-    share = float(capital / total) if total > 0 else 0.0
-    return LpPosition(
-        lp_address=lp_address,
-        capital=str(capital),
-        share_pct=share,
-        currency=get_settings().token_currency,
-        tx_hash=tx_hash,
-        explorer_url=explorer_url,
-        guardrail_trail=trail or [],
-        updated_at=datetime.now(timezone.utc),
-    )
-
-
-async def _settle_capital(
-    destination: str, amount: Decimal, lp_address: str, kind: str, settings
-) -> tuple[str | None, str | None]:
-    """Settle an LP capital movement on-ledger (mock hash, or a real Payment)."""
-    if settings.use_mock_xrpl:
-        return xrpl_client.mock_tx_hash(kind, f"{lp_address}:{amount}"), None
-    return await _pay(destination, amount, lp_address, kind, settings)
 
 
 # ── Per-party compliance guardrails (G1 KYA + G2 sanctions) ───────────────────

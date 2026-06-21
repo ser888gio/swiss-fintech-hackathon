@@ -1,24 +1,17 @@
 /**
  * @treasury/insurance-sdk — typed, multi-party client for the agent-default
- * insurance protocol. One client per party (agent, merchant, LP, insurer), so an
- * integrator writes `protocol.agent.bindCover(...)` instead of raw fetch calls.
+ * insurance protocol. Pricing and premium binding are internal deterministic
+ * payment-workflow steps; this client exposes mandates and insurer read/claim APIs.
  *
  * See docs/insurance-protocol.md for the party model and the gates each action
  * passes. Every settlement/claim/capital response carries a `guardrailTrail`.
  */
 import type {
-  AgentRiskState,
-  BindRequest,
-  CapitalDepositRequest,
-  CapitalWithdrawRequest,
   ClaimRequest,
   InsurancePayoutRecord,
   InsurancePremiumRecord,
-  InsuranceQuoteRequest,
-  LpPosition,
   PaymentIntent,
   PoolStatus,
-  PremiumQuote,
 } from "@treasury/shared";
 
 export interface InsuranceSdkConfig {
@@ -71,20 +64,6 @@ class Transport {
   }
 }
 
-/** The Agent: requests quotes and binds (pays) cover for a job. */
-export class AgentClient {
-  constructor(private readonly t: Transport) {}
-  quoteCover(req: InsuranceQuoteRequest): Promise<PremiumQuote> {
-    return this.t.request("POST", "/quote", req);
-  }
-  bindCover(req: BindRequest): Promise<InsurancePremiumRecord> {
-    return this.t.request("POST", "/bind", req);
-  }
-  getRisk(agentAddress: string): Promise<AgentRiskState> {
-    return this.t.request("GET", `/agents/${encodeURIComponent(agentAddress)}/risk`);
-  }
-}
-
 /** The Counterparty (merchant/lender): mandates cover as a payment condition. */
 export class MerchantClient {
   /**
@@ -93,20 +72,6 @@ export class MerchantClient {
    */
   requireCover(intent: PaymentIntent, opts: { aboveUsd?: number } = {}): PaymentIntent {
     return { ...intent, coverRequired: true, coverRequiredAboveUsd: opts.aboveUsd ?? null };
-  }
-}
-
-/** The Capital Provider (LP): supplies / recalls first-loss capital. */
-export class CapitalClient {
-  constructor(private readonly t: Transport) {}
-  depositCapital(req: CapitalDepositRequest): Promise<LpPosition> {
-    return this.t.request("POST", "/capital/deposit", req);
-  }
-  withdrawCapital(req: CapitalWithdrawRequest): Promise<LpPosition> {
-    return this.t.request("POST", "/capital/withdraw", req);
-  }
-  positions(): Promise<LpPosition[]> {
-    return this.t.request("GET", "/capital");
   }
 }
 
@@ -129,16 +94,12 @@ export class InsurerClient {
 
 /** Entry point: one object exposing every party's client. */
 export class InsuranceProtocol {
-  readonly agent: AgentClient;
   readonly merchant: MerchantClient;
-  readonly lp: CapitalClient;
   readonly insurer: InsurerClient;
 
   constructor(config: InsuranceSdkConfig = {}) {
     const t = new Transport(config);
-    this.agent = new AgentClient(t);
     this.merchant = new MerchantClient();
-    this.lp = new CapitalClient(t);
     this.insurer = new InsurerClient(t);
   }
 }

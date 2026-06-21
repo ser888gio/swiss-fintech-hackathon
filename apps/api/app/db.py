@@ -73,6 +73,18 @@ async def init_db(database_url: str) -> bool:
                         "ALTER TABLE credentials "
                         "ADD COLUMN IF NOT EXISTS subject_entity_type VARCHAR"
                     ))
+                    await conn.execute(text(
+                        "ALTER TABLE agents "
+                        "ADD COLUMN IF NOT EXISTS auto_insure JSON"
+                    ))
+                elif conn.dialect.name == "sqlite":
+                    # SQLite doesn't support IF NOT EXISTS on ALTER TABLE
+                    try:
+                        await conn.execute(text(
+                            "ALTER TABLE agents ADD COLUMN auto_insure JSON"
+                        ))
+                    except Exception:
+                        pass  # column already exists
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
         log.info("Postgres connected; audit store ready.")
         return True

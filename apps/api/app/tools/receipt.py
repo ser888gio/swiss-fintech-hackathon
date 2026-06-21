@@ -198,16 +198,22 @@ def _policy(payment: Payment) -> dict | None:
 
 
 def _cover(payment: Payment) -> dict | None:
-    if payment.cover is None:
+    coverage = payment.coverage
+    if coverage.quote is None:
         return None
+    quote = coverage.quote
     return {
-        "decision": payment.cover.decision.value,
-        "premium": payment.cover.premium,
-        "lines": payment.cover.lines,
-        "pd": payment.cover.pd,
-        "credibility": payment.cover.credibility,
-        "reason": payment.cover.reason,
-        "receiptHash": payment.cover.receipt_hash,
+        "status": coverage.status.value,
+        "requiredBy": coverage.required_by,
+        "decision": quote.decision.value,
+        "premium": quote.premium,
+        "lines": quote.lines,
+        "pd": quote.pd,
+        "credibility": quote.credibility,
+        "reason": coverage.reason or quote.reason,
+        "receiptHash": quote.receipt_hash,
+        "premiumTxHash": coverage.premium.tx_hash if coverage.premium else None,
+        "premiumExplorerUrl": coverage.premium.explorer_url if coverage.premium else None,
     }
 
 

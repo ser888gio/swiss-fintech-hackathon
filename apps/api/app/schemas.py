@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
@@ -412,7 +413,7 @@ class Payment(CamelModel):
     explorer_url_secondary: str | None = None
     audit_explanation: str | None = None
     receipt_hash: str | None = None
-    cover: PremiumQuote | None = None
+    coverage: PaymentCoverage = Field(default_factory=lambda: PaymentCoverage())
     agent_id: str | None = None    # set when initiated by a business agent
     guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
     created_at: datetime
@@ -494,6 +495,14 @@ class AgentStatus(str, Enum):
     paused = "paused"
 
 
+class AutoInsureConfig(CamelModel):
+    mode: Literal["inherit", "off", "on"] = "inherit"
+    amount_threshold_usd: float | None = None
+    insure_new_counterparty: bool | None = None
+    insure_unverified_counterparty: bool | None = None
+    package: Literal["Essential", "Standard", "Full-Stack"] | None = None
+
+
 class AgentCreate(CamelModel):
     """Request body for creating a business-defined payment agent."""
 
@@ -512,6 +521,7 @@ class AgentCreate(CamelModel):
     allowed_hosts: list[str] | None = None
     blocked_hosts: list[str] = Field(default_factory=list)
     require_known_merchant: bool = False
+    auto_insure: AutoInsureConfig | None = None
 
 
 class Agent(AgentCreate):
@@ -541,6 +551,7 @@ class AgentUpdate(CamelModel):
     allowed_hosts: list[str] | None = None
     blocked_hosts: list[str] | None = None
     require_known_merchant: bool | None = None
+    auto_insure: AutoInsureConfig | None = None
 
 
 class AgentDashboardStats(CamelModel):
@@ -891,6 +902,23 @@ class PremiumQuote(CamelModel):
     receipt_hash: str
 
 
+class CoverageStatus(str, Enum):
+    not_required = "not_required"
+    bound = "bound"
+    review = "review"
+    declined = "declined"
+
+
+class PaymentCoverage(CamelModel):
+    """Persisted insurance outcome produced by deterministic payment policy."""
+
+    status: CoverageStatus = CoverageStatus.not_required
+    required_by: str | None = None
+    quote: PremiumQuote | None = None
+    premium: InsurancePremiumRecord | None = None
+    reason: str | None = None
+
+
 class InsuranceQuoteRequest(CamelModel):
     agent_address: str
     score_band: str = "STANDARD"
@@ -931,35 +959,6 @@ class PoolStatus(CamelModel):
     payouts_made: str = "0"                      # Decimal string
     capacity_ratio: float = 0.0                  # first_loss / base capital
     vault_balance: str = "0"                     # Decimal string — on-ledger XLS-65 vault balance
-    lp_capital: str = "0"                        # Decimal string — total LP-provided capital
-
-
-# ── ARS Insurance — Capital Provider (LP) ─────────────────────────────────────
-
-class CapitalDepositRequest(CamelModel):
-    """An LP contributes first-loss capital to the Insurance pool."""
-
-    lp_address: str
-    amount: str                                  # Decimal string
-    currency: str = "RLUSD"
-
-
-class CapitalWithdrawRequest(CamelModel):
-    lp_address: str
-    amount: str                                  # Decimal string
-
-
-class LpPosition(CamelModel):
-    """An LP's share of the first-loss pool."""
-
-    lp_address: str
-    capital: str                                 # Decimal string — capital contributed
-    share_pct: float                             # pro-rata share of LP capital
-    currency: str = "RLUSD"
-    tx_hash: str | None = None
-    explorer_url: str | None = None
-    guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
-    updated_at: datetime
 
 
 # ── Agent Cover (annual policy — hallucination + non-delivery) ────────────────
@@ -967,6 +966,9 @@ class LpPosition(CamelModel):
 class CoverLineKind(str, Enum):
     hallucination = "hallucination"
     non_delivery = "non_delivery"
+    fx_slippage = "fx_slippage"
+    mandate_breach = "mandate_breach"
+    counterparty_default = "counterparty_default"
 
 
 class CoverPolicyStatus(str, Enum):

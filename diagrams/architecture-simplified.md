@@ -12,7 +12,8 @@ makes them.
 
 ### Dashboard (React/Vite)
 **Purpose**: Operator submits intents and approves locked payments across the
-payments, treasury, insurance, cover, credentials, and demo workspaces.
+payments, treasury, agent cover, credentials, and demo workspaces. Transaction
+insurance is surfaced contextually on payment records rather than as a workspace.
 
 ### Orchestrator (FastAPI)
 **Purpose**: Runs each workflow as a fixed sequence of deterministic tool calls and

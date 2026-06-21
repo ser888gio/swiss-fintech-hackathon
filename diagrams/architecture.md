@@ -30,7 +30,7 @@ TypeScript contracts via `@treasury/shared` (mirrored by hand into Pydantic
 - **Technology**: TypeScript, React 18, Vite. Hash-free pathname router in
   `App.tsx` with lazy-loaded pages.
 - **Entry Points**: `main.tsx` → `App.tsx`; pages include `DashboardPage`,
-  `TransferPage`, `TreasuryPage`, `InsurancePage`, `CoverPage`,
+  `TransferPage`, `TreasuryPage`, `CoverPage`,
   `CredentialsPage`, `SanctionsPage`, `WalletPage`, `DemoLabPage`.
 - **Dependencies**: `lib/api.ts` (typed REST client for the whole API surface),
   `lib/firefly.ts` (local bridge), `@treasury/shared` types.
@@ -124,7 +124,7 @@ TypeScript contracts via `@treasury/shared` (mirrored by hand into Pydantic
 | POST | `/credentials` · `/credentials/{id}/accept` | Issue / accept XLS-70 credential |
 | GET/POST | `/treasury/goals` · `/treasury/run` | Autonomous agent goals & runs |
 | POST | `/treasury/service-payment` | x402 pay-at-need |
-| POST | `/treasury/insurance/quote` · `/cover/quote` | Pricing engines |
+| POST | `/cover/quote` | Annual agent-cover pricing |
 | POST | `/agents` · `/agents/{id}/run` | Business-defined payment agents |
 | POST | `/redteam/attack` | DEMO-only red-team scenarios |
 

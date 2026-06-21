@@ -142,6 +142,18 @@ LINE_PARAMS: dict[str, LineParams] = {
     "non_delivery": LineParams(
         lgd=0.80, floor=Decimal("0.50"), limit=Decimal("100000"), recovery_rate=0.90
     ),
+    # Cover module peril: FX rate moved beyond tolerance after agent locked in the route.
+    "fx_slippage": LineParams(
+        lgd=1.0, floor=Decimal("0.25"), limit=Decimal("10000"), recovery_rate=1.0
+    ),
+    # Cover module peril: agent exceeded its spending mandate (wrong category / over limit).
+    "mandate_breach": LineParams(
+        lgd=0.95, floor=Decimal("1.00"), limit=Decimal("100000"), recovery_rate=0.85
+    ),
+    # Cover module peril: counterparty accepted payment then defaulted / became unreachable.
+    "counterparty_default": LineParams(
+        lgd=0.70, floor=Decimal("0.50"), limit=Decimal("100000"), recovery_rate=0.90
+    ),
 }
 
 

@@ -250,7 +250,7 @@ No autonomous-agent loss history exists, so early pricing must be safe-by-constr
 - **Gate:** `decide(PAYMENT)` consults the cover requirement (§3); if required and unbound → REVIEW/auto-bind.
 - **Inputs:** the certified `ScoreBand` selects the band prior; `PoolState` (tier capacity, first-loss level) feeds LGD and the solvency gate.
 - **Outcomes:** settle/default emit ARS events; the off-chain core consumes them to `update()` the posterior; a periodic posterior summary can be anchored on-chain for audit.
-- **On/off-chain split:** the core (PD, RR, posterior) runs off-chain; the envelope (`price`, floors, caps, the solvency gate, the receipt) is deterministic and anchored — so what touches LP capital is always auditable, even though the model that informs it is rich.
+- **On/off-chain split:** the core (PD, RR, posterior) runs off-chain; the envelope (`price`, floors, caps, the solvency gate, the receipt) is deterministic and anchored — so what touches operator-funded pool capital is always auditable, even though the model that informs it is rich.
 
 ---
 

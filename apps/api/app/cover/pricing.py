@@ -95,7 +95,12 @@ def price_cover(
     for line in lines:
         if line == CoverLineKind.hallucination:
             rate = _hallucination_rate(hallucination_rate, rate_min, rate_max)
-        elif line == CoverLineKind.non_delivery:
+        elif line in (
+            CoverLineKind.non_delivery,
+            CoverLineKind.fx_slippage,
+            CoverLineKind.mandate_breach,
+            CoverLineKind.counterparty_default,
+        ):
             rate = _non_delivery_rate(r, rate_min, rate_max)
         else:
             rate = Decimal(str(rate_min)).quantize(_Q6)

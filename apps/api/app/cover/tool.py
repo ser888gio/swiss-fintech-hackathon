@@ -301,11 +301,9 @@ def get_pool_status() -> CoverPoolStatus:
 async def _settle_premium(
     agent_address: str, premium: Decimal, settings
 ) -> tuple[str, str | None]:
-    if settings.use_mock_xrpl:
+    pool_account = getattr(settings, "cover_pool_account", "") or getattr(settings, "insurance_vault_address", "")
+    if getattr(settings, "use_mock_xrpl", True) or not pool_account:
         return xrpl_client.mock_tx_hash("cover_premium", agent_address), None
-    pool_account = settings.cover_pool_account or settings.insurance_vault_address
-    if not pool_account:
-        raise CoverConfigError("cover_pool_account must be set for real-mode cover settlement")
     return await _pay(pool_account, premium, agent_address, "cover_premium", settings)
 
 

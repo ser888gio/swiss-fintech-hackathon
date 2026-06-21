@@ -255,9 +255,19 @@ export interface Payment {
   explorerUrlSecondary: string | null;
   auditExplanation: string | null;
   receiptHash: string | null;
-  cover: PremiumQuote | null;
+  coverage: PaymentCoverage;
   createdAt: string;
   updatedAt: string;
+}
+
+export type CoverageStatus = "not_required" | "bound" | "review" | "declined";
+
+export interface PaymentCoverage {
+  status: CoverageStatus;
+  requiredBy: "policy" | "counterparty" | "risk" | "legacy" | null;
+  quote: PremiumQuote | null;
+  premium: InsurancePremiumRecord | null;
+  reason: string | null;
 }
 
 export interface AgentLogEntry {
@@ -397,6 +407,14 @@ export interface BridgeSignResponse {
 
 export type AgentStatus = "active" | "paused";
 
+export interface AutoInsureConfig {
+  mode: "inherit" | "off" | "on";
+  amountThresholdUsd?: number | null;
+  insureNewCounterparty?: boolean | null;
+  insureUnverifiedCounterparty?: boolean | null;
+  package?: InsurancePackage | null;
+}
+
 export interface AgentCreate {
   id: string;
   name: string;
@@ -413,6 +431,7 @@ export interface AgentCreate {
   allowedHosts?: string[] | null;
   blockedHosts?: string[];
   requireKnownMerchant?: boolean;
+  autoInsure?: AutoInsureConfig | null;
 }
 
 export interface Agent extends AgentCreate {
@@ -438,6 +457,7 @@ export interface AgentUpdate {
   allowedHosts?: string[] | null;
   blockedHosts?: string[] | null;
   requireKnownMerchant?: boolean;
+  autoInsure?: AutoInsureConfig | null;
 }
 
 export interface AgentDashboardStats {
@@ -669,7 +689,6 @@ export interface PoolStatus {
   payoutsMade: string;
   capacityRatio: number;
   vaultBalance: string;
-  lpCapital: string;
 }
 
 export interface AgentRiskState {
@@ -695,20 +714,6 @@ export interface TxnContext {
   package?: InsurancePackage | null;  // expands to activeLines server-side
 }
 
-export interface InsuranceQuoteRequest {
-  agentAddress: string;
-  scoreBand?: string;
-  txnContext: TxnContext;
-}
-
-export interface BindRequest {
-  jobId: string;
-  agentAddress: string;
-  scoreBand?: string;
-  currency?: string;
-  quote: PremiumQuote;
-}
-
 export interface ClaimRequest {
   jobId: string;
   agentAddress: string;
@@ -726,32 +731,9 @@ export interface ClaimRequest {
   intendedAmount?: string;    // for fx_slippage: the intended delivery amount
 }
 
-// Capital Provider (LP)
-export interface CapitalDepositRequest {
-  lpAddress: string;
-  amount: string;
-  currency?: string;
-}
-
-export interface CapitalWithdrawRequest {
-  lpAddress: string;
-  amount: string;
-}
-
-export interface LpPosition {
-  lpAddress: string;
-  capital: string;
-  sharePct: number;
-  currency: string;
-  txHash: string | null;
-  explorerUrl: string | null;
-  guardrailTrail: GuardrailResult[];
-  updatedAt: string;
-}
-
 // ── Agent Cover (annual policy — hallucination) ───────────────────────────────
 
-export type CoverLineKind = "hallucination" | "non_delivery";
+export type CoverLineKind = "hallucination" | "non_delivery" | "fx_slippage" | "mandate_breach" | "counterparty_default";
 export type CoverPolicyStatus = "active" | "expired" | "exhausted" | "cancelled";
 export type CoverLossBearerKind = "merchant" | "treasury";
 export type CoverDecision = "OFFER" | "REVIEW" | "DECLINE";

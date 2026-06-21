@@ -199,9 +199,12 @@ payout, and credential issuance, all linking to `devnet.xrpl.org`.
 | `INSURANCE_ENABLED` | master switch for the pillar |
 | `INSURANCE_USE_VAULT` | `false` = Payment mode (any net); `true` = XLS-65 vault (Devnet) |
 | `INSURANCE_VAULT_ADDRESS` | pool account (premium payee / payout source) |
-| `INSURANCE_POOL_FIRST_LOSS_USD` | notional LP first-loss tranche |
+| `INSURANCE_POOL_FIRST_LOSS_USD` | operator-funded first-loss capital |
 | `INSURANCE_PREMIUM_CAP_USD` | hard cap on a single premium |
-| `INSURANCE_COVER_REQUIRED_ABOVE_USD` | default cover-mandate threshold |
+| `INSURANCE_COVER_REQUIRED_ABOVE_USD` | global automatic-cover amount threshold |
+| `INSURANCE_AUTO_NEW_CPTY` | globally insure new counterparties |
+| `INSURANCE_AUTO_UNVERIFIED_CPTY` | globally insure unverified counterparties |
+| `INSURANCE_DEFAULT_PACKAGE` | global Essential / Standard / Full-Stack package |
 
 The rich calibration tables (band priors, RR multipliers, per-line params) live
 in `app/insurance/tables.py` and are overridden at the boundary by config.
