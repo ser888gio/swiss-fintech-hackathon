@@ -20,16 +20,16 @@ the conventions — including the one rule: the LLM never decides policy or sign
 
 ### Architecture
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./diagrams/architecture-simplified-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./diagrams/architecture-simplified-light.svg">
-  <img alt="Architecture Overview" src="./diagrams/architecture-simplified-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./diagrams/architecture-simplified-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="./diagrams/architecture-simplified-light.png">
+  <img alt="Architecture Overview" src="./diagrams/architecture-simplified-light.png">
 </picture>
 
 ### Infrastructure
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./diagrams/infrastructure-simplified-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./diagrams/infrastructure-simplified-light.svg">
-  <img alt="Infrastructure Overview" src="./diagrams/infrastructure-simplified-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./diagrams/infrastructure-simplified-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="./diagrams/infrastructure-simplified-light.png">
+  <img alt="Infrastructure Overview" src="./diagrams/infrastructure-simplified-light.png">
 </picture>
 
 [More diagrams →](./diagrams/README.md)
