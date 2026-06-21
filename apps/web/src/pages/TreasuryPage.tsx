@@ -196,9 +196,9 @@ function AutoInsureFields({ value, onChange }: {
   return (
     <fieldset style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "0.7rem", display: "grid", gap: "0.55rem" }}>
       <legend style={{ fontSize: "0.75rem", fontWeight: 700, padding: "0 0.25rem" }}>Auto-insure</legend>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", fontSize: "0.73rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.6rem", fontSize: "0.73rem" }}>
         {(["inherit", "off", "on"] as const).map((mode) => (
-          <label key={mode} style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+          <label key={mode} style={{ display: "flex", alignItems: "center", gap: "0.35rem", whiteSpace: "nowrap" }}>
             <input type="radio" name="auto-insure-mode" checked={config.mode === mode} onChange={() => setMode(mode)} />
             {mode === "inherit" ? "Inherit global" : mode === "off" ? "Off" : "Custom"}
           </label>
