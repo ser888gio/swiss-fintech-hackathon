@@ -1539,6 +1539,17 @@ a {
   color: var(--orange);
 }
 
+.credential-warning {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(209, 103, 31, 0.34);
+  border-radius: 14px;
+  background: rgba(209, 103, 31, 0.08);
+  color: var(--paper);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .error,
 .tamper-error {
   padding: 12px;

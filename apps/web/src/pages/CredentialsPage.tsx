@@ -36,6 +36,7 @@ export function CredentialsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedLogs, setExpandedLogs] = useState<Record<string, CredentialLogEntry[]>>({});
+  const subjectMismatch = subject.trim().length > 0 && subject.trim() !== ACCEPTING_SUBJECT;
 
   const refresh = useCallback(async () => {
     try {
@@ -154,6 +155,11 @@ export function CredentialsPage() {
             <span>Subject address</span>
             <input name="subject-address" autoComplete="off" value={subject} onChange={(e) => setSubject(e.target.value)} disabled={busy} spellCheck={false} />
           </label>
+          {subjectMismatch && (
+            <p className="credential-warning" role="status">
+              This demo can only auto-accept credentials for <code>{ACCEPTING_SUBJECT}</code>. A different subject can still be issued a credential, but acceptance must happen from that subject wallet.
+            </p>
+          )}
           <div className="recipient-meta">
             <label>
               <span>Country</span>
@@ -192,7 +198,7 @@ export function CredentialsPage() {
           disabled={busy || subject.trim().length === 0}
           onClick={() => void submit()}
         >
-          {busy ? "Issuing…" : autoAccept ? "Issue & Accept Credential" : "Issue Credential"}
+          {busy ? "Issuing…" : autoAccept && subjectMismatch ? "Issue Credential (accept blocked)" : autoAccept ? "Issue & Accept Credential" : "Issue Credential"}
         </button>
 
         <section className="queue">
@@ -206,6 +212,12 @@ export function CredentialsPage() {
                 </strong>
                 {record.userId && <p className="muted">User: <code>{record.userId}</code></p>}
                 {record.subjectCountry && <p className="muted">{record.subjectCountry} · {record.subjectEntityType ?? "company"}</p>}
+                <p className="muted">Subject wallet: <code>{record.subject}</code></p>
+                {record.subject !== ACCEPTING_SUBJECT && (
+                  <p className="credential-warning" role="status">
+                    This credential belongs to a different wallet than the demo signer. Use that subject wallet to accept it, or reissue it to <code>{ACCEPTING_SUBJECT}</code> for the one-click path.
+                  </p>
+                )}
                 <p>
                   <span className={`dashboard-status status-${record.status}`}>
                     {STATUS_LABEL[record.status]}
@@ -244,6 +256,8 @@ export function CredentialsPage() {
                   <button
                     className="text-action"
                     type="button"
+                    disabled={record.subject !== ACCEPTING_SUBJECT}
+                    title={record.subject !== ACCEPTING_SUBJECT ? "Only the subject wallet can accept this credential in the current demo" : undefined}
                     onClick={() => void act(async () => {
                       await api.acceptCredential(record.id);
                       return api.verifyCredential(record.id);
