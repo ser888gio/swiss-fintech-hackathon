@@ -134,7 +134,7 @@ export function WalletPage() {
             <span>Updated {TIME_FORMAT.format(new Date(wallet.fetchedAt))}</span>
           </div>
           <div className="wallet-networks">
-            {wallet.networks.map((snapshot) => <NetworkPanel key={snapshot.network} snapshot={snapshot} />)}
+            {[...wallet.networks].sort((a, b) => (a.network === "devnet" ? -1 : b.network === "devnet" ? 1 : 0)).map((snapshot) => <NetworkPanel key={snapshot.network} snapshot={snapshot} />)}
           </div>
         </>
       )}

@@ -747,7 +747,7 @@ export function TreasuryPage() {
         <strong style={{ color: "var(--paper)" }}>Agent Builder</strong> — create and manage autonomous payment agents with deterministic policy guardrails. Each agent has a daily budget, per-transaction cap, and an approval threshold encoded in code; payments above that threshold are locked on-chain and require <a href="https://firefly.app/" target="_blank" rel="noreferrer" style={{ color: "var(--orange)", textDecoration: "none" }}>Firefly</a> hardware approval (a secure veto device) before funds move. The agent explains; code decides; no one, including the agent, can move a large payment without the device in hand. Use "Seed Maersk fleet" to load a ready-made 5-agent demo.
       </div>
       {/* Page header */}
-      <div style={{ marginBottom: "1rem", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+      <div className="treasury-page-header">
         <div>
           <span className="eyebrow">Payment Agents</span>
           <h2 style={{ margin: "0.2rem 0 0.2rem" }}>Agent Builder</h2>
@@ -755,7 +755,7 @@ export function TreasuryPage() {
             Create agents with policy guardrails. Code decides and signs — the agent explains.
           </p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div className="treasury-page-actions">
           <button type="button" className="text-action" onClick={() => void seedFleet()}>Seed Maersk fleet</button>
           <button type="button" className="primary-action" disabled={controllerRunning || fleet.length === 0} onClick={() => void runFleet()} style={{ minHeight: "unset", padding: "0.4rem 0.8rem" }}>
             {controllerRunning ? "Running controller…" : "Run controller"}
@@ -780,15 +780,22 @@ export function TreasuryPage() {
             <div><span className="eyebrow">Maersk Treasury Fleet</span><strong style={{ marginLeft: "0.6rem" }}>5 subagents · one shared wallet</strong></div>
             {fleetMessage && <span className="muted" style={{ fontSize: "0.72rem" }}>{fleetMessage}</span>}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "0.55rem" }}>
+          <div style={{ display: "grid", gap: "0.4rem" }}>
             {fleet.map((agent) => {
               const stats = fleetStats[agent.id];
-              return <div key={agent.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "0.7rem", background: "rgba(255,255,255,0.025)" }}>
-                <strong style={{ fontSize: "0.78rem" }}>{agent.name}</strong>
-                <div className="muted" style={{ fontSize: "0.68rem", marginTop: "0.2rem" }}>{agent.allowedCategories?.[0] ?? "scoped"}</div>
-                <div style={{ fontSize: "0.7rem", marginTop: "0.45rem" }}>{stats?.amountSpentToday ?? "0"} / {agent.maxDailySpend} RLUSD</div>
-                <div className="muted" style={{ fontSize: "0.66rem" }}>tx cap {agent.maxSinglePayment} · blocked {stats?.totalBlocked ?? 0}</div>
-              </div>;
+              return (
+                <div key={agent.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", border: "1px solid var(--border)", borderRadius: 10, padding: "0.55rem 0.8rem", background: "rgba(255,255,255,0.025)" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ fontSize: "0.82rem" }}>{agent.name}</strong>
+                    <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "0.7rem" }}>{agent.allowedCategories?.[0] ?? "scoped"}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: "1.25rem", flexShrink: 0, fontSize: "0.72rem", color: "var(--muted)" }}>
+                    <span><strong style={{ color: "var(--paper)" }}>{stats?.amountSpentToday ?? "0"}</strong> / {agent.maxDailySpend} RLUSD</span>
+                    <span>tx cap <strong style={{ color: "var(--paper)" }}>{agent.maxSinglePayment}</strong></span>
+                    <span>blocked <strong style={{ color: stats?.totalBlocked ? "var(--orange)" : "var(--paper)" }}>{stats?.totalBlocked ?? 0}</strong></span>
+                  </div>
+                </div>
+              );
             })}
           </div>
           <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "0.7rem 0.9rem" }}>
@@ -807,7 +814,7 @@ export function TreasuryPage() {
       )}
 
       {/* Two-column layout */}
-      <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: "1.5rem", alignItems: "start" }}>
+      <div className="treasury-agent-layout">
         {/* Left rail — agent list */}
         <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
           <button type="button" className="primary-action"

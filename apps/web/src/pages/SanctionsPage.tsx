@@ -1,4 +1,4 @@
-import { Component, type ReactNode, Suspense, lazy } from "react";
+import { Component, type ReactNode, Suspense, lazy, useEffect, useRef, useState } from "react";
 import { feature } from "topojson-client";
 import type { FeatureCollection } from "geojson";
 // Import world-atlas topology directly — no network fetch
@@ -61,23 +61,42 @@ function polygonLabel(feat: any): string {
 const Globe = lazy(() => import("react-globe.gl").then((m) => ({ default: m.default as any })));
 
 function GlobeView() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => setWidth(el.offsetWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const h = width > 0 ? Math.min(480, Math.max(240, Math.round(width * 0.52))) : 0;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const G = Globe as any;
   return (
-    <G
-      globeImageUrl={null}
-      atmosphereColor="#1e40af"
-      atmosphereAltitude={0.18}
-      backgroundColor="#05070e"
-      polygonsData={GEO_FEATURES}
-      polygonAltitude={0.006}
-      polygonCapColor={capColor}
-      polygonSideColor={() => "rgba(0,0,0,0.15)"}
-      polygonStrokeColor={() => "#0f172a"}
-      polygonLabel={polygonLabel}
-      width={1000}
-      height={640}
-    />
+    <div ref={containerRef} style={{ width: "100%", height: h || undefined, display: "flex", justifyContent: "center", overflow: "hidden" }}>
+      {width > 0 && (
+        <G
+          globeImageUrl={null}
+          atmosphereColor="#1e40af"
+          atmosphereAltitude={0.18}
+          backgroundColor="#05070e"
+          polygonsData={GEO_FEATURES}
+          polygonAltitude={0.006}
+          polygonCapColor={capColor}
+          polygonSideColor={() => "rgba(0,0,0,0.15)"}
+          polygonStrokeColor={() => "#0f172a"}
+          polygonLabel={polygonLabel}
+          width={width}
+          height={h}
+        />
+      )}
+    </div>
   );
 }
 
@@ -130,7 +149,7 @@ export function SanctionsPage() {
           </span>
         </div>
 
-        <div style={{ position: "relative", width: "100%", height: 640, borderRadius: 12, overflow: "hidden", background: "#05070e" }}>
+        <div style={{ position: "relative", width: "100%", borderRadius: 12, overflow: "hidden", background: "#05070e" }}>
           <GlobeErrorBoundary>
             <Suspense fallback={
               <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: "0.85rem" }}>
@@ -144,59 +163,63 @@ export function SanctionsPage() {
       </div>
 
       {/* Dashboard tables */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
-        <div className="gate-scenario" style={{ padding: "1rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.25rem" }}>
+        <div className="gate-scenario" style={{ padding: "1rem", minWidth: 0 }}>
           <div className="section-heading" style={{ marginBottom: "0.6rem" }}>
             <span className="eyebrow">Entity screening</span>
             <strong>Banned companies ({BANNED_COMPANIES.length})</strong>
           </div>
-          <table style={{ width: "100%", fontSize: "0.78rem", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ color: "var(--muted)", textAlign: "left" }}>
-                <th style={{ paddingBottom: "0.4rem", fontWeight: 500 }}>Name</th>
-                <th style={{ paddingBottom: "0.4rem", fontWeight: 500 }}>Country</th>
-                <th style={{ paddingBottom: "0.4rem", fontWeight: 500 }}>Program</th>
-                <th style={{ paddingBottom: "0.4rem", fontWeight: 500, whiteSpace: "nowrap" }}>Listed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {BANNED_COMPANIES.map((c, i) => (
-                <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
-                  <td style={{ padding: "0.3rem 0.5rem 0.3rem 0", color: "var(--paper)" }}>{c.name}</td>
-                  <td style={{ padding: "0.3rem 0.5rem", color: "var(--muted)" }}>{c.country}</td>
-                  <td style={{ padding: "0.3rem 0.5rem", color: "var(--muted)", fontSize: "0.72rem" }}>{c.program}</td>
-                  <td style={{ padding: "0.3rem 0 0.3rem 0.5rem", color: "var(--muted)", whiteSpace: "nowrap" }}>{c.listedSince}</td>
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+            <table style={{ width: "100%", minWidth: 320, fontSize: "0.78rem", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ color: "var(--muted)", textAlign: "left" }}>
+                  <th style={{ paddingBottom: "0.4rem", fontWeight: 500 }}>Name</th>
+                  <th style={{ paddingBottom: "0.4rem", fontWeight: 500 }}>Country</th>
+                  <th style={{ paddingBottom: "0.4rem", fontWeight: 500 }}>Program</th>
+                  <th style={{ paddingBottom: "0.4rem", fontWeight: 500, whiteSpace: "nowrap" }}>Listed</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {BANNED_COMPANIES.map((c, i) => (
+                  <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
+                    <td style={{ padding: "0.3rem 0.5rem 0.3rem 0", color: "var(--paper)" }}>{c.name}</td>
+                    <td style={{ padding: "0.3rem 0.5rem", color: "var(--muted)" }}>{c.country}</td>
+                    <td style={{ padding: "0.3rem 0.5rem", color: "var(--muted)", fontSize: "0.72rem" }}>{c.program}</td>
+                    <td style={{ padding: "0.3rem 0 0.3rem 0.5rem", color: "var(--muted)", whiteSpace: "nowrap" }}>{c.listedSince}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div className="gate-scenario" style={{ padding: "1rem" }}>
+        <div className="gate-scenario" style={{ padding: "1rem", minWidth: 0 }}>
           <div className="section-heading" style={{ marginBottom: "0.6rem" }}>
             <span className="eyebrow">PEP / SDN screening</span>
             <strong>Sanctioned persons ({SANCTIONED_PERSONS.length})</strong>
           </div>
-          <table style={{ width: "100%", fontSize: "0.78rem", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ color: "var(--muted)", textAlign: "left" }}>
-                <th style={{ paddingBottom: "0.4rem", fontWeight: 500 }}>Name</th>
-                <th style={{ paddingBottom: "0.4rem", fontWeight: 500 }}>Country</th>
-                <th style={{ paddingBottom: "0.4rem", fontWeight: 500 }}>Role</th>
-                <th style={{ paddingBottom: "0.4rem", fontWeight: 500, whiteSpace: "nowrap" }}>Listed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {SANCTIONED_PERSONS.map((p, i) => (
-                <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
-                  <td style={{ padding: "0.3rem 0.5rem 0.3rem 0", color: "var(--paper)" }}>{p.name}</td>
-                  <td style={{ padding: "0.3rem 0.5rem", color: "var(--muted)" }}>{p.country}</td>
-                  <td style={{ padding: "0.3rem 0.5rem", color: "var(--muted)", fontSize: "0.72rem" }}>{p.role}</td>
-                  <td style={{ padding: "0.3rem 0 0.3rem 0.5rem", color: "var(--muted)", whiteSpace: "nowrap" }}>{p.listedSince}</td>
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+            <table style={{ width: "100%", minWidth: 320, fontSize: "0.78rem", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ color: "var(--muted)", textAlign: "left" }}>
+                  <th style={{ paddingBottom: "0.4rem", fontWeight: 500 }}>Name</th>
+                  <th style={{ paddingBottom: "0.4rem", fontWeight: 500 }}>Country</th>
+                  <th style={{ paddingBottom: "0.4rem", fontWeight: 500 }}>Role</th>
+                  <th style={{ paddingBottom: "0.4rem", fontWeight: 500, whiteSpace: "nowrap" }}>Listed</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {SANCTIONED_PERSONS.map((p, i) => (
+                  <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
+                    <td style={{ padding: "0.3rem 0.5rem 0.3rem 0", color: "var(--paper)" }}>{p.name}</td>
+                    <td style={{ padding: "0.3rem 0.5rem", color: "var(--muted)" }}>{p.country}</td>
+                    <td style={{ padding: "0.3rem 0.5rem", color: "var(--muted)", fontSize: "0.72rem" }}>{p.role}</td>
+                    <td style={{ padding: "0.3rem 0 0.3rem 0.5rem", color: "var(--muted)", whiteSpace: "nowrap" }}>{p.listedSince}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>

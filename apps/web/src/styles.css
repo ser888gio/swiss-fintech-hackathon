@@ -2050,6 +2050,53 @@ a {
   }
 }
 
+/* Treasury page header */
+.treasury-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.treasury-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .treasury-page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .treasury-page-actions {
+    width: 100%;
+  }
+  .treasury-page-actions .text-action,
+  .treasury-page-actions .primary-action {
+    flex: 1;
+    text-align: center;
+  }
+}
+
+/* Treasury agent two-column layout */
+.treasury-agent-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 700px) {
+  .treasury-agent-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Agentic transaction detail (Treasury agent runs) ─────────────────────── */
 .agentic-tx-list {
   display: flex;
@@ -2160,6 +2207,15 @@ a {
   .activity-head { display: none; }
   .activity-row { grid-template-columns: 1fr; }
   .activity-row p { white-space: normal; }
+
+  /* Dashboard mobile fixes */
+  .attention-band { grid-template-columns: 1fr; }
+  .ops-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .obligations-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .obligations-head, .obligations-row { min-width: 460px; }
+  .trust-metrics.four-col { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mandate-limits { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .controls-strip { gap: 12px; }
 }
 
 @media (max-width: 640px) {
