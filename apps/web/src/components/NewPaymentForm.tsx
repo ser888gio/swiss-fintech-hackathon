@@ -23,9 +23,9 @@ const SENDERS = [
 ];
 
 const RECIPIENTS = [
-  { label: "Maersk Repair Yard", country: "US", entityType: "company" as const, account: "rJw33SjizSjbJiKB9PVmrgdWN3MAAUwr7v" },
-  { label: "Maersk Customs", country: "GB", entityType: "company" as const, account: "rJw33SjizSjbJiKB9PVmrgdWN3MAAUwr7v" },
-  { label: "ACME Shell Co", country: "RU", entityType: "company" as const, account: "rJw33SjizSjbJiKB9PVmrgdWN3MAAUwr7v" },
+  { id: "maersk-repair-yard", label: "Maersk Repair Yard", country: "US", entityType: "company" as const, account: "rJw33SjizSjbJiKB9PVmrgdWN3MAAUwr7v" },
+  { id: "maersk-customs", label: "Maersk Customs", country: "GB", entityType: "company" as const, account: "rJw33SjizSjbJiKB9PVmrgdWN3MAAUwr7v" },
+  { id: "acme-shell-co", label: "ACME Shell Co", country: "RU", entityType: "company" as const, account: "rJw33SjizSjbJiKB9PVmrgdWN3MAAUwr7v" },
 ];
 
 const NUMPAD = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "backspace"];
@@ -270,7 +270,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
             <span>To</span>
             <select name="saved-recipient" autoComplete="off" value={recipientIndex} onChange={(event) => setRecipientIndex(Number(event.target.value))} disabled={disabled}>
               {RECIPIENTS.map((option, index) => (
-                <option key={option.account} value={index}>
+                <option key={option.id} value={index}>
                   {option.label}
                 </option>
               ))}
