@@ -1,8 +1,9 @@
 idf_component_register(
   SRCS
     "main.c"
-    "panel_approve.c"
-    "panel_wait.c"
+    "panel_standby.c"
+    "panel_transaction.c"
+    "panel_result.c"
 
   INCLUDE_DIRS
     ""
