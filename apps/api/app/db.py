@@ -55,6 +55,24 @@ async def init_db(database_url: str) -> bool:
                         "ALTER TABLE service_payments "
                         "ADD COLUMN IF NOT EXISTS cover JSON"
                     ))
+                    # create_all does not add columns to an existing credentials
+                    # table. Keep the off-ledger user association additive.
+                    await conn.execute(text(
+                        "ALTER TABLE credentials "
+                        "ADD COLUMN IF NOT EXISTS user_id VARCHAR"
+                    ))
+                    await conn.execute(text(
+                        "CREATE INDEX IF NOT EXISTS ix_credentials_user_id "
+                        "ON credentials (user_id)"
+                    ))
+                    await conn.execute(text(
+                        "ALTER TABLE credentials "
+                        "ADD COLUMN IF NOT EXISTS subject_country VARCHAR"
+                    ))
+                    await conn.execute(text(
+                        "ALTER TABLE credentials "
+                        "ADD COLUMN IF NOT EXISTS subject_entity_type VARCHAR"
+                    ))
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
         log.info("Postgres connected; audit store ready.")
         return True

@@ -150,7 +150,11 @@ export type CredentialRecordStatus =
 
 export interface CredentialIssueRequest {
   subject: string;
+  /** Application user associated with this credential; never written on-ledger. */
+  userId?: string | null;
   subjectName?: string | null;
+  subjectCountry?: string | null;
+  subjectEntityType?: "company" | "individual" | null;
   credentialType?: string | null;
   uri?: string | null;
   expiration?: string | null;
@@ -168,8 +172,11 @@ export interface CredentialLogEntry {
 
 export interface CredentialRecord {
   id: string;
+  userId: string | null;
   subject: string;
   subjectName: string | null;
+  subjectCountry: string | null;
+  subjectEntityType: "company" | "individual" | null;
   issuer: string | null;
   credentialType: string | null;
   uri: string | null;

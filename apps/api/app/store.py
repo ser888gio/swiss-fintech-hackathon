@@ -386,8 +386,11 @@ def _row_to_payment(row: PaymentRecord) -> Payment:
 def _credential_to_row(record: CredentialRecord) -> CredentialRecordDB:
     return CredentialRecordDB(
         id=record.id,
+        user_id=record.user_id,
         subject=record.subject,
         subject_name=record.subject_name,
+        subject_country=record.subject_country,
+        subject_entity_type=(record.subject_entity_type.value if record.subject_entity_type else None),
         issuer=record.issuer,
         credential_type=record.credential_type,
         uri=record.uri,
@@ -409,8 +412,11 @@ def _credential_to_row(record: CredentialRecord) -> CredentialRecordDB:
 def _row_to_credential(row: CredentialRecordDB) -> CredentialRecord:
     return CredentialRecord(
         id=row.id,
+        user_id=getattr(row, "user_id", None),
         subject=row.subject,
         subject_name=row.subject_name,
+        subject_country=getattr(row, "subject_country", None),
+        subject_entity_type=getattr(row, "subject_entity_type", None),
         issuer=row.issuer,
         credential_type=row.credential_type,
         uri=row.uri,

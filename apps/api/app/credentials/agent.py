@@ -42,8 +42,11 @@ async def issue(request: CredentialIssueRequest) -> CredentialRecord:
 
     record = CredentialRecord(
         id=record_id,
+        user_id=request.user_id,
         subject=request.subject,
         subject_name=request.subject_name,
+        subject_country=request.subject_country,
+        subject_entity_type=request.subject_entity_type,
         issuer=issuer,
         credential_type=credential_type,
         uri=request.uri,
@@ -105,7 +108,7 @@ async def issue(request: CredentialIssueRequest) -> CredentialRecord:
             if not status.verified and request.auto_accept:
                 try:
                     return await accept(record_id)
-                except (NotImplementedError, InvalidCredentialState) as accept_exc:
+                except (NotImplementedError, InvalidCredentialState, ValueError) as accept_exc:
                     _log(record_id, f"Auto-accept skipped: {accept_exc}.")
             return _touch(record)
         record.status = CredentialRecordStatus.failed
@@ -127,9 +130,10 @@ async def issue(request: CredentialIssueRequest) -> CredentialRecord:
     if request.auto_accept:
         try:
             return await accept(record_id)
-        except (NotImplementedError, InvalidCredentialState) as exc:
+        except (NotImplementedError, InvalidCredentialState, ValueError) as exc:
             # Issuance succeeded; auto-accept is best-effort (e.g. no subject seed
-            # on a real network). Leave the record 'issued' for a manual accept.
+            # on a real network, or the configured seed controls a different
+            # subject). Leave the record 'issued' for subject-side acceptance.
             _log(record_id, f"Auto-accept skipped: {exc}.")
             return _touch(record)
 

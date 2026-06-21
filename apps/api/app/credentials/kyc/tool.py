@@ -199,10 +199,15 @@ async def accept_credential(
             "CREDENTIAL_SUBJECT_SEED (or an explicit subject_seed) is required to accept"
         )
 
-    from xrpl.models.transactions import CredentialAccept
-
     ledger = Ledger(settings)
     wallet = ledger.wallet(seed)
+    if wallet.address != subject:
+        raise ValueError(
+            "CredentialAccept must be signed by the credential subject. "
+            f"Configured CREDENTIAL_SUBJECT_SEED controls {wallet.address}, "
+            f"but this credential belongs to {subject}."
+        )
+    from xrpl.models.transactions import CredentialAccept
     tx = CredentialAccept(
         account=wallet.address,
         issuer=issuer,

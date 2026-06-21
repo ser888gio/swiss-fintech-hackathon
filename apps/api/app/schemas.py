@@ -287,7 +287,12 @@ class CredentialIssueRequest(CamelModel):
     """
 
     subject: str
+    # Application-owned user identifier. This stays off-ledger and associates
+    # the XRPL subject address with the user for whom KYC was performed.
+    user_id: str | None = None
     subject_name: str | None = None
+    subject_country: str | None = None
+    subject_entity_type: ReceiverEntityType | None = None
     credential_type: str | None = None
     uri: str | None = None
     expiration: datetime | None = None
@@ -308,8 +313,11 @@ class CredentialRecord(CamelModel):
     """Audit trail for one issued credential, mirroring the payment record shape."""
 
     id: str
+    user_id: str | None = None
     subject: str
     subject_name: str | None = None
+    subject_country: str | None = None
+    subject_entity_type: ReceiverEntityType | None = None
     issuer: str | None = None
     credential_type: str | None = None
     uri: str | None = None

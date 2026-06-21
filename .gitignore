@@ -26,6 +26,7 @@ secrets/
 
 # Local runtime artifacts (DBs, logs, vendored firmware, provisioning)
 data/
+*.db
 # Frontend source data is code, not a local runtime artifact.
 !apps/web/src/data/
 !apps/web/src/data/sanctions.ts

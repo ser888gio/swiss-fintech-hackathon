@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from app.schemas import CredentialStatus, PaymentIntent
 from app.tools import compliance
 from app.credentials.kyc import tool as credentials
@@ -74,6 +76,26 @@ async def test_mock_issue_credential_returns_hash(monkeypatch):
     assert len(result["txHash"]) == 64
     assert result["accepted"] is False
     assert result["explorerUrl"] is None
+
+
+async def test_real_accept_rejects_configured_wallet_mismatch(monkeypatch):
+    settings = _settings(
+        use_mock_xrpl=False,
+        credential_subject_seed="configured-seed",
+    )
+
+    class FakeLedger:
+        def __init__(self, _settings):
+            pass
+
+        def wallet(self, _seed):
+            return SimpleNamespace(address="rConfiguredSubject")
+
+    monkeypatch.setattr(credentials, "get_settings", lambda: settings)
+    monkeypatch.setattr(credentials, "Ledger", FakeLedger)
+
+    with pytest.raises(ValueError, match="must be signed by the credential subject"):
+        await credentials.accept_credential("rDifferentSubject")
 
 
 def _compliance_settings(**overrides):

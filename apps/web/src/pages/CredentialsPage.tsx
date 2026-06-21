@@ -16,16 +16,21 @@ const STATUS_LABEL: Record<CredentialRecord["status"], string> = {
 // for the subject whose seed is configured. The first entry is that subject (the
 // funded Devnet account) so issue+accept completes on-ledger. The sanctioned
 // entry is refused in code by NAME.
+const ACCEPTING_SUBJECT = import.meta.env.VITE_TREASURY_WALLET_ADDRESS ?? "rn71NnspjRQTneQuXbxCo54JFTPTW3U5iV";
+
 const SUBJECTS = [
-  { label: "Demo Merchant — KYC auto-accepts", name: "Demo Merchant", account: "rBBHb3oX4JxoGRU28X94iDRiZUPU8Xu7ur" },
+  { label: "Configured subject wallet — accepts on-ledger", name: "Credentialed User", account: ACCEPTING_SUBJECT },
   { label: "Globex Trading Ltd — triggers KYC gate", name: "Globex Trading Ltd", account: "rnt6pfdVx7cRsSrzm38783o7H4unfkpRqv" },
   { label: "Sanctioned party — issuance refused", name: "ACME Shell Co", account: "rDabdgRBdnms9zkbNtaLaVwqJuSbxjgroC" },
 ];
 
 export function CredentialsPage() {
   const [records, setRecords] = useState<CredentialRecord[]>([]);
-  const [subject, setSubject] = useState(SUBJECTS[1].account);
-  const [subjectName, setSubjectName] = useState(SUBJECTS[1].name);
+  const [subject, setSubject] = useState(SUBJECTS[0].account);
+  const [subjectName, setSubjectName] = useState(SUBJECTS[0].name);
+  const [userId, setUserId] = useState("");
+  const [subjectCountry, setSubjectCountry] = useState("CH");
+  const [subjectEntityType, setSubjectEntityType] = useState<"company" | "individual">("company");
   const [credentialType, setCredentialType] = useState("KYC");
   const [autoAccept, setAutoAccept] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -34,7 +39,20 @@ export function CredentialsPage() {
 
   const refresh = useCallback(async () => {
     try {
-      setRecords(await api.listCredentials());
+      const nextRecords = await api.listCredentials();
+      setRecords(nextRecords);
+      // Expanded log state is ephemeral React state. Rehydrate every record's
+      // audit log so a browser refresh does not make the creation trail vanish.
+      const logPairs = await Promise.all(
+        nextRecords.map(async (record) => {
+          try {
+            return [record.id, await api.getCredentialLogs(record.id)] as const;
+          } catch {
+            return [record.id, []] as const;
+          }
+        }),
+      );
+      setExpandedLogs(Object.fromEntries(logPairs));
     } catch (cause) {
       setError(String(cause));
     }
@@ -50,7 +68,10 @@ export function CredentialsPage() {
     try {
       const req: CredentialIssueRequest = {
         subject: subject.trim(),
+        userId: userId.trim() || null,
         subjectName: subjectName.trim() || null,
+        subjectCountry: subjectCountry.trim().toUpperCase() || null,
+        subjectEntityType,
         credentialType: credentialType.trim() || null,
         uri: null,
         autoAccept,
@@ -62,7 +83,7 @@ export function CredentialsPage() {
     } finally {
       setBusy(false);
     }
-  }, [subject, subjectName, credentialType, autoAccept, refresh]);
+  }, [subject, subjectName, subjectCountry, subjectEntityType, userId, credentialType, autoAccept, refresh]);
 
   const act = useCallback(
     async (action: () => Promise<CredentialRecord>) => {
@@ -126,10 +147,25 @@ export function CredentialsPage() {
             <input name="subject-name" autoComplete="off" value={subjectName} onChange={(e) => setSubjectName(e.target.value)} disabled={busy} />
           </label>
           <label>
+            <span>User ID (off-ledger)</span>
+            <input name="user-id" autoComplete="off" value={userId} onChange={(e) => setUserId(e.target.value)} disabled={busy} />
+          </label>
+          <label>
             <span>Subject address</span>
             <input name="subject-address" autoComplete="off" value={subject} onChange={(e) => setSubject(e.target.value)} disabled={busy} spellCheck={false} />
           </label>
           <div className="recipient-meta">
+            <label>
+              <span>Country</span>
+              <input name="subject-country" autoComplete="country" value={subjectCountry} onChange={(e) => setSubjectCountry(e.target.value)} disabled={busy} maxLength={2} />
+            </label>
+            <label>
+              <span>Type</span>
+              <select name="subject-entity-type" value={subjectEntityType} onChange={(e) => setSubjectEntityType(e.target.value as "company" | "individual")} disabled={busy}>
+                <option value="company">Company</option>
+                <option value="individual">Individual</option>
+              </select>
+            </label>
             <label>
               <span>Credential type</span>
               <input name="credential-type" autoComplete="off" value={credentialType} onChange={(e) => setCredentialType(e.target.value)} disabled={busy} />
@@ -168,6 +204,8 @@ export function CredentialsPage() {
                 <strong>
                   {record.credentialType} for {record.subjectName ?? record.subject}
                 </strong>
+                {record.userId && <p className="muted">User: <code>{record.userId}</code></p>}
+                {record.subjectCountry && <p className="muted">{record.subjectCountry} · {record.subjectEntityType ?? "company"}</p>}
                 <p>
                   <span className={`dashboard-status status-${record.status}`}>
                     {STATUS_LABEL[record.status]}
@@ -202,13 +240,16 @@ export function CredentialsPage() {
                 <button className="text-action" type="button" onClick={() => void toggleLogs(record)}>
                   {expandedLogs[record.id] ? "Hide log" : "Log"}
                 </button>
-                {(record.status === "issued" || record.status === "accepted") && (
+                {record.status === "issued" && (
                   <button
                     className="text-action"
                     type="button"
-                    onClick={() => void act(() => api.acceptCredential(record.id))}
+                    onClick={() => void act(async () => {
+                      await api.acceptCredential(record.id);
+                      return api.verifyCredential(record.id);
+                    })}
                   >
-                    Accept (subject)
+                    Accept &amp; verify on-ledger
                   </button>
                 )}
                 {record.status !== "refused" && record.status !== "failed" && (

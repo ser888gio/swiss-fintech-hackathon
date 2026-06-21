@@ -64,8 +64,11 @@ class CredentialRecord(Base):
     __tablename__ = "credentials"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     subject: Mapped[str] = mapped_column(String, index=True)
     subject_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    subject_country: Mapped[str | None] = mapped_column(String, nullable=True)
+    subject_entity_type: Mapped[str | None] = mapped_column(String, nullable=True)
     issuer: Mapped[str | None] = mapped_column(String, nullable=True)
     credential_type: Mapped[str | None] = mapped_column(String, nullable=True)
     uri: Mapped[str | None] = mapped_column(Text, nullable=True)

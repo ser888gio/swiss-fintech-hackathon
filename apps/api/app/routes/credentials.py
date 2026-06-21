@@ -56,6 +56,8 @@ async def accept_credential(record_id: str) -> CredentialRecord:
         raise HTTPException(status_code=409, detail="credential is not awaiting acceptance") from exc
     except NotImplementedError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/{record_id}/verify", response_model=CredentialRecord)

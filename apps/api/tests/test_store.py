@@ -120,8 +120,11 @@ def _credential(record_id: str = "cred-001") -> CredentialRecord:
     now = _now()
     return CredentialRecord(
         id=record_id,
+        user_id="user-123",
         subject="rReceiver",
         subject_name="Bob LLC",
+        subject_country="US",
+        subject_entity_type="company",
         issuer="rISSUER",
         credential_type="KYC",
         status=CredentialRecordStatus.accepted,
@@ -221,7 +224,10 @@ async def test_credential_persist_and_load(sqlite_store):
 
     loaded = store.get_credential(record.id)
     assert loaded is not None
+    assert loaded.user_id == "user-123"
     assert loaded.subject == "rReceiver"
+    assert loaded.subject_country == "US"
+    assert loaded.subject_entity_type.value == "company"
     assert loaded.status is CredentialRecordStatus.accepted
     assert loaded.accepted is True
     assert loaded.tx_hash == "B" * 64

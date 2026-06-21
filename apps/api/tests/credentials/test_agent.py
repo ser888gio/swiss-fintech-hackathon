@@ -46,6 +46,20 @@ async def test_issue_creates_record_with_tx_and_log(monkeypatch):
     assert any("CredentialCreate submitted" in entry.message for entry in logs)
 
 
+async def test_issue_associates_off_ledger_user(monkeypatch):
+    _patch(monkeypatch)
+
+    record = await credential_agent.issue(_request(
+        userId="user-123",
+        subjectCountry="US",
+        subjectEntityType="company",
+    ))
+
+    assert record.user_id == "user-123"
+    assert record.subject_country == "US"
+    assert record.subject_entity_type.value == "company"
+
+
 async def test_custom_credential_type_is_used(monkeypatch):
     _patch(monkeypatch)
 
@@ -102,6 +116,23 @@ async def test_auto_accept_flips_unverified_subject_to_verified(monkeypatch):
     after = await credentials.verify_kyc(subject)
     assert after.verified is True
     credentials.reset_mock_state()
+
+
+async def test_auto_accept_wallet_mismatch_preserves_issued_record(monkeypatch):
+    _patch(monkeypatch)
+
+    async def mismatched_accept(*args, **kwargs):
+        raise ValueError("configured subject wallet does not match")
+
+    monkeypatch.setattr(credentials, "accept_credential", mismatched_accept)
+
+    record = await credential_agent.issue(_request(autoAccept=True))
+
+    assert record.status is CredentialRecordStatus.issued
+    assert record.tx_hash is not None
+    assert record.accepted is False
+    logs = store.credential_logs_for(record.id)
+    assert any("Auto-accept skipped" in entry.message for entry in logs)
 
 
 async def test_accept_unknown_record_raises(monkeypatch):

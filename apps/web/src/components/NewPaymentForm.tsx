@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Payment, PaymentIntent, RouteQuote } from "@treasury/shared";
+import type { CredentialRecord, Payment, PaymentIntent, RouteQuote, WalletOverview } from "@treasury/shared";
 
 import { api } from "../lib/api.js";
 
@@ -14,13 +14,10 @@ interface Props {
 //   OK  → holds an accepted XLS-70 KYC credential → auto-settles
 //   NEW → no credential → escalates to a Firefly-locked escrow (inline KYC retry)
 //   sanctioned NAME → blocked outright by the deterministic screen
-const TREASURY = "rLJEyCHnzFqVyqRKKtb76NN1scRMWimtGM";
+const TREASURY = import.meta.env.VITE_TREASURY_WALLET_ADDRESS ?? "rn71NnspjRQTneQuXbxCo54JFTPTW3U5iV";
 const QUOTE_REFRESH_MS = 15000;
 
-const SENDERS = [
-  { label: "Main Treasury", owner: "Demo Corp Treasury", country: "CH", account: TREASURY, balance: 184250 },
-  { label: "Operating USD", owner: "Demo Corp Ops", country: "CH", account: TREASURY, balance: 52800 },
-];
+const SENDER = { label: "Main Treasury", owner: "Demo Corp Treasury", country: "CH", account: TREASURY };
 
 const RECIPIENTS = [
   { id: "maersk-repair-yard", label: "Maersk Repair Yard", country: "US", entityType: "company" as const, account: "rJw33SjizSjbJiKB9PVmrgdWN3MAAUwr7v" },
@@ -79,12 +76,12 @@ function quoteAge(updatedAt: Date | null) {
 
 export function NewPaymentForm({ onSubmit, disabled }: Props) {
   const [step, setStep] = useState<"input" | "review" | "verification" | "success" | "failure">("input");
-  const [senderIndex, setSenderIndex] = useState(0);
   const [recipientIndex, setRecipientIndex] = useState(0);
   const [recipientName, setRecipientName] = useState(RECIPIENTS[0].label);
   const [recipientWallet, setRecipientWallet] = useState(RECIPIENTS[0].account);
   const [recipientCountry, setRecipientCountry] = useState(RECIPIENTS[0].country);
   const [recipientEntityType, setRecipientEntityType] = useState<"company" | "individual">(RECIPIENTS[0].entityType);
+  const [credentialRecipients, setCredentialRecipients] = useState<CredentialRecord[]>([]);
   const [amountInput, setAmountInput] = useState("0");
   const [currency, setCurrency] = useState("XRP");
   const [purpose, setPurpose] = useState("supplier_payment");
@@ -95,23 +92,68 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
   const [lastPayment, setLastPayment] = useState<Payment | null>(null);
   const [failureReason, setFailureReason] = useState("");
   const [issuingCredential, setIssuingCredential] = useState(false);
+  const [walletOverview, setWalletOverview] = useState<WalletOverview | null>(null);
+  const [activeNetwork, setActiveNetwork] = useState<"testnet" | "devnet" | null>(null);
 
   const amount = amountFromInput(amountInput);
   const credential = lastPayment?.compliance?.credential;
   const kycMissing = Boolean(credential?.checked && !credential.verified);
-  const sender = SENDERS[senderIndex];
+  const sender = SENDER;
+  const xrpBalance = walletOverview?.networks.find((n) => n.active && (!activeNetwork || n.network === activeNetwork))?.xrpBalance ?? null;
   const networkFee = Math.max((routeQuote?.destAmount ?? amount) * 0.001, currency === "XRP" ? 0.000012 : 1.21);
   const receiveAmount = routeQuote?.destAmount ?? amount;
   const recipientSummary = `${recipientCountry} · ${recipientEntityType} · ${recipientWallet.slice(0, 14)}…`;
-  const canReview = amount > 0 && reference.trim().length > 0 && recipientName.trim().length > 0 && recipientWallet.trim().length > 0 && !disabled;
+  const recipientOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const credentialOptions = [...credentialRecipients]
+      .filter((record) => record.status !== "refused" && record.status !== "failed")
+      .sort((a, b) => Number(b.accepted) - Number(a.accepted))
+      .filter((record) => {
+        if (seen.has(record.subject)) return false;
+        seen.add(record.subject);
+        return true;
+      })
+      .map((record) => ({
+        id: `credential-${record.id}`,
+        label: record.subjectName ?? record.userId ?? record.subject,
+        country: record.subjectCountry ?? "",
+        entityType: record.subjectEntityType ?? ("company" as const),
+        account: record.subject,
+        credentialUsable: record.accepted && (record.status === "accepted" || record.status === "verified"),
+      }));
+    return [...RECIPIENTS, ...credentialOptions];
+  }, [credentialRecipients]);
+  const canReview = amount > 0 && reference.trim().length > 0 && recipientName.trim().length > 0 && recipientWallet.trim().length > 0 && recipientCountry.trim().length === 2 && !disabled;
 
   useEffect(() => {
-    const selected = RECIPIENTS[recipientIndex];
+    let cancelled = false;
+    const loadCredentials = () => {
+      void api.listCredentials()
+        .then((records) => {
+          if (!cancelled) setCredentialRecipients(records);
+        })
+        .catch(() => {
+          if (!cancelled) setCredentialRecipients([]);
+        });
+    };
+    loadCredentials();
+    window.addEventListener("focus", loadCredentials);
+    const timer = window.setInterval(loadCredentials, 10_000);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", loadCredentials);
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    const selected = recipientOptions[recipientIndex];
+    if (!selected) return;
     setRecipientName(selected.label);
     setRecipientWallet(selected.account);
     setRecipientCountry(selected.country);
     setRecipientEntityType(selected.entityType);
-  }, [recipientIndex]);
+  }, [recipientIndex, recipientOptions]);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,6 +190,11 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
   }, [amount, currency]);
 
   useEffect(() => {
+    api.getRuntimeStatus().then((s) => setActiveNetwork(s.network === "mock" ? null : s.network)).catch(() => {});
+    api.getWallet().then(setWalletOverview).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (step !== "review" && step !== "verification") return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !disabled) setStep("input");
@@ -170,7 +217,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
       currency,
       reference: reference.trim(),
     }),
-    [amount, currency, purpose, recipientCountry, recipientEntityType, recipientName, recipientWallet, reference, sender.account, sender.country, sender.owner],
+    [amount, currency, purpose, recipientCountry, recipientEntityType, recipientName, recipientWallet, reference],
   );
 
   async function sendPayment() {
@@ -255,13 +302,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
         <div className="send-from-to">
           <label>
             <span>From</span>
-            <select name="sender" autoComplete="off" value={senderIndex} onChange={(event) => setSenderIndex(Number(event.target.value))} disabled={disabled}>
-              {SENDERS.map((option, index) => (
-                <option key={option.label} value={index}>
-                  {option.label} - {option.owner}
-                </option>
-              ))}
-            </select>
+            <input readOnly value={`${sender.label} — ${sender.account.slice(0, 14)}…`} />
           </label>
           <span className="send-arrow" aria-hidden="true">
             &rarr;
@@ -269,9 +310,15 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
           <label>
             <span>To</span>
             <select name="saved-recipient" autoComplete="off" value={recipientIndex} onChange={(event) => setRecipientIndex(Number(event.target.value))} disabled={disabled}>
-              {RECIPIENTS.map((option, index) => (
-                <option key={option.id} value={index}>
-                  {option.label}
+              {recipientOptions.map((option, index) => (
+                <option
+                  key={option.id}
+                  value={index}
+                  disabled={"credentialUsable" in option && !option.credentialUsable}
+                >
+                  {option.label}{option.id.startsWith("credential-")
+                    ? ` · ${"credentialUsable" in option && option.credentialUsable ? "credentialed" : "awaiting acceptance"}`
+                    : ""}
                 </option>
               ))}
             </select>
@@ -279,7 +326,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
         </div>
 
         <div className="amount-stage">
-          <p className="balance">Available balance {money(sender.balance, currency)}</p>
+          <p className="balance">Available balance {xrpBalance != null ? `${Number(xrpBalance).toLocaleString("en-US", { maximumFractionDigits: 6 })} XRP` : "Loading…"}</p>
           <div className="amount-display" aria-live="polite">
             {money(amount, currency)}
           </div>
@@ -400,11 +447,11 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
             <div className="confirmation-grid">
               <section className="confirmation-main">
                 <div className="confirmation-row">
-                  <span>From card</span>
+                  <span>From wallet</span>
                   <div>
-                    <strong>Card for payments</strong>
+                    <strong>{sender.label}</strong>
                     <p>
-                      {sender.owner} - {sender.country} - **** 1942
+                      {sender.owner} - {sender.country} · {sender.account.slice(0, 14)}…
                     </p>
                   </div>
                 </div>
