@@ -54,11 +54,12 @@ def _llm_narrate(event: CoverEvent, policy: CoverPolicy) -> str:
         f"An AI treasury agent insurance claim has been triggered.\n"
         f"Cover line: {event.line.value}\n"
         f"Classification: {event.classification}\n"
-        f"Loss amount: {event.loss}\n"
+        f"Loss amount: {event.loss} RLUSD\n"
         f"Loss bearer: {event.loss_bearer.value}\n"
         f"Agent: {policy.agent_address}\n\n"
         f"Write one concise paragraph (2-3 sentences) explaining what happened, "
         f"why it is a covered event, and what the pool will pay. "
+        f"State the exact loss amount as '{event.loss} RLUSD' — do not scale, convert, or restate it. "
         f"Be factual, not alarming. Do not mention specific XRPL addresses."
     )
     resp = client.chat.completions.create(

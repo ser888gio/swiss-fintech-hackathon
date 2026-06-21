@@ -183,7 +183,7 @@ async def demo_underpayment(req: CoverDemoUnderpaymentRequest) -> dict:
         ), simulate_settlement=True)
     else:
         # Uninsured agent: no policy exists — synthetic zero-coverage path.
-        coverage_rate = 1.0
+        coverage_rate = 0.0
         per_claim_limit = str(round(shortfall, 2))
 
         q = cover_tool.quote(CoverQuoteRequest(
