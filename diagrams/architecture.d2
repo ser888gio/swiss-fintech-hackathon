@@ -14,27 +14,28 @@ web: Web Dashboard (React/Vite) {
   fireflylib: lib/firefly.ts {class: nodejs}
 }
 
-shared: shared types (@treasury/shared) {
+shared: Shared Types (@treasury/shared) {
   class: nodejs
   icon: https://icons.terrastruct.com/dev%2Ftypescript.svg
 }
 
-api: Treasury API (FastAPI) {
-  routes: routes (payments, health) {
+api: API Service (FastAPI) {
+  routes: routes (payments, treasury, agents, cover, credentials) {
     class: python
     icon: https://icons.terrastruct.com/dev%2Fpython.svg
   }
-  orchestrator: orchestrator {class: python}
-  policy: policy/engine.py (DECIDES) {
+  orchestrator: agents/orchestrator {class: python}
+  policy: policy/ guardrail + engine (DECIDES) {
     class: server
     icon: https://icons.terrastruct.com/tech%2F022-server.svg
   }
   routing: tools/routing {class: python}
-  compliance: tools/compliance {class: python}
-  execution: tools/execution {class: python}
+  compliance: tools/compliance + credentials {class: python}
+  execution: tools/execution (XRPL) {class: python}
   fireflytool: tools/firefly (verify sig) {class: python}
-  audit: tools/audit (LLM) {class: python}
-  store: store / schemas {class: python}
+  domain: insurance / cover / x402 / delegation {class: python}
+  audit: tools/audit (LLM) + audit_log {class: python}
+  store: store / models / schemas {class: python}
 }
 
 db: PostgreSQL {
@@ -50,36 +51,40 @@ bridge: Firefly Bridge (Node, local) {
   device: device.ts (deriveDigest) {class: nodejs}
 }
 
-hw: Firefly Device (USB) {class: server}
+hw: Firefly Pixie (USB) {
+  class: server
+  icon: https://icons.terrastruct.com/tech%2F022-server.svg
+}
 
-xrpl: XRPL testnet {class: cloud}
+xrpl: XRP Ledger Testnet/Devnet {class: cloud}
 openai: OpenAI gpt-4o {class: cloud}
-frankfurter: Frankfurter FX {class: cloud}
-coingecko: CoinGecko {class: cloud}
-opensanctions: OpenSanctions {class: cloud}
+fx: Frankfurter FX {class: cloud}
+aml: OpenSanctions / Plaid {class: cloud}
+x402: t54 x402 Facilitator {class: cloud}
 
-operator -> web.pages: "uses"
-web.apilib -> api.routes: "REST/JSON"
-web.fireflylib -> bridge.index: "POST /sign"
-web.pages -> shared: "types"
-bridge.device -> shared: "types"
+operator -> web.pages: uses
+web.apilib -> api.routes: REST / JSON
+web.fireflylib -> bridge.index: POST /sign
+web.pages -> shared: types
+bridge.device -> shared: types
 
-api.routes -> api.orchestrator: "process / release"
-api.orchestrator -> api.routing: "get FX path"
-api.orchestrator -> api.compliance: "screen"
-api.orchestrator -> api.policy: "evaluate"
-api.orchestrator -> api.audit: "narrate"
-api.orchestrator -> api.execution: "settle / escrow / finish"
-api.orchestrator -> api.fireflytool: "verify signature"
-api.orchestrator -> api.store: "persist trail"
-api.store -> db: "asyncpg (staged)"
+api.routes -> api.orchestrator: process / release
+api.orchestrator -> api.routing: get FX path
+api.orchestrator -> api.compliance: screen + verify KYC
+api.orchestrator -> api.policy: evaluate guardrails
+api.orchestrator -> api.domain: price / settle agentic
+api.orchestrator -> api.audit: narrate
+api.orchestrator -> api.execution: settle / escrow / finish
+api.orchestrator -> api.fireflytool: verify signature
+api.orchestrator -> api.store: persist trail
+api.store -> db: asyncpg
 
-api.routing -> frankfurter: "fiat rate"
-api.routing -> coingecko: "XRP rate"
-api.compliance -> opensanctions: "match"
-api.audit -> openai: "explain"
-api.execution -> xrpl: "Payment / Escrow"
+api.routing -> fx: FX rate
+api.compliance -> aml: match
+api.domain -> x402: settle 402 {style.stroke-dash: 5}
+api.audit -> openai: explain {style.stroke-dash: 5}
+api.execution -> xrpl: Payment / Escrow
 
-bridge.index -> hw: "USB serial"
-hw -> bridge.index: "signature" {style.stroke-dash: 5}
-bridge.index -> web.fireflylib: "signature" {style.stroke-dash: 5}
+bridge.index -> hw: USB serial
+hw -> bridge.index: signature {style.stroke-dash: 5}
+bridge.index -> web.fireflylib: signature {style.stroke-dash: 5}

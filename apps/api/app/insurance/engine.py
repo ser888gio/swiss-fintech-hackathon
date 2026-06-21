@@ -67,6 +67,12 @@ def exposure_for(line: str, ctx: QuoteContext) -> Decimal:
         return max(Decimal("0"), ctx.ead - ctx.collateral)
     if line == "principal_score":
         return ctx.ead * tables.PRINCIPAL_SCORE_EXPOSURE_FRACTION
+    if line == "fx_slippage":
+        # EAD is the expected worst-case slippage fraction of the transaction.
+        # We use a conservative 2% of the notional as the exposure base at quote
+        # time (the actual loss is computed parametrically at claim time from
+        # on-ledger delivered_amount vs intended).
+        return ctx.ead * Decimal("0.02")
     # lender_credit, mandate_breach: full transaction amount.
     return ctx.ead
 

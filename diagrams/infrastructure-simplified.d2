@@ -1,4 +1,4 @@
-direction: down
+direction: right
 
 browser: Operator Browser {
   class: users
@@ -6,11 +6,11 @@ browser: Operator Browser {
 }
 
 railway: Railway Cloud {
-  web: Web Dashboard (React/Vite) {
+  web: Web App (React/Vite) {
     class: nodejs
     icon: https://icons.terrastruct.com/dev%2Freact.svg
   }
-  api: Treasury API (FastAPI) {
+  api: API Service (FastAPI) {
     class: python
     icon: https://icons.terrastruct.com/dev%2Fpython.svg
   }
@@ -20,20 +20,28 @@ railway: Railway Cloud {
   }
 }
 
-local: Operator Local Machine {
+local: Operator Machine (local) {
   bridge: Firefly Bridge (Node :4747) {
     class: nodejs
     icon: https://icons.terrastruct.com/dev%2Fnodejs.svg
   }
-  device: Firefly Device (USB) {class: server}
+  device: Firefly Pixie (hardware) {
+    class: server
+    icon: https://icons.terrastruct.com/tech%2F022-server.svg
+  }
 }
 
-external: External APIs (XRPL, OpenAI, Frankfurter, CoinGecko, OpenSanctions) {class: cloud}
+ledger: XRP Ledger (Testnet/Devnet) {
+  class: server
+  icon: https://icons.terrastruct.com/tech%2F022-server.svg
+}
+apis: External APIs (OpenAI, Frankfurter, OpenSanctions, t54 x402) {class: cloud}
 
-browser -> railway.web: "load dashboard (HTTPS)"
-browser -> railway.api: "intents / release (HTTPS)"
-browser -> local.bridge: "POST /sign (localhost)"
-railway.api -> railway.db: "persist trail"
-railway.api -> external: "rates / screen / settle / narrate"
-local.bridge -> local.device: "USB serial"
-local.device -> local.bridge: "signature" {style.stroke-dash: 5}
+browser -> railway.web: load dashboard (HTTPS)
+browser -> railway.api: payments / release (HTTPS)
+browser -> local.bridge: POST /sign (localhost)
+railway.api -> railway.db: persist trail
+railway.api -> ledger: settle / escrow (WSS)
+railway.api -> apis: rates / screen / narrate / x402 {style.stroke-dash: 5}
+local.bridge -> local.device: USB serial
+local.device -> local.bridge: signature {style.stroke-dash: 5}

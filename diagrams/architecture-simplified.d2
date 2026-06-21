@@ -10,7 +10,7 @@ orchestrator: Orchestrator (FastAPI) {
   icon: https://icons.terrastruct.com/dev%2Fpython.svg
 }
 
-policy: Policy Engine (deterministic) {
+policy: Policy & Guardrail Engine (deterministic) {
   class: server
   icon: https://icons.terrastruct.com/tech%2F022-server.svg
 }
@@ -20,16 +20,31 @@ compliance: Compliance + Routing {
   icon: https://icons.terrastruct.com/tech%2F022-server.svg
 }
 
+domain: Domain Engines (Insurance / Cover / Credentials) {
+  class: python
+  icon: https://icons.terrastruct.com/dev%2Fpython.svg
+}
+
 audit: Audit Narrator (OpenAI) {class: cloud}
 
-execution: Execution (XRPL testnet) {class: cloud}
+execution: Execution (XRP Ledger) {class: cloud}
 
-firefly: Firefly Hardware Approval {class: server}
+db: Audit Store (PostgreSQL) {
+  class: postgresql
+  icon: https://icons.terrastruct.com/dev%2Fpostgresql.svg
+}
 
-dashboard -> orchestrator: "intent / release"
-orchestrator -> policy: "decide (deterministic)"
-orchestrator -> compliance: "screen + quote"
-orchestrator -> audit: "explain (LLM)"
-orchestrator -> execution: "settle / escrow / finish"
-dashboard -> firefly: "sign (button press)"
-firefly -> orchestrator: "verified signature"
+firefly: Firefly Hardware Approval {
+  class: server
+  icon: https://icons.terrastruct.com/tech%2F022-server.svg
+}
+
+dashboard -> orchestrator: intent / release
+orchestrator -> policy: decide (deterministic)
+orchestrator -> compliance: screen + quote
+orchestrator -> domain: price / bind
+orchestrator -> audit: explain (LLM) {style.stroke-dash: 5}
+orchestrator -> execution: settle / escrow / finish
+orchestrator -> db: persist trail
+dashboard -> firefly: sign (button press)
+firefly -> orchestrator: verified signature {style.stroke-dash: 5}

@@ -641,7 +641,16 @@ export type CoverLine =
   | "merchant_default"
   | "lender_credit"
   | "principal_score"
-  | "mandate_breach";
+  | "mandate_breach"
+  | "fx_slippage";
+
+export type InsurancePackage = "Essential" | "Standard" | "Full-Stack";
+
+export const INSURANCE_PACKAGE_LINES: Record<InsurancePackage, CoverLine[]> = {
+  Essential: ["merchant_default"],
+  Standard: ["merchant_default", "fx_slippage", "mandate_breach"],
+  "Full-Stack": ["merchant_default", "fx_slippage", "mandate_breach", "principal_score", "lender_credit"],
+};
 
 export interface PremiumQuote {
   decision: QuoteDecision;
@@ -683,6 +692,7 @@ export interface TxnContext {
   velocityZ?: number;
   concentrationZ?: number;
   activeLines: CoverLine[];
+  package?: InsurancePackage | null;  // expands to activeLines server-side
 }
 
 export interface InsuranceQuoteRequest {
@@ -712,6 +722,8 @@ export interface ClaimRequest {
   amlScore?: number;
   sanctioned?: boolean;
   receiptHash?: string | null;
+  line?: CoverLine;           // which peril; defaults to merchant_default
+  intendedAmount?: string;    // for fx_slippage: the intended delivery amount
 }
 
 // Capital Provider (LP)

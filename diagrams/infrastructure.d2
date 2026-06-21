@@ -1,55 +1,55 @@
-direction: down
+direction: right
 
-operator: Operator Browser {
-  class: users
-  icon: https://icons.terrastruct.com/essentials%2F359-users.svg
-}
-
-railway: Railway Cloud {
-  build: Docker build (uvicorn) {
-    class: container
-    icon: https://icons.terrastruct.com/dev%2Fdocker.svg
+operator: Operator Machine {
+  browser: Browser Dashboard {
+    class: users
+    icon: https://icons.terrastruct.com/essentials%2F359-users.svg
   }
-  web: Web service (apps/web, React/Vite) {
-    class: nodejs
-    icon: https://icons.terrastruct.com/dev%2Freact.svg
-  }
-  api: API service (apps/api, FastAPI :PORT) {
-    class: python
-    icon: https://icons.terrastruct.com/dev%2Fpython.svg
-  }
-  db: PostgreSQL (DATABASE_URL) {
-    class: postgresql
-    icon: https://icons.terrastruct.com/dev%2Fpostgresql.svg
-  }
-}
-
-local: Operator Local Machine {
-  bridge: Firefly Bridge (Express :4747) {
+  bridge: Firefly Bridge (Node/Express :4747) {
     class: nodejs
     icon: https://icons.terrastruct.com/dev%2Fnodejs.svg
   }
-  device: Firefly Device {
+  device: Firefly Pixie (secp256k1 USB) {
     class: server
     icon: https://icons.terrastruct.com/tech%2F022-server.svg
   }
 }
 
-xrpl: XRPL testnet (wss altnet :51233) {class: cloud}
-openai: OpenAI (gpt-4o) {class: cloud}
-frankfurter: Frankfurter (FX) {class: cloud}
-coingecko: CoinGecko (XRP) {class: cloud}
-opensanctions: OpenSanctions {class: cloud}
+railway: Railway Cloud {
+  web: Web Service (React/Vite + serve :3000) {
+    class: nodejs
+    icon: https://icons.terrastruct.com/dev%2Freact.svg
+  }
+  api: API Service (FastAPI/uvicorn :8000) {
+    class: python
+    icon: https://icons.terrastruct.com/dev%2Fpython.svg
+  }
+  db: PostgreSQL (asyncpg) {
+    class: postgresql
+    icon: https://icons.terrastruct.com/dev%2Fpostgresql.svg
+  }
+}
 
-operator -> railway.web: "HTTPS dashboard"
-operator -> railway.api: "HTTPS / JSON"
-operator -> local.bridge: "HTTP localhost:4747"
-railway.build -> railway.api: "deploys"
-railway.api -> railway.db: "asyncpg / TCP"
-railway.api -> openai: "audit narration"
-railway.api -> frankfurter: "fiat rate"
-railway.api -> coingecko: "XRP rate"
-railway.api -> opensanctions: "sanctions match"
-railway.api -> xrpl: "Payment / Escrow (WSS)"
-local.bridge -> local.device: "USB / serial"
-local.device -> local.bridge: "signature" {style.stroke-dash: 5}
+external: External Services {
+  xrpl: XRP Ledger Testnet/Devnet {
+    class: server
+    icon: https://icons.terrastruct.com/tech%2F022-server.svg
+  }
+  openai: OpenAI gpt-4o {class: cloud}
+  fx: Frankfurter FX {class: cloud}
+  aml: OpenSanctions / Plaid {class: cloud}
+  x402: t54 x402 Facilitator {class: cloud}
+}
+
+operator.browser -> railway.web: HTTPS (dashboard)
+operator.browser -> railway.api: HTTPS / JSON
+operator.browser -> operator.bridge: HTTP /sign (localhost)
+operator.bridge -> operator.device: USB / serial (button press)
+
+railway.web -> railway.api: REST (inlined base URL)
+railway.api -> railway.db: asyncpg (audit trail)
+railway.api -> external.xrpl: WebSocket (settle / escrow)
+railway.api -> external.openai: HTTPS (narration) {style.stroke-dash: 5}
+railway.api -> external.fx: HTTPS (FX rates) {style.stroke-dash: 5}
+railway.api -> external.aml: HTTPS (screening) {style.stroke-dash: 5}
+railway.api -> external.x402: HTTPS (x402 settle) {style.stroke-dash: 5}
