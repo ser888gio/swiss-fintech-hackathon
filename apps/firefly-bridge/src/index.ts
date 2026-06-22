@@ -6,7 +6,6 @@ import { MockFireflyDevice, SerialFireflyDevice } from "./device.js";
 import type { FireflyDevice } from "./device.js";
 
 const PORT = Number(process.env.BRIDGE_PORT ?? 4747);
-const MOCK_KEY = process.env.FIREFLY_MOCK_PRIVATE_KEY;
 const DEVICE_PATH = process.env.FIREFLY_DEVICE_PATH;
 const DEVICE_PUBLIC_KEY = process.env.FIREFLY_PUBLIC_KEY;
 
@@ -21,17 +20,7 @@ if (DEVICE_PATH) {
   }
   device = new SerialFireflyDevice(DEVICE_PATH, DEVICE_PUBLIC_KEY);
   console.log(`[firefly] Using real Firefly Pixie at ${DEVICE_PATH}`);
-} else {
-  if (!MOCK_KEY) {
-    throw new Error(
-      "Neither FIREFLY_DEVICE_PATH nor FIREFLY_MOCK_PRIVATE_KEY is set. " +
-      "Run `npm run keygen --workspace apps/firefly-bridge` and put the keys in .env, " +
-      "or set FIREFLY_DEVICE_PATH to use the real Pixie."
-    );
-  }
-  device = new MockFireflyDevice(MOCK_KEY);
-  console.log(`[firefly] Using mock device (FIREFLY_MOCK_PRIVATE_KEY)`);
-}
+} 
 
 const app = express();
 app.use(cors());
