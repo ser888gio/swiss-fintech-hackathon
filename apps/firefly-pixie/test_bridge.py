@@ -86,13 +86,33 @@ def verify_signature(signature_hex: str, public_key_hex: str, payment: dict) -> 
 
     try:
         sig_bytes = bytes.fromhex(signature_hex)
-        # signature is r(32) || s(32) || v(1) — strip recovery byte for verification
-        if len(sig_bytes) == 65:
-            sig_bytes = sig_bytes[:64]
         pub_bytes = bytes.fromhex(public_key_hex)
         pub_key   = eth_keys.PublicKey(pub_bytes)
-        sig_obj   = eth_keys.Signature(sig_bytes)
-        pub_key.verify_msg_hash(digest, sig_obj)
+
+        if len(sig_bytes) == 65:
+            # Normalize Ethereum-style v (27/28) → 0/1
+            v = sig_bytes[64]
+            if v >= 27:
+                v -= 27
+            sig_bytes = sig_bytes[:64] + bytes([v])
+            sig_obj = eth_keys.Signature(sig_bytes)
+            pub_key.verify_msg_hash(digest, sig_obj)
+        elif len(sig_bytes) == 64:
+            # No recovery byte — try v=0 and v=1
+            verified = False
+            for v in (0, 1):
+                try:
+                    sig_obj = eth_keys.Signature(sig_bytes + bytes([v]))
+                    pub_key.verify_msg_hash(digest, sig_obj)
+                    verified = True
+                    break
+                except Exception:
+                    continue
+            if not verified:
+                raise ValueError("Signature did not verify with v=0 or v=1")
+        else:
+            raise ValueError(f"Unexpected signature length: {len(sig_bytes)} bytes")
+
         return True
     except Exception as exc:
         log(f"Signature invalid: {exc}", "FAIL", "red")
