@@ -336,18 +336,12 @@ ensure_firefly_keys() {
     return 0
   fi
 
-  if [[ -n "${FIREFLY_MOCK_PRIVATE_KEY:-}" && -n "${FIREFLY_PUBLIC_KEY:-}" ]]; then
-    return 0
-  fi
-
-  log "Generating session-only Firefly mock keys..."
-
   local key_output line key value
   key_output="$(cd "$ROOT_DIR" && npm run --silent keygen --workspace apps/firefly-bridge)"
 
   while IFS='=' read -r key value; do
     case "$key" in
-      FIREFLY_MOCK_PRIVATE_KEY|FIREFLY_PUBLIC_KEY)
+      FIREFLY_PUBLIC_KEY)
         export "$key=$value"
         ;;
     esac

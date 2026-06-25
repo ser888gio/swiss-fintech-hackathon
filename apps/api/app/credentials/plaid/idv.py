@@ -30,11 +30,11 @@ _BASE_URLS = {
 
 
 class IDVStatus(str, Enum):
-    active = "active"           # session created, user has not started
-    success = "success"         # all steps passed
-    failed = "failed"           # one or more steps failed
-    expired = "expired"         # session timed out
-    canceled = "canceled"       # user abandoned
+    active = "active"  # session created, user has not started
+    success = "success"  # all steps passed
+    failed = "failed"  # one or more steps failed
+    expired = "expired"  # session timed out
+    canceled = "canceled"  # user abandoned
 
 
 @dataclass
@@ -43,8 +43,8 @@ class IDVSession:
     status: IDVStatus
     shareable_url: str | None
     # Step-level outcomes
-    documentary_verified: bool   # government ID scan passed
-    selfie_verified: bool        # liveness check passed
+    documentary_verified: bool  # government ID scan passed
+    selfie_verified: bool  # liveness check passed
     # Extracted identity fields (present when status == success)
     given_name: str | None = None
     family_name: str | None = None

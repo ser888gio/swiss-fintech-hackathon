@@ -25,7 +25,7 @@ _Q2 = Decimal("0.01")
 class PoolState:
     """Capacity inputs for the solvency gate (spec §7/§8)."""
 
-    first_loss: Decimal           # available first-loss capital
+    first_loss: Decimal  # available first-loss capital
     currency: str = "RLUSD"
 
 
@@ -49,7 +49,7 @@ class QuoteContext:
     eligible: bool
     txn: TxnFeatures
     active_lines: tuple[str, ...]
-    ead: Decimal                  # transaction amount (exposure base)
+    ead: Decimal  # transaction amount (exposure base)
     collateral: Decimal = Decimal("0")
     score_band: str | None = None
 
@@ -94,7 +94,9 @@ def breaches_capacity(ctx: QuoteContext, pool: PoolState, P: PricePolicy) -> boo
     return required > pool.first_loss
 
 
-def _receipt_hash(ctx: QuoteContext, premium: Decimal, pd: float, z: float, lines: dict[str, str]) -> str:
+def _receipt_hash(
+    ctx: QuoteContext, premium: Decimal, pd: float, z: float, lines: dict[str, str]
+) -> str:
     """Canonical, reproducible hash of the quote inputs/outputs (spec §7)."""
     payload = {
         "agent": ctx.agent_address,
@@ -108,7 +110,9 @@ def _receipt_hash(ctx: QuoteContext, premium: Decimal, pd: float, z: float, line
     return hashlib.sha256(data.encode()).hexdigest()
 
 
-def price(ctx: QuoteContext, r: AgentRisk, pool: PoolState, P: PricePolicy) -> PremiumQuote:
+def price(
+    ctx: QuoteContext, r: AgentRisk, pool: PoolState, P: PricePolicy
+) -> PremiumQuote:
     """Price a cover request: eligibility → PP per line → loadings → floor/cap →
     band-round → solvency check → OFFER | REVIEW | DECLINE, with a receipt.
     """

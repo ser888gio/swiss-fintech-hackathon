@@ -25,39 +25,48 @@ import urllib.request
 # ── Test payload ──────────────────────────────────────────────────────────────
 
 TEST_PAYMENT = {
-    "paymentId":          "bridge-test-001",
-    "amount":             99999.99,
-    "currency":           "USD",
-    "dest":               "rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe",
-    "network":            "XRPL Testnet",
-    "owner":              "rBridgeTestOwner1234567890abcdef",
-    "escrowSequence":     1,
-    "escrowCreateTxHash": "DEADBEEF" * 8,   # 64 hex chars
-    "reference":          "bridge-connectivity-check",
+    "paymentId": "bridge-test-001",
+    "amount": 99999.99,
+    "currency": "USD",
+    "dest": "rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe",
+    "network": "XRPL Testnet",
+    "owner": "rBridgeTestOwner1234567890abcdef",
+    "escrowSequence": 1,
+    "escrowCreateTxHash": "DEADBEEF" * 8,  # 64 hex chars
+    "reference": "bridge-connectivity-check",
 }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def log(msg: str, tag: str = "test", color: str = "") -> None:
-    codes = {"green": "\033[92m", "red": "\033[91m", "yellow": "\033[93m",
-             "cyan": "\033[96m", "bold": "\033[1m", "": ""}
+    codes = {
+        "green": "\033[92m",
+        "red": "\033[91m",
+        "yellow": "\033[93m",
+        "cyan": "\033[96m",
+        "bold": "\033[1m",
+        "": "",
+    }
     reset = "\033[0m" if color else ""
     print(f"{codes[color]}[{tag}] {msg}{reset}", flush=True)
 
 
 def expected_match_code(payment: dict) -> str:
     """Derive the 4-digit match code the device will display."""
-    canonical = "|".join([
-        "XRPL_TREASURY_APPROVAL_V1",
-        payment["network"],
-        payment["paymentId"],
-        payment["owner"],
-        payment["dest"],
-        payment["currency"],
-        f"{payment['amount']:.2f}",
-        str(payment["escrowSequence"]),
-        payment["escrowCreateTxHash"],
-    ])
+    canonical = "|".join(
+        [
+            "XRPL_TREASURY_APPROVAL_V1",
+            payment["network"],
+            payment["paymentId"],
+            payment["owner"],
+            payment["dest"],
+            payment["currency"],
+            f"{payment['amount']:.2f}",
+            str(payment["escrowSequence"]),
+            payment["escrowCreateTxHash"],
+        ]
+    )
     digest = hashlib.sha256(canonical.encode()).digest()
     code = int.from_bytes(digest[:4], "big") % 10000
     return f"{code:04d}"
@@ -68,26 +77,32 @@ def verify_signature(signature_hex: str, public_key_hex: str, payment: dict) -> 
     try:
         from eth_keys import keys as eth_keys
     except ImportError:
-        log("eth-keys not installed — skipping crypto verification (pip install eth-keys)", "warn", "yellow")
-        return True   # assume ok if library missing
+        log(
+            "eth-keys not installed — skipping crypto verification (pip install eth-keys)",
+            "warn",
+            "yellow",
+        )
+        return True  # assume ok if library missing
 
-    canonical = "|".join([
-        "XRPL_TREASURY_APPROVAL_V1",
-        payment["network"],
-        payment["paymentId"],
-        payment["owner"],
-        payment["dest"],
-        payment["currency"],
-        f"{payment['amount']:.2f}",
-        str(payment["escrowSequence"]),
-        payment["escrowCreateTxHash"],
-    ])
+    canonical = "|".join(
+        [
+            "XRPL_TREASURY_APPROVAL_V1",
+            payment["network"],
+            payment["paymentId"],
+            payment["owner"],
+            payment["dest"],
+            payment["currency"],
+            f"{payment['amount']:.2f}",
+            str(payment["escrowSequence"]),
+            payment["escrowCreateTxHash"],
+        ]
+    )
     digest = hashlib.sha256(canonical.encode()).digest()
 
     try:
         sig_bytes = bytes.fromhex(signature_hex)
         pub_bytes = bytes.fromhex(public_key_hex)
-        pub_key   = eth_keys.PublicKey(pub_bytes)
+        pub_key = eth_keys.PublicKey(pub_bytes)
 
         if len(sig_bytes) == 65:
             # Normalize Ethereum-style v (27/28) → 0/1
@@ -120,14 +135,16 @@ def verify_signature(signature_hex: str, public_key_hex: str, payment: dict) -> 
 
 
 def post_json(url: str, payload: dict, timeout: int) -> dict:
-    data    = json.dumps(payload).encode()
-    req     = urllib.request.Request(url, data=data,
-                                     headers={"Content-Type": "application/json"})
+    data = json.dumps(payload).encode()
+    req = urllib.request.Request(
+        url, data=data, headers={"Content-Type": "application/json"}
+    )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read())
 
 
 # ── Main test ─────────────────────────────────────────────────────────────────
+
 
 def run_test(bridge_url: str, timeout: int) -> bool:
     sign_url = f"{bridge_url.rstrip('/')}/sign"
@@ -144,7 +161,11 @@ def run_test(bridge_url: str, timeout: int) -> bool:
         log("Bridge reachable ✓", "health", "green")
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            log("Bridge reachable (no /health endpoint, that's fine) ✓", "health", "green")
+            log(
+                "Bridge reachable (no /health endpoint, that's fine) ✓",
+                "health",
+                "green",
+            )
         else:
             log(f"Bridge HTTP error {e.code}", "health", "red")
             return False
@@ -158,14 +179,14 @@ def run_test(bridge_url: str, timeout: int) -> bool:
     log(f"Expected MATCH CODE on device: {' '.join(code)}", "code", "cyan")
 
     # ── Step 3: send sign request ─────────────────────────────────────────────
-    log(f"Sending payment to bridge → device…", "sign")
+    log("Sending payment to bridge → device…", "sign")
     log(f"  Amount : {TEST_PAYMENT['amount']:.2f} {TEST_PAYMENT['currency']}", "sign")
     log(f"  Dest   : {TEST_PAYMENT['dest']}", "sign")
     log(f"  Network: {TEST_PAYMENT['network']}", "sign")
     log("", "sign")
-    log(f">>> Device screen should show VERIFY PAYMENT <<<", "ACTION", "yellow")
+    log(">>> Device screen should show VERIFY PAYMENT <<<", "ACTION", "yellow")
     log(f">>> Confirm MATCH CODE is  {' '.join(code)}  <<<", "ACTION", "yellow")
-    log(f">>> Press SW4 (bottom button) to APPROVE       <<<", "ACTION", "yellow")
+    log(">>> Press SW4 (bottom button) to APPROVE       <<<", "ACTION", "yellow")
     log("", "sign")
 
     t0 = time.time()
@@ -201,7 +222,11 @@ def run_test(bridge_url: str, timeout: int) -> bool:
     log(f"Public key  : {pub[:24]}…{pub[-8:]}", "sig", "green")
 
     if len(sig) not in (128, 130):
-        log(f"Unexpected signature length: {len(sig)} hex chars (want 128 or 130)", "FAIL", "red")
+        log(
+            f"Unexpected signature length: {len(sig)} hex chars (want 128 or 130)",
+            "FAIL",
+            "red",
+        )
         return False
 
     # ── Step 5: crypto verify ─────────────────────────────────────────────────
@@ -223,12 +248,20 @@ def run_test(bridge_url: str, timeout: int) -> bool:
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Firefly PCB ↔ Bridge test")
-    parser.add_argument("--bridge-url", default="http://localhost:4747",
-                        help="Bridge base URL (default: http://localhost:4747)")
-    parser.add_argument("--timeout", type=int, default=60,
-                        help="Seconds to wait for button press (default: 60)")
+    parser.add_argument(
+        "--bridge-url",
+        default="http://localhost:4747",
+        help="Bridge base URL (default: http://localhost:4747)",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=60,
+        help="Seconds to wait for button press (default: 60)",
+    )
     args = parser.parse_args()
 
     ok = run_test(args.bridge_url, args.timeout)

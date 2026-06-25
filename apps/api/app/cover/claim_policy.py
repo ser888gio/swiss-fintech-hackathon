@@ -10,9 +10,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from ..schemas import CoverLineKind, CoverPolicy, CoverPolicyStatus, Payment, PaymentStatus
+from ..schemas import (
+    CoverLineKind,
+    CoverPolicy,
+    CoverPolicyStatus,
+    Payment,
+    PaymentStatus,
+)
 
-_SANCTIONED_MERCHANTS: set[str] = set()   # populated from compliance tool at runtime
+_SANCTIONED_MERCHANTS: set[str] = set()  # populated from compliance tool at runtime
 
 
 @dataclass(frozen=True)
@@ -50,10 +56,16 @@ def evaluate(
 
     # R1 — policy active
     if policy.status != CoverPolicyStatus.active:
-        return ClaimDecision(allowed=False, block_reason=f"policy is {policy.status.value}", reasons=reasons)
+        return ClaimDecision(
+            allowed=False,
+            block_reason=f"policy is {policy.status.value}",
+            reasons=reasons,
+        )
     now = datetime.now(timezone.utc)
     if now > policy.period_end:
-        return ClaimDecision(allowed=False, block_reason="policy period has expired", reasons=reasons)
+        return ClaimDecision(
+            allowed=False, block_reason="policy period has expired", reasons=reasons
+        )
 
     # R2 — payment settled
     if payment.status != PaymentStatus.settled:
@@ -84,12 +96,16 @@ def evaluate(
 
     # R5 — positive loss
     if loss <= Decimal("0"):
-        return ClaimDecision(allowed=False, block_reason="loss must be positive", reasons=reasons)
+        return ClaimDecision(
+            allowed=False, block_reason="loss must be positive", reasons=reasons
+        )
 
     # R6 — sanctions
     sanctioned = sanctioned_merchants or _SANCTIONED_MERCHANTS
     if merchant in sanctioned:
-        return ClaimDecision(allowed=False, block_reason="merchant on sanctions list", reasons=reasons)
+        return ClaimDecision(
+            allowed=False, block_reason="merchant on sanctions list", reasons=reasons
+        )
 
     # R7 — collusion guard
     if collusion_count >= collusion_threshold:
@@ -103,11 +119,15 @@ def evaluate(
     pcl = Decimal(policy.per_claim_limit)
     if loss > pcl:
         reasons.append(f"loss {loss} capped to per_claim_limit {pcl}")
-        loss = pcl   # caller must use the capped value; we just note it
+        loss = pcl  # caller must use the capped value; we just note it
 
     # R9 — cover remaining
     remaining = Decimal(policy.cover_remaining)
     if remaining <= Decimal("0"):
-        return ClaimDecision(allowed=False, block_reason="policy cover_remaining is exhausted", reasons=reasons)
+        return ClaimDecision(
+            allowed=False,
+            block_reason="policy cover_remaining is exhausted",
+            reasons=reasons,
+        )
 
     return ClaimDecision(allowed=True, reasons=reasons)

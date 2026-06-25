@@ -23,6 +23,7 @@ import asyncio
 from datetime import datetime, timezone
 
 from ..config import get_settings
+from ..policy.scope import AgentScope
 from ..schemas import (
     PaymentIntent,
     PaymentStatus,
@@ -48,6 +49,7 @@ _agent_run_lock: dict[str, bool] = {}
 
 
 # ── Goal registry (global / legacy) ──────────────────────────────────────────
+
 
 def add_goal(goal: TreasuryGoal) -> TreasuryGoal:
     _goals[goal.id] = goal
@@ -75,6 +77,7 @@ def list_runs() -> list[TreasuryAgentRun]:
 
 
 # ── Per-agent goal registry ───────────────────────────────────────────────────
+
 
 def add_agent_goal(agent_id: str, goal: TreasuryGoal) -> TreasuryGoal:
     _agent_goals.setdefault(agent_id, {})[goal.id] = goal
@@ -109,6 +112,7 @@ def goal_from_create(request: TreasuryGoalCreate) -> TreasuryGoal:
 
 
 # ── Core deterministic trigger ────────────────────────────────────────────────
+
 
 def evaluate_goal(
     goal: TreasuryGoal,
@@ -149,6 +153,7 @@ def evaluate_goal(
 
 # ── Agent run ─────────────────────────────────────────────────────────────────
 
+
 async def run(goals: list[TreasuryGoal] | None = None) -> TreasuryAgentRun:
     """Run one evaluation cycle over all active goals (or an explicit list).
 
@@ -185,7 +190,11 @@ async def run(goals: list[TreasuryGoal] | None = None) -> TreasuryAgentRun:
         payments_initiated.append(payment.id)
         trigger_log.append(
             f"  → payment {payment.id[:8]}… status={payment.status.value}"
-            + (f", rule={payment.policy_decision.rule_fired}" if payment.policy_decision and payment.policy_decision.rule_fired else "")
+            + (
+                f", rule={payment.policy_decision.rule_fired}"
+                if payment.policy_decision and payment.policy_decision.rule_fired
+                else ""
+            )
         )
         # Mint compliance attestation for every auto-settled payment.
         if settings.mpt_enabled and payment.status == PaymentStatus.settled:
@@ -218,9 +227,10 @@ async def run(goals: list[TreasuryGoal] | None = None) -> TreasuryAgentRun:
 
 # ── Per-business-agent run ────────────────────────────────────────────────────
 
+
 async def run_for_agent(
     agent_id: str,
-    agent_scope: "AgentScope",
+    agent_scope: AgentScope,
     agent_cover=None,
 ) -> TreasuryAgentRun:
     """Run one evaluation cycle for a specific business agent.
@@ -231,10 +241,11 @@ async def run_for_agent(
 
     Returns immediately if the agent is already running (run-lock guard).
     """
-    from ..policy.scope import AgentScope  # noqa: PLC0415 — avoid circular at module level
 
     if _agent_run_lock.get(agent_id):
-        raise RuntimeError(f"Agent {agent_id} is already running; concurrent runs are not allowed")
+        raise RuntimeError(
+            f"Agent {agent_id} is already running; concurrent runs are not allowed"
+        )
     _agent_run_lock[agent_id] = True
 
     settings = get_settings()
@@ -249,7 +260,7 @@ async def run_for_agent(
     try:
         for goal in active_goals:
             # Use the agent's max_single_payment as the cap, not the global setting.
-            from decimal import Decimal as _Dec
+
             cap_usd = float(agent_scope.max_per_transaction)
             should_fire, reason = evaluate_goal(goal, now, cap_usd)
             trigger_log.append(f"[{goal.name}] {reason}.")
@@ -297,7 +308,11 @@ async def run_for_agent(
             payments_initiated.append(payment.id)
             trigger_log.append(
                 f"  → payment {payment.id[:8]}… status={payment.status.value}"
-                + (f", rule={payment.policy_decision.rule_fired}" if payment.policy_decision and payment.policy_decision.rule_fired else "")
+                + (
+                    f", rule={payment.policy_decision.rule_fired}"
+                    if payment.policy_decision and payment.policy_decision.rule_fired
+                    else ""
+                )
             )
             if settings.mpt_enabled and payment.status == PaymentStatus.settled:
                 await _mint_compliance_attestation(payment, trigger_log, settings)
@@ -337,7 +352,9 @@ async def load_agent_state_from_db() -> None:
         return
     async with db.session_factory() as session:
         goal_rows = (await session.execute(select(TreasuryGoalRecord))).scalars().all()
-        run_rows = (await session.execute(select(TreasuryAgentRunRecord))).scalars().all()
+        run_rows = (
+            (await session.execute(select(TreasuryAgentRunRecord))).scalars().all()
+        )
     for row in goal_rows:
         goal = TreasuryGoal(**row.payload)
         if row.agent_id:
@@ -368,16 +385,19 @@ def _schedule(coro) -> None:
 async def _persist_goal(goal: TreasuryGoal) -> None:
     from .. import db
     from ..models import TreasuryGoalRecord
+
     if db.session_factory is None:
         return
     try:
         async with db.session_factory() as session:
-            await session.merge(TreasuryGoalRecord(
-                id=goal.id,
-                agent_id=goal.agent_id,
-                payload=goal.model_dump(mode="json", by_alias=False),
-                last_triggered_at=goal.last_triggered_at,
-            ))
+            await session.merge(
+                TreasuryGoalRecord(
+                    id=goal.id,
+                    agent_id=goal.agent_id,
+                    payload=goal.model_dump(mode="json", by_alias=False),
+                    last_triggered_at=goal.last_triggered_at,
+                )
+            )
             await session.commit()
     except Exception:
         return
@@ -387,33 +407,40 @@ async def _delete_goal(goal_id: str) -> None:
     from sqlalchemy import delete
     from .. import db
     from ..models import TreasuryGoalRecord
+
     if db.session_factory is None:
         return
     async with db.session_factory() as session:
-        await session.execute(delete(TreasuryGoalRecord).where(TreasuryGoalRecord.id == goal_id))
+        await session.execute(
+            delete(TreasuryGoalRecord).where(TreasuryGoalRecord.id == goal_id)
+        )
         await session.commit()
 
 
 async def _persist_run(run: TreasuryAgentRun) -> None:
     from .. import db
     from ..models import TreasuryAgentRunRecord
+
     if db.session_factory is None:
         return
     try:
         async with db.session_factory() as session:
-            await session.merge(TreasuryAgentRunRecord(
-                id=run.id,
-                agent_id=run.agent_id,
-                payload=run.model_dump(mode="json", by_alias=False),
-                started_at=run.started_at,
-                completed_at=run.completed_at,
-            ))
+            await session.merge(
+                TreasuryAgentRunRecord(
+                    id=run.id,
+                    agent_id=run.agent_id,
+                    payload=run.model_dump(mode="json", by_alias=False),
+                    started_at=run.started_at,
+                    completed_at=run.completed_at,
+                )
+            )
             await session.commit()
     except Exception:
         return
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _build_intent(goal: TreasuryGoal, settings) -> PaymentIntent:
     sender_address = _treasury_address(settings)
@@ -434,13 +461,13 @@ def _build_intent(goal: TreasuryGoal, settings) -> PaymentIntent:
 
 def _treasury_address(settings) -> str:
     if not settings.treasury_wallet_seed:
-        return "rTREASURY_HOT_MOCK"
+        return settings.treasury_wallet_address or ""
     try:
         from xrpl.wallet import Wallet
 
         return Wallet.from_seed(settings.treasury_wallet_seed).address
     except Exception:
-        return "rTREASURY_HOT_MOCK"
+        return settings.treasury_wallet_address or ""
 
 
 async def _narrate(
@@ -498,7 +525,7 @@ async def _vault_sweep(trigger_log: list[str], settings) -> None:
 
     state = vault_tool.get_vault_state()
     vault_id = settings.vault_id or state["vault_id"]
-    if not vault_id and not settings.use_mock_xrpl:
+    if not vault_id:
         trigger_log.append(
             "[vault] No vault_id configured — run POST /treasury/vault to create one."
         )
@@ -509,7 +536,7 @@ async def _vault_sweep(trigger_log: list[str], settings) -> None:
     if balance > settings.vault_sweep_threshold_usd:
         excess = balance - settings.vault_sweep_threshold_usd
         try:
-            op = await vault_tool.deposit(vault_id or "MOCK_VAULT", excess)
+            op = await vault_tool.deposit(vault_id, excess)
             trigger_log.append(
                 f"[vault] Swept {op.amount:,.2f} {settings.token_currency} → vault "
                 f"(wallet {balance:,.2f} → {balance - op.amount:,.2f}, "
@@ -521,7 +548,7 @@ async def _vault_sweep(trigger_log: list[str], settings) -> None:
     elif balance < settings.vault_recall_threshold_usd:
         needed = settings.vault_sweep_threshold_usd - balance
         try:
-            op = await vault_tool.withdraw(vault_id or "MOCK_VAULT", needed)
+            op = await vault_tool.withdraw(vault_id, needed)
             trigger_log.append(
                 f"[vault] Recalled {op.amount:,.2f} {settings.token_currency} from vault "
                 f"(wallet {balance:,.2f} → {balance + op.amount:,.2f}, "
@@ -538,7 +565,9 @@ async def _vault_sweep(trigger_log: list[str], settings) -> None:
         )
 
 
-async def _mint_compliance_attestation(payment, trigger_log: list[str], settings) -> None:
+async def _mint_compliance_attestation(
+    payment, trigger_log: list[str], settings
+) -> None:
     """Mint 1 COMPLY MPToken to the payment recipient as on-chain compliance proof.
 
     Called only when mpt_enabled=True and the payment auto-settled (status=settled).
@@ -547,14 +576,14 @@ async def _mint_compliance_attestation(payment, trigger_log: list[str], settings
     """
     state = mptoken_tool.get_mpt_state()
     issuance_id = settings.mpt_issuance_id or state["issuance_id"]
-    if not issuance_id and not settings.use_mock_xrpl:
+    if not issuance_id:
         trigger_log.append(
             "[mpt] No issuance_id — POST /treasury/mpt/issuance to create COMPLY issuance."
         )
         return
     try:
         result = await mptoken_tool.mint_attestation(
-            issuance_id=issuance_id or "MOCK_ISSUANCE",
+            issuance_id=issuance_id,
             recipient=payment.intent.to,
             payment_id=payment.id,
             amount_settled=payment.intent.amount,
@@ -570,13 +599,11 @@ async def _mint_compliance_attestation(payment, trigger_log: list[str], settings
 def _wallet_balance(settings) -> float:
     """Return treasury hot-wallet balance for vault sweep decisions.
 
-    Mock mode: reads from in-memory vault state (deducted on deposit, credited
-    on withdraw). Real mode: requires an async XRPL account_lines query —
-    returns 0.0 for now; wire a real balance fetch when running on Devnet.
+    Requires an async XRPL account_lines query for real accuracy; returns the
+    cached in-memory value as a best-effort approximation until an async path
+    is wired (the vault tool debits/credits this on each operation).
     """
-    if settings.use_mock_xrpl:
-        return vault_tool.get_vault_state()["wallet_balance"]
-    return 0.0
+    return vault_tool.get_vault_state()["wallet_balance"]
 
 
 def _now() -> datetime:

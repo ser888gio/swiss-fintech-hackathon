@@ -11,10 +11,6 @@ async def health() -> dict[str, str | bool]:
     settings = get_settings()
     return {
         "status": "ok",
-        "mockMode": settings.use_mock_xrpl,
-        "network": network_label(
-            settings.xrpl_endpoint,
-            use_mock=settings.use_mock_xrpl,
-        ),
+        "network": network_label(settings.xrpl_endpoint),
         "fireflyConfirmationEnabled": settings.firefly_confirmation_enabled,
     }

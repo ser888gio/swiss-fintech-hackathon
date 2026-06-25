@@ -190,7 +190,7 @@ export function NewPaymentForm({ onSubmit, disabled }: Props) {
   }, [amount, currency]);
 
   useEffect(() => {
-    api.getRuntimeStatus().then((s) => setActiveNetwork(s.network === "mock" ? null : s.network)).catch(() => {});
+    api.getRuntimeStatus().then((s) => setActiveNetwork(s.network)).catch(() => {});
     api.getWallet().then(setWalletOverview).catch(() => {});
   }, []);
 

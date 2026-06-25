@@ -5,10 +5,8 @@ EscrowCreate to lock large/flagged payments (TokenEscrow / XLS-85 for issued
 tokens), and an EscrowFinish to release them once a Firefly signature has been
 verified.
 
-In mock mode (settings.use_mock_xrpl) this returns deterministic fake tx hashes so
-the full workflow runs offline. The real submission paths are gated behind the
-mock flag and a configured treasury wallet. `xrpl-py` is imported lazily so mock
-mode and the test suite never load it.
+Requires a configured treasury wallet. `xrpl-py` is imported lazily so importing
+this module does not require the dependency.
 
 Pathfinding best practice: an auto-settled Payment carries the Paths set and
 SendMax cap from the routing tool, optionally DeliverMin + tfPartialPayment, and
@@ -18,7 +16,6 @@ guard against the partial-payment exploit.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass
 
@@ -93,14 +90,6 @@ async def execute_payment(
 ) -> ExecutionResult:
     """Direct token Payment for an auto-settled payment."""
     settings = get_settings()
-    if settings.use_mock_xrpl:
-        tx_hash = xrpl_client.mock_tx_hash("pay", payment_id)
-        return ExecutionResult(
-            tx_hash=tx_hash,
-            explorer_url=None,
-            status=PaymentStatus.settled,
-        )
-
     from xrpl.models.transactions import Payment
     from xrpl.models.transactions.payment import PaymentFlag
 
@@ -118,9 +107,13 @@ async def execute_payment(
     if route.paths:
         kwargs["paths"] = route.paths
         if route.send_max is not None:
-            kwargs["send_max"] = _settle_amount(settings.token_currency, route.send_max, settings)
+            kwargs["send_max"] = _settle_amount(
+                settings.token_currency, route.send_max, settings
+            )
     if route.deliver_min is not None:
-        kwargs["deliver_min"] = _settle_amount(settings.token_currency, route.deliver_min, settings)
+        kwargs["deliver_min"] = _settle_amount(
+            settings.token_currency, route.deliver_min, settings
+        )
         kwargs["flags"] = PaymentFlag.TF_PARTIAL_PAYMENT
     memos = _xrpl_memos(memo)
     if memos is not None:
@@ -138,15 +131,6 @@ async def lock_payment(
 ) -> EscrowResult:
     """EscrowCreate to lock funds for a payment that needs hardware approval."""
     settings = get_settings()
-    if settings.use_mock_xrpl:
-        tx_hash = xrpl_client.mock_tx_hash("escrow", payment_id)
-        return EscrowResult(
-            escrow_sequence=_mock_sequence(payment_id),
-            tx_hash=tx_hash,
-            explorer_url=None,
-            escrow_create_tx_hash=tx_hash,
-        )
-
     from xrpl.models.transactions import EscrowCreate
     from xrpl.utils import datetime_to_ripple_time
     from datetime import datetime, timedelta, timezone
@@ -156,7 +140,9 @@ async def lock_payment(
     # FinishAfter must be safely in the future when the tx is APPLIED (the next
     # ledger closes ~4s later); +1s lands in the past and XRPL returns
     # tecNO_PERMISSION. Give margin for ledger latency.
-    finish_after = datetime_to_ripple_time(datetime.now(timezone.utc) + timedelta(seconds=9))
+    finish_after = datetime_to_ripple_time(
+        datetime.now(timezone.utc) + timedelta(seconds=9)
+    )
     escrow_kwargs: dict = {
         "account": wallet.address,
         "destination": intent.to,
@@ -182,14 +168,6 @@ async def finish_escrow(payment_id: str, escrow_sequence: int) -> ExecutionResul
     """EscrowFinish to release a locked payment. Callers MUST verify the Firefly
     signature before invoking this — verification is not done here."""
     settings = get_settings()
-    if settings.use_mock_xrpl:
-        tx_hash = xrpl_client.mock_tx_hash("finish", payment_id)
-        return ExecutionResult(
-            tx_hash=tx_hash,
-            explorer_url=None,
-            status=PaymentStatus.released,
-        )
-
     from xrpl.models.transactions import EscrowFinish
 
     ledger = Ledger(settings)
@@ -240,8 +218,6 @@ def scaled_settlement(value: float, settings) -> float:
 
 def _settle_amount(currency: str, value: float, settings):
     """`xrpl_client.token_amount` with the testnet settlement scale applied."""
-    return xrpl_client.token_amount(currency, scaled_settlement(value, settings), settings)
-
-
-def _mock_sequence(payment_id: str) -> int:
-    return int(hashlib.sha256(payment_id.encode()).hexdigest()[:6], 16)
+    return xrpl_client.token_amount(
+        currency, scaled_settlement(value, settings), settings
+    )

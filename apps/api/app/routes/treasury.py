@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from ..agents import orchestrator, treasury_agent
 from ..config import get_settings
@@ -79,7 +80,9 @@ async def trigger_run() -> TreasuryAgentRun:
     The demo calls it explicitly so the cycle is visible in the UI.
     """
     if not get_settings().agent_enabled:
-        raise HTTPException(status_code=403, detail="autonomous agent is disabled (AGENT_ENABLED=false)")
+        raise HTTPException(
+            status_code=403, detail="autonomous agent is disabled (AGENT_ENABLED=false)"
+        )
     return await treasury_agent.run()
 
 
@@ -93,7 +96,7 @@ async def get_vault_status() -> VaultStatus:
     """Return the current vault position and configuration."""
     settings = get_settings()
     state = vault_tool.get_vault_state()
-    network = xrpl_client.network_label(settings.vault_xrpl_endpoint, use_mock=settings.use_mock_xrpl)
+    network = xrpl_client.network_label(settings.vault_xrpl_endpoint)
     return VaultStatus(
         vault_id=settings.vault_id or state["vault_id"],
         enabled=settings.vault_enabled,
@@ -113,21 +116,26 @@ async def get_vault_status() -> VaultStatus:
 async def create_vault() -> VaultOpRecord:
     """VaultCreate: provision a Single Asset Vault for the treasury token.
 
-    In mock mode this is instantaneous. In real mode it submits a VaultCreate
-    tx on the vault network (Devnet by default). The returned vault_id should
-    be stored in VAULT_ID for subsequent deposit/withdraw calls.
+    Submits a VaultCreate tx on the vault network (Devnet by default). The
+    returned vault_id should be stored in VAULT_ID for subsequent
+    deposit/withdraw calls.
     """
     settings = get_settings()
     # XLS-65 vaults hold an *issued* asset; XRP is not valid as a vault asset.
-    if not settings.use_mock_xrpl and settings.token_currency.upper() == "XRP":
+    if settings.token_currency.upper() == "XRP":
         raise HTTPException(
             status_code=400,
             detail="The XLS-65 vault requires an issued currency (e.g. RLUSD), not XRP. "
-                   "Set TOKEN_CURRENCY to an issued token to use the vault.",
+            "Set TOKEN_CURRENCY to an issued token to use the vault.",
+        )
+    if not settings.token_issuer_address:
+        raise HTTPException(
+            status_code=400,
+            detail="TOKEN_ISSUER_ADDRESS must be configured to create a vault.",
         )
     result = await vault_tool.create_vault(
         asset_currency=settings.token_currency,
-        asset_issuer=settings.token_issuer_address or "rMOCK_ISSUER",
+        asset_issuer=settings.token_issuer_address,
     )
     return _vault_record(
         id=result.vault_id[:8],
@@ -173,7 +181,7 @@ async def get_mpt_status() -> MPTStatus:
     settings = get_settings()
     state = mptoken_tool.get_mpt_state()
     network = xrpl_client.network_label(
-        settings.mpt_xrpl_endpoint or settings.xrpl_endpoint, use_mock=settings.use_mock_xrpl
+        settings.mpt_xrpl_endpoint or settings.xrpl_endpoint
     )
     return MPTStatus(
         issuance_id=settings.mpt_issuance_id or state["issuance_id"],
@@ -206,7 +214,9 @@ async def authorize_mpt_holder(request: MPTAuthorizeRequest) -> MPTAttestationRe
     In mock mode adds the holder to the in-memory authorized list.
     In real mode submits MPTokenAuthorize from the treasury account.
     """
-    result = await mptoken_tool.authorize_holder(_current_mpt_issuance_id(), request.holder)
+    result = await mptoken_tool.authorize_holder(
+        _current_mpt_issuance_id(), request.holder
+    )
     return _mpt_record(result, payment_id="", amount_settled=0.0)
 
 
@@ -230,6 +240,7 @@ async def mint_mpt_attestation() -> MPTAttestationRecord:
 
 
 # ── Trade Finance / On-chain Credit ──────────────────────────────────────────
+
 
 @router.post("/receivables", response_model=Receivable, status_code=201)
 async def register_receivable(create: ReceivableCreate) -> Receivable:
@@ -262,9 +273,13 @@ async def pay_supplier_early(invoice_id: str) -> Receivable:
     try:
         return await orchestrator.process_early_payment(invoice_id)
     except orchestrator.GuardrailBlocked as exc:
-        raise HTTPException(status_code=403, detail=f"Guardrail {exc.guardrail} blocked: {exc.reason}")
+        raise HTTPException(
+            status_code=403, detail=f"Guardrail {exc.guardrail} blocked: {exc.reason}"
+        )
     except orchestrator.GuardrailEscalation as exc:
-        raise HTTPException(status_code=402, detail=f"Requires hardware approval: {exc.reason}")
+        raise HTTPException(
+            status_code=402, detail=f"Requires hardware approval: {exc.reason}"
+        )
     except vault_tool.VaultNotConfigured as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     except tf_tool.InsufficientVaultLiquidity as exc:
@@ -286,8 +301,6 @@ async def collect_repayment(invoice_id: str) -> Receivable:
 
 
 # ── x402 Service Payments ─────────────────────────────────────────────────────
-
-from pydantic import BaseModel
 
 
 @router.get("/x402/demo-resource")
@@ -326,7 +339,9 @@ class ServicePaymentRequest(BaseModel):
 
 
 @router.post("/service-payment", response_model=X402Settlement, status_code=201)
-async def trigger_service_payment(req: ServicePaymentRequest, request: Request) -> X402Settlement:
+async def trigger_service_payment(
+    req: ServicePaymentRequest, request: Request
+) -> X402Settlement:
     """Pay for an external service via x402 (G1+G4 guardrailed)."""
     settings = get_settings()
     if not settings.x402_enabled:
@@ -338,7 +353,9 @@ async def trigger_service_payment(req: ServicePaymentRequest, request: Request) 
         )
         return result
     except orchestrator.GuardrailBlocked as exc:
-        raise HTTPException(status_code=403, detail=f"Guardrail {exc.guardrail} blocked: {exc.reason}")
+        raise HTTPException(
+            status_code=403, detail=f"Guardrail {exc.guardrail} blocked: {exc.reason}"
+        )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
@@ -356,16 +373,25 @@ def _resolve_service_url(service_url: str, request: Request) -> str:
     parsed = urlparse(value)
     demo_path = "/treasury/x402/demo-resource"
     local_hosts = {"localhost", "127.0.0.1", "::1"}
-    if value == demo_path or (parsed.hostname in local_hosts and parsed.path == demo_path):
+    if value == demo_path or (
+        parsed.hostname in local_hosts and parsed.path == demo_path
+    ):
         # Railway terminates TLS before Uvicorn, so request.base_url can be
         # internal HTTP even though the public endpoint is HTTPS.
-        scheme = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
-        host = request.headers.get("x-forwarded-host", request.headers.get("host", request.url.netloc))
+        scheme = (
+            request.headers.get("x-forwarded-proto", request.url.scheme)
+            .split(",")[0]
+            .strip()
+        )
+        host = request.headers.get(
+            "x-forwarded-host", request.headers.get("host", request.url.netloc)
+        )
         return f"{scheme}://{host}".rstrip("/") + demo_path
     return value
 
 
 # ── Delegation ────────────────────────────────────────────────────────────────
+
 
 @router.post("/delegations", response_model=DelegationGrant, status_code=201)
 async def create_delegation(create: DelegationGrantCreate) -> DelegationGrant:
@@ -381,7 +407,9 @@ async def create_delegation(create: DelegationGrantCreate) -> DelegationGrant:
     try:
         return await orchestrator.process_delegation_fund(create)
     except orchestrator.GuardrailBlocked as exc:
-        raise HTTPException(status_code=403, detail=f"Guardrail {exc.guardrail} blocked: {exc.reason}")
+        raise HTTPException(
+            status_code=403, detail=f"Guardrail {exc.guardrail} blocked: {exc.reason}"
+        )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
@@ -389,6 +417,7 @@ async def create_delegation(create: DelegationGrantCreate) -> DelegationGrant:
 @router.get("/delegations", response_model=list[DelegationGrant])
 async def list_delegations() -> list[DelegationGrant]:
     from ..tools.delegation import _grants
+
     return list(_grants.values())
 
 
@@ -401,6 +430,7 @@ async def revoke_delegation(grant_id: str) -> DelegationGrant:
 
 
 # ── Insurance — pricing & risk engine (Pillar 3) ──────────────────────────────
+
 
 def _require_insurance() -> None:
     if not get_settings().insurance_enabled:
@@ -438,7 +468,9 @@ async def insurance_pool() -> PoolStatus:
 async def insurance_agent_risk(address: str) -> AgentRiskState:
     state = insurance_tool.get_agent_risk_state(address)
     if state is None:
-        raise HTTPException(status_code=404, detail="no risk posterior for this agent yet")
+        raise HTTPException(
+            status_code=404, detail="no risk posterior for this agent yet"
+        )
     return state
 
 
@@ -461,7 +493,9 @@ async def treasury_summary() -> TreasurySummary:
                 stable_usd += Decimal(token.value or "0")
 
     try:
-        xrp_usd = Decimal(str(await routing_tool.convert_to_usd(float(xrp_native), "XRP")))
+        xrp_usd = Decimal(
+            str(await routing_tool.convert_to_usd(float(xrp_native), "XRP"))
+        )
     except Exception:
         xrp_usd = xrp_native * Decimal("0.52")
 
@@ -472,8 +506,11 @@ async def treasury_summary() -> TreasurySummary:
         vault_usd = Decimal(str(vault_state.get("wallet_balance", 0)))
 
     reserved_usd = sum(
-        (Decimal(str(p.intent.amount)) for p in store.list_payments()
-         if p.status == PaymentStatus.pending_approval),
+        (
+            Decimal(str(p.intent.amount))
+            for p in store.list_payments()
+            if p.status == PaymentStatus.pending_approval
+        ),
         Decimal("0"),
     )
 
@@ -501,7 +538,9 @@ def _current_vault_id() -> str:
 
 
 def _current_mpt_issuance_id() -> str:
-    issuance_id = get_settings().mpt_issuance_id or mptoken_tool.get_mpt_state().get("issuance_id")
+    issuance_id = get_settings().mpt_issuance_id or mptoken_tool.get_mpt_state().get(
+        "issuance_id"
+    )
     if not issuance_id:
         raise HTTPException(
             status_code=409,
@@ -559,7 +598,9 @@ def _recent_mpt_records(attestations: list[dict]) -> list[MPTAttestationRecord]:
     ]
 
 
-def _mpt_record(result, *, payment_id: str, amount_settled: float) -> MPTAttestationRecord:
+def _mpt_record(
+    result, *, payment_id: str, amount_settled: float
+) -> MPTAttestationRecord:
     return MPTAttestationRecord(
         id=str(uuid.uuid4()),
         issuance_id=result.issuance_id,

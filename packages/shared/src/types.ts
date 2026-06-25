@@ -60,8 +60,7 @@ export interface WalletOverview {
 
 export interface RuntimeStatus {
   status: "ok";
-  mockMode: boolean;
-  network: "mock" | "testnet" | "devnet";
+  network: "testnet" | "devnet";
   fireflyConfirmationEnabled: boolean;
 }
 
@@ -292,7 +291,7 @@ export interface MPTAttestationRecord {
 export interface MPTStatus {
   issuanceId: string | null;
   enabled: boolean;
-  network: string;        // "mock" | "testnet" | "devnet"
+  network: string;        // "testnet" | "devnet"
   metadataHex: string;    // hex-encoded "COMPLY" metadata
   totalMinted: number;
   authorizedCount: number;
@@ -317,7 +316,7 @@ export interface VaultOpRecord {
 export interface VaultStatus {
   vaultId: string | null;
   enabled: boolean;
-  network: string; // "mock" | "devnet" | "testnet"
+  network: string; // "testnet" | "devnet"
   deposited: number;
   shares: number;
   walletBalance: number;

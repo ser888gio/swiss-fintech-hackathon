@@ -5,6 +5,7 @@ USB-Serial/JTAG re-enumerates when the chip resets (the COM port drops and comes
 back), so this resets via the EN line, then reconnects across the re-enumeration
 and reads for a fixed window. pyserial ships with the IDF python env.
 """
+
 import sys
 import time
 
@@ -27,10 +28,10 @@ def main() -> int:
     # Phase 1 — pulse EN (RTS) low→high to reset the chip into the app.
     try:
         p = open_port()
-        p.setDTR(False)   # IO9 high → normal boot (not download)
-        p.setRTS(True)    # EN low  → hold in reset
+        p.setDTR(False)  # IO9 high → normal boot (not download)
+        p.setRTS(True)  # EN low  → hold in reset
         time.sleep(0.15)
-        p.setRTS(False)   # EN high → release, boot
+        p.setRTS(False)  # EN high → release, boot
         log("reset pulse sent")
     except Exception as exc:  # noqa: BLE001
         log(f"reset open failed: {exc}")

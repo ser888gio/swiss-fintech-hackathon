@@ -4,7 +4,15 @@ from fastapi import APIRouter, HTTPException, Response
 from .. import store
 from ..agents import orchestrator
 from ..config import get_settings
-from ..schemas import AgentLogEntry, ApprovalChallenge, Payment, PaymentIntent, QuoteRequest, Receipt, ReleaseRequest, RouteQuote
+from ..schemas import (
+    AgentLogEntry,
+    ApprovalChallenge,
+    Payment,
+    PaymentIntent,
+    QuoteRequest,
+    ReleaseRequest,
+    RouteQuote,
+)
 from ..tools import receipt as receipt_tool
 from ..tools import receipt_pdf as receipt_pdf_tool
 from ..tools import routing
@@ -37,13 +45,17 @@ async def create_payment(intent: PaymentIntent) -> Payment:
                     "Fund it on the configured XRPL network first."
                 ),
             ) from exc
-        raise HTTPException(status_code=502, detail=f"Payment processing failed: {exc}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"Payment processing failed: {exc}"
+        ) from exc
 
 
 @router.post("/quote", response_model=RouteQuote)
 async def quote_payment(request: QuoteRequest) -> RouteQuote:
     try:
-        return await routing.quote_amount(request.amount, request.currency, get_settings().token_currency)
+        return await routing.quote_amount(
+            request.amount, request.currency, get_settings().token_currency
+        )
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=502,
@@ -78,19 +90,27 @@ async def get_challenge(payment_id: str) -> ApprovalChallenge:
     except orchestrator.PaymentNotFound as exc:
         raise HTTPException(status_code=404, detail="payment not found") from exc
     except orchestrator.InvalidApprovalState as exc:
-        raise HTTPException(status_code=409, detail="payment is not pending approval") from exc
+        raise HTTPException(
+            status_code=409, detail="payment is not pending approval"
+        ) from exc
 
 
 @router.post("/{payment_id}/release", response_model=Payment)
 async def release_payment(payment_id: str, body: ReleaseRequest) -> Payment:
     try:
-        return _public_payment(await orchestrator.release_payment(payment_id, body.signature))
+        return _public_payment(
+            await orchestrator.release_payment(payment_id, body.signature)
+        )
     except orchestrator.PaymentNotFound as exc:
         raise HTTPException(status_code=404, detail="payment not found") from exc
     except orchestrator.InvalidApprovalState as exc:
-        raise HTTPException(status_code=409, detail="payment is not pending approval") from exc
+        raise HTTPException(
+            status_code=409, detail="payment is not pending approval"
+        ) from exc
     except orchestrator.SignatureRejected as exc:
-        raise HTTPException(status_code=403, detail="Firefly signature rejected") from exc
+        raise HTTPException(
+            status_code=403, detail="Firefly signature rejected"
+        ) from exc
 
 
 @router.post("/{payment_id}/release-tampered", status_code=403)
@@ -107,7 +127,10 @@ async def release_tampered(payment_id: str, body: ReleaseRequest) -> dict:
     except orchestrator.PaymentNotFound as exc:
         raise HTTPException(status_code=404, detail="payment not found") from exc
     except orchestrator.SignatureRejected:
-        raise HTTPException(status_code=403, detail="Firefly signature rejected — payment details were altered")
+        raise HTTPException(
+            status_code=403,
+            detail="Firefly signature rejected — payment details were altered",
+        )
     # Should never reach here; release_tampered always raises SignatureRejected.
     raise HTTPException(status_code=403, detail="Firefly signature rejected")
 
@@ -118,7 +141,9 @@ async def get_receipt(payment_id: str) -> dict:
     if payment is None:
         raise HTTPException(status_code=404, detail="payment not found")
     if payment.status not in orchestrator.TERMINAL_STATUSES:
-        raise HTTPException(status_code=409, detail="receipt only available for terminal payments")
+        raise HTTPException(
+            status_code=409, detail="receipt only available for terminal payments"
+        )
     r = receipt_tool.build_receipt(payment)
     return {"receipt": r.model_dump(by_alias=True), "receiptHash": payment.receipt_hash}
 
@@ -129,7 +154,9 @@ async def get_receipt_pdf(payment_id: str) -> Response:
     if payment is None:
         raise HTTPException(status_code=404, detail="payment not found")
     if payment.status not in orchestrator.TERMINAL_STATUSES:
-        raise HTTPException(status_code=409, detail="receipt only available for terminal payments")
+        raise HTTPException(
+            status_code=409, detail="receipt only available for terminal payments"
+        )
     pdf = receipt_pdf_tool.build_receipt_pdf(payment)
     filename = f"audit-report-{payment.id[:8]}.pdf"
     return Response(
@@ -140,16 +167,12 @@ async def get_receipt_pdf(payment_id: str) -> Response:
 
 
 def _validate_destination(address: str) -> None:
-    """Reject an invalid XRPL destination up front (real mode only).
+    """Reject an invalid XRPL destination up front.
 
-    In real mode the orchestrator builds a Payment/EscrowCreate from this address;
-    an invalid one makes xrpl-py raise deep in serialization, which surfaces as a
-    500 with no CORS header (the browser then reports a misleading CORS error). A
-    422 here returns a clean, CORS-headed message instead. Mock mode keeps
-    accepting the placeholder addresses used by offline demos and tests.
+    The orchestrator builds a Payment/EscrowCreate from this address; an invalid
+    one makes xrpl-py raise deep in serialization, surfacing as a 500 with no
+    CORS header. A 422 here returns a clean, CORS-headed message instead.
     """
-    if get_settings().use_mock_xrpl:
-        return
     from xrpl.core.addresscodec import is_valid_classic_address, is_valid_xaddress
 
     try:
@@ -165,14 +188,14 @@ def _validate_destination(address: str) -> None:
 async def _validate_destination_exists(address: str) -> None:
     """Fail before signing when a destination is absent on the active network."""
     settings = get_settings()
-    if settings.use_mock_xrpl:
-        return
     from xrpl.models.requests import AccountInfo
     from .. import xrpl_client
 
     try:
         async with xrpl_client.async_client(settings.xrpl_endpoint) as client:
-            response = await client.request(AccountInfo(account=address, ledger_index="validated"))
+            response = await client.request(
+                AccountInfo(account=address, ledger_index="validated")
+            )
     except Exception as exc:
         # Connectivity failures are handled by the normal transaction path; do
         # not turn a best-effort preflight into a new availability dependency.
@@ -185,7 +208,10 @@ async def _validate_destination_exists(address: str) -> None:
                 ),
             ) from exc
         return
-    if not response.is_successful() or response.result.get("error") in ("actNotFound", "actMalformed"):
+    if not response.is_successful() or response.result.get("error") in (
+        "actNotFound",
+        "actMalformed",
+    ):
         raise HTTPException(
             status_code=422,
             detail=(
@@ -196,7 +222,4 @@ async def _validate_destination_exists(address: str) -> None:
 
 
 def _public_payment(payment: Payment) -> Payment:
-    """Hide stale fake explorer links from older mock-mode payment rows."""
-    if not get_settings().use_mock_xrpl or payment.explorer_url is None:
-        return payment
-    return payment.model_copy(update={"explorer_url": None, "explorer_url_secondary": None})
+    return payment

@@ -46,7 +46,6 @@ from .schemas import (
     PaymentStatus,
     PolicyDecision,
     PremiumQuote,
-    ReceiverEntityType,
     RouteQuote,
     ServicePaymentRecord,
 )
@@ -62,6 +61,7 @@ _service_payments: dict[str, ServicePaymentRecord] = {}
 
 
 # ── Public sync interface (unchanged from original) ────────────────────────────
+
 
 def save(payment: Payment) -> Payment:
     _payments[payment.id] = payment
@@ -128,6 +128,7 @@ def list_service_payments(agent_id: str | None = None) -> list[ServicePaymentRec
 
 # ── Startup hydration ──────────────────────────────────────────────────────────
 
+
 async def load_from_db() -> None:
     """Hydrate in-memory dicts from Postgres after a restart.
 
@@ -155,6 +156,7 @@ async def load_from_db() -> None:
 
 
 # ── Async persist helpers (private) ───────────────────────────────────────────
+
 
 async def _persist_payment(payment: Payment) -> None:
     if db.session_factory is None:
@@ -228,9 +230,14 @@ async def _persist_service_payment(record: ServicePaymentRecord) -> None:
                 amount=record.amount,
                 tx_hash=record.tx_hash,
                 explorer_url=record.explorer_url,
-                guardrail_trail=[g.model_dump(mode="json", by_alias=True) for g in record.guardrail_trail],
+                guardrail_trail=[
+                    g.model_dump(mode="json", by_alias=True)
+                    for g in record.guardrail_trail
+                ],
                 audit_event_id=record.audit_event_id,
-                cover=record.cover.model_dump(mode="json", by_alias=True) if record.cover else None,
+                cover=record.cover.model_dump(mode="json", by_alias=True)
+                if record.cover
+                else None,
                 created_at=record.created_at,
                 updated_at=record.updated_at,
             )
@@ -241,6 +248,7 @@ async def _persist_service_payment(record: ServicePaymentRecord) -> None:
 
 
 # ── Load helpers ───────────────────────────────────────────────────────────────
+
 
 async def _load_payments(session) -> None:
     rows = (await session.execute(select(PaymentRecord))).scalars().all()
@@ -258,11 +266,13 @@ async def _load_logs(session) -> None:
     for row in rows:
         key = (row.payment_id, row.timestamp, row.message)
         if key not in existing_keys:
-            _logs.append(AgentLogEntry(
-                payment_id=row.payment_id,
-                timestamp=row.timestamp,
-                message=row.message,
-            ))
+            _logs.append(
+                AgentLogEntry(
+                    payment_id=row.payment_id,
+                    timestamp=row.timestamp,
+                    message=row.message,
+                )
+            )
 
 
 async def _load_credentials(session) -> None:
@@ -281,16 +291,19 @@ async def _load_credential_logs(session) -> None:
     for row in rows:
         key = (row.record_id, row.timestamp, row.message)
         if key not in existing_keys:
-            _credential_logs.append(CredentialLogEntry(
-                record_id=row.record_id,
-                timestamp=row.timestamp,
-                message=row.message,
-            ))
+            _credential_logs.append(
+                CredentialLogEntry(
+                    record_id=row.record_id,
+                    timestamp=row.timestamp,
+                    message=row.message,
+                )
+            )
 
 
 async def _load_service_payments(session) -> None:
     rows = (await session.execute(select(ServicePaymentRecordDB))).scalars().all()
     from .schemas import GuardrailResult
+
     for row in rows:
         if row.id in _service_payments:
             continue
@@ -319,25 +332,34 @@ async def _load_agent_reservations(session) -> None:
         bucket = _agent_reservations.setdefault(row.agent_id, [])
         if any(r["idempotency_key"] == row.idempotency_key for r in bucket):
             continue
-        bucket.append({
-            "id": row.id,
-            "idempotency_key": row.idempotency_key,
-            "amount": Decimal(row.amount),
-            "currency": row.currency,
-            "status": row.status,
-            "created_at": _ensure_utc(row.created_at),
-        })
+        bucket.append(
+            {
+                "id": row.id,
+                "idempotency_key": row.idempotency_key,
+                "amount": Decimal(row.amount),
+                "currency": row.currency,
+                "status": row.status,
+                "created_at": _ensure_utc(row.created_at),
+            }
+        )
 
 
 # ── Row ↔ Pydantic converters ─────────────────────────────────────────────────
+
 
 def _payment_to_row(payment: Payment) -> PaymentRecord:
     row = PaymentRecord(
         id=payment.id,
         intent=payment.intent.model_dump(by_alias=True),
-        route_quote=payment.route_quote.model_dump(by_alias=True) if payment.route_quote else None,
-        compliance=payment.compliance.model_dump(by_alias=True) if payment.compliance else None,
-        policy_decision=payment.policy_decision.model_dump(by_alias=True) if payment.policy_decision else None,
+        route_quote=payment.route_quote.model_dump(by_alias=True)
+        if payment.route_quote
+        else None,
+        compliance=payment.compliance.model_dump(by_alias=True)
+        if payment.compliance
+        else None,
+        policy_decision=payment.policy_decision.model_dump(by_alias=True)
+        if payment.policy_decision
+        else None,
         cover=payment.coverage.model_dump(mode="json", by_alias=True),
         status=payment.status.value,
         escrow_sequence=payment.escrow_sequence,
@@ -378,7 +400,9 @@ def _row_to_payment(row: PaymentRecord) -> Payment:
         route_quote=RouteQuote(**route_data) if route_data else None,
         compliance=ComplianceResult(**compliance_data) if compliance_data else None,
         policy_decision=PolicyDecision(**policy_data) if policy_data else None,
-        coverage=PaymentCoverage(**coverage_data) if coverage_data else PaymentCoverage(),
+        coverage=PaymentCoverage(**coverage_data)
+        if coverage_data
+        else PaymentCoverage(),
         status=PaymentStatus(row.status),
         escrow_sequence=row.escrow_sequence,
         escrow_create_tx_hash=row.escrow_create_tx_hash,
@@ -401,7 +425,9 @@ def _credential_to_row(record: CredentialRecord) -> CredentialRecordDB:
         subject=record.subject,
         subject_name=record.subject_name,
         subject_country=record.subject_country,
-        subject_entity_type=(record.subject_entity_type.value if record.subject_entity_type else None),
+        subject_entity_type=(
+            record.subject_entity_type.value if record.subject_entity_type else None
+        ),
         issuer=record.issuer,
         credential_type=record.credential_type,
         uri=record.uri,
@@ -466,19 +492,26 @@ def reserve_spend(
     the transaction attempt completes.
     """
     import uuid
+
     bucket = _reservations.setdefault(agent_address, [])
     if any(r["idempotency_key"] == idempotency_key for r in bucket):
         return False
-    bucket.append({
-        "id": str(uuid.uuid4()),
-        "idempotency_key": idempotency_key,
-        "amount": amount,
-        "currency": currency,
-        "context_kind": context_kind,
-        "status": "reserved",
-        "created_at": datetime.now(timezone.utc),
-    })
-    _schedule(_persist_reservation(agent_address, idempotency_key, amount, currency, context_kind))
+    bucket.append(
+        {
+            "id": str(uuid.uuid4()),
+            "idempotency_key": idempotency_key,
+            "amount": amount,
+            "currency": currency,
+            "context_kind": context_kind,
+            "status": "reserved",
+            "created_at": datetime.now(timezone.utc),
+        }
+    )
+    _schedule(
+        _persist_reservation(
+            agent_address, idempotency_key, amount, currency, context_kind
+        )
+    )
     return True
 
 
@@ -524,6 +557,7 @@ def recent_payments_sum(
 
 # ── Async persist for spend reservations ──────────────────────────────────────
 
+
 async def _persist_reservation(
     agent_address: str,
     idempotency_key: str,
@@ -534,6 +568,7 @@ async def _persist_reservation(
     if db.session_factory is None:
         return
     import uuid
+
     try:
         async with db.session_factory() as session:
             row = SpendReservationRecord(
@@ -570,21 +605,26 @@ def reserve_agent_spend(
     Caller calls commit_agent_spend or release_agent_spend after the attempt.
     """
     import uuid
+
     bucket = _agent_reservations.setdefault(agent_id, [])
     if any(r["idempotency_key"] == idempotency_key for r in bucket):
         return False
     reservation_id = str(uuid.uuid4())
-    bucket.append({
-        "id": reservation_id,
-        "idempotency_key": idempotency_key,
-        "amount": amount,
-        "currency": currency,
-        "status": "reserved",
-        "created_at": datetime.now(timezone.utc),
-    })
-    _schedule(_persist_agent_reservation(
-        reservation_id, agent_id, idempotency_key, amount, currency, "reserved"
-    ))
+    bucket.append(
+        {
+            "id": reservation_id,
+            "idempotency_key": idempotency_key,
+            "amount": amount,
+            "currency": currency,
+            "status": "reserved",
+            "created_at": datetime.now(timezone.utc),
+        }
+    )
+    _schedule(
+        _persist_agent_reservation(
+            reservation_id, agent_id, idempotency_key, amount, currency, "reserved"
+        )
+    )
     return True
 
 
@@ -592,7 +632,9 @@ def commit_agent_spend(agent_id: str, idempotency_key: str) -> None:
     for r in _agent_reservations.get(agent_id, []):
         if r["idempotency_key"] == idempotency_key:
             r["status"] = "committed"
-            _schedule(_update_agent_reservation_status(agent_id, idempotency_key, "committed"))
+            _schedule(
+                _update_agent_reservation_status(agent_id, idempotency_key, "committed")
+            )
             break
 
 
@@ -600,7 +642,9 @@ def release_agent_spend(agent_id: str, idempotency_key: str) -> None:
     for r in _agent_reservations.get(agent_id, []):
         if r["idempotency_key"] == idempotency_key:
             r["status"] = "released"
-            _schedule(_update_agent_reservation_status(agent_id, idempotency_key, "released"))
+            _schedule(
+                _update_agent_reservation_status(agent_id, idempotency_key, "released")
+            )
             break
 
 
@@ -634,14 +678,16 @@ async def _persist_agent_reservation(
         return
     try:
         async with db.session_factory() as session:
-            await session.merge(AgentSpendReservationRecord(
-                id=reservation_id,
-                agent_id=agent_id,
-                idempotency_key=idempotency_key,
-                amount=str(amount),
-                currency=currency,
-                status=status,
-            ))
+            await session.merge(
+                AgentSpendReservationRecord(
+                    id=reservation_id,
+                    agent_id=agent_id,
+                    idempotency_key=idempotency_key,
+                    amount=str(amount),
+                    currency=currency,
+                    status=status,
+                )
+            )
             await session.commit()
     except Exception as exc:
         log.warning("Failed to persist agent reservation %s: %s", idempotency_key, exc)
@@ -654,12 +700,14 @@ async def _update_agent_reservation_status(
         return
     try:
         async with db.session_factory() as session:
-            row = (await session.execute(
-                select(AgentSpendReservationRecord).where(
-                    AgentSpendReservationRecord.agent_id == agent_id,
-                    AgentSpendReservationRecord.idempotency_key == idempotency_key,
+            row = (
+                await session.execute(
+                    select(AgentSpendReservationRecord).where(
+                        AgentSpendReservationRecord.agent_id == agent_id,
+                        AgentSpendReservationRecord.idempotency_key == idempotency_key,
+                    )
                 )
-            )).scalar_one_or_none()
+            ).scalar_one_or_none()
             if row:
                 row.status = status
                 await session.commit()
@@ -668,6 +716,7 @@ async def _update_agent_reservation_status(
 
 
 # ── Utility ───────────────────────────────────────────────────────────────────
+
 
 def _schedule(coro) -> None:
     """Fire-and-forget: schedule a DB persist coroutine if a loop is running.

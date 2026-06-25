@@ -2,25 +2,31 @@ import cors from "cors";
 import express from "express";
 import type { BridgeSignRequest, BridgeSignResponse } from "@treasury/shared";
 
-import { MockFireflyDevice, SerialFireflyDevice } from "./device.js";
+import { SerialFireflyDevice } from "./device.js";
 import type { FireflyDevice } from "./device.js";
 
 const PORT = Number(process.env.BRIDGE_PORT ?? 4747);
 const DEVICE_PATH = process.env.FIREFLY_DEVICE_PATH;
 const DEVICE_PUBLIC_KEY = process.env.FIREFLY_PUBLIC_KEY;
 
-let device: FireflyDevice;
+if (!DEVICE_PATH) {
+  console.error(
+    "[firefly] FIREFLY_DEVICE_PATH is not set. " +
+    "Connect the Firefly Pixie and set FIREFLY_DEVICE_PATH (e.g. COM3 or /dev/ttyACM0)."
+  );
+  process.exit(1);
+}
+if (!DEVICE_PUBLIC_KEY) {
+  console.error(
+    "[firefly] FIREFLY_PUBLIC_KEY is not set. " +
+    "Run `npx tsx src/keygen.ts` to generate a keypair, flash the private key onto the " +
+    "device, and set FIREFLY_PUBLIC_KEY in the environment."
+  );
+  process.exit(1);
+}
 
-if (DEVICE_PATH) {
-  if (!DEVICE_PUBLIC_KEY) {
-    throw new Error(
-      "FIREFLY_DEVICE_PATH is set but FIREFLY_PUBLIC_KEY is missing. " +
-      "Run the provisioning command on the Pixie to read its public key."
-    );
-  }
-  device = new SerialFireflyDevice(DEVICE_PATH, DEVICE_PUBLIC_KEY);
-  console.log(`[firefly] Using real Firefly Pixie at ${DEVICE_PATH}`);
-} 
+const device: FireflyDevice = new SerialFireflyDevice(DEVICE_PATH, DEVICE_PUBLIC_KEY);
+console.log(`[firefly] Using real Firefly Pixie at ${DEVICE_PATH}`);
 
 const app = express();
 app.use(cors());

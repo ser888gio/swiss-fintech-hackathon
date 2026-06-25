@@ -97,7 +97,8 @@ def _payment_history(receiver_address: str):
 
         terminal = {PaymentStatus.settled, PaymentStatus.released}
         return [
-            p for p in store.list_payments()
+            p
+            for p in store.list_payments()
             if p.intent.to == receiver_address and p.status in terminal
         ]
     except Exception:
@@ -114,7 +115,7 @@ def _compute_score(is_new_counterparty: bool, flag_count: int) -> int:
         return 0
     score = 0
     if is_new_counterparty:
-        score += 15   # modest nudge; not all new counterparties are risky
+        score += 15  # modest nudge; not all new counterparties are risky
     # Each additional flag beyond new-counterparty adds weight
     extra_flags = flag_count - (1 if is_new_counterparty else 0)
     score += extra_flags * 20

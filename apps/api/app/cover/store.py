@@ -14,31 +14,21 @@ from decimal import Decimal
 
 from ..insurance import risk as ins_risk
 from ..insurance.risk import AgentRisk
-from ..schemas import CoverLineKind, CoverPolicy, CoverPolicyStatus, CoverPayout
+from ..schemas import CoverPolicy, CoverPolicyStatus, CoverPayout
 
 log = logging.getLogger(__name__)
 
 _policies: dict[str, CoverPolicy] = {}
 _payouts: list[CoverPayout] = []
-_claimed_payments: set[str] = set()          # payment_id → already claimed (replay guard)
+_claimed_payments: set[str] = set()  # payment_id → already claimed (replay guard)
 _agent_risk: dict[str, AgentRisk] = {}
 _bands: dict[str, str] = {}
-_reservations: dict[str, Decimal] = {}       # policy_id → reserved cover_cap
+_reservations: dict[str, Decimal] = {}  # policy_id → reserved cover_cap
 _pool = {"premiums": Decimal("0"), "claims": Decimal("0")}
 
 
-def reset_mock_state() -> None:
-    _policies.clear()
-    _payouts.clear()
-    _claimed_payments.clear()
-    _agent_risk.clear()
-    _bands.clear()
-    _reservations.clear()
-    _pool["premiums"] = Decimal("0")
-    _pool["claims"] = Decimal("0")
-
-
 # ── Capacity accounting ───────────────────────────────────────────────────────
+
 
 def reserved_capacity() -> Decimal:
     """Total cover_cap reserved by all active (non-exhausted/expired) policies."""
@@ -60,6 +50,7 @@ def release_reservation(policy_id: str) -> None:
 
 # ── Agent risk posterior ──────────────────────────────────────────────────────
 
+
 def get_or_seed_risk(agent_address: str, score_band: str) -> AgentRisk:
     r = _agent_risk.get(agent_address)
     if r is None:
@@ -71,11 +62,14 @@ def get_or_seed_risk(agent_address: str, score_band: str) -> AgentRisk:
 
 def record_default(agent_address: str, loss: Decimal, tau_days: float) -> AgentRisk:
     from ..config import get_settings
+
     settings = get_settings()
     r = get_or_seed_risk(agent_address, _bands.get(agent_address, "STANDARD"))
     ref = Decimal(str(settings.policy_threshold_usd or 10_000))
     weight = max(0.25, min(4.0, float(loss / ref)))
-    updated = ins_risk.update(r, defaulted=True, exposure_weight=weight, tau_days=tau_days)
+    updated = ins_risk.update(
+        r, defaulted=True, exposure_weight=weight, tau_days=tau_days
+    )
     _agent_risk[agent_address] = updated
     return updated
 
@@ -95,6 +89,7 @@ def get_agent_risk_snapshot(agent_address: str) -> dict | None:
 
 
 # ── Policies ──────────────────────────────────────────────────────────────────
+
 
 def save_policy(policy: CoverPolicy) -> CoverPolicy:
     _policies[policy.id] = policy
@@ -137,6 +132,7 @@ def _expire_stale() -> None:
 
 # ── Replay guard ──────────────────────────────────────────────────────────────
 
+
 def is_claimed(payment_id: str) -> bool:
     return payment_id in _claimed_payments
 
@@ -146,6 +142,7 @@ def mark_claimed(payment_id: str) -> None:
 
 
 # ── Payouts ───────────────────────────────────────────────────────────────────
+
 
 def save_payout(payout: CoverPayout) -> CoverPayout:
     _payouts.append(payout)
@@ -161,23 +158,30 @@ def list_payouts(policy_id: str | None = None) -> list[CoverPayout]:
 
 def payout_count_for_pair(agent_address: str, merchant: str) -> int:
     """Collusion guard: count claims from agent against this merchant across all policies."""
-    agent_policy_ids = {p.id for p in _policies.values() if p.agent_address == agent_address}
+    agent_policy_ids = {
+        p.id for p in _policies.values() if p.agent_address == agent_address
+    }
     return sum(
-        1 for p in _payouts
+        1
+        for p in _payouts
         if p.policy_id in agent_policy_ids and p.destination == merchant
     )
 
 
 def reset_pair_payouts(agent_address: str, merchant: str) -> None:
     """Remove stored payouts for one agent↔merchant pair — used by demo reset only."""
-    agent_policy_ids = {p.id for p in _policies.values() if p.agent_address == agent_address}
+    agent_policy_ids = {
+        p.id for p in _policies.values() if p.agent_address == agent_address
+    }
     _payouts[:] = [
-        p for p in _payouts
+        p
+        for p in _payouts
         if not (p.policy_id in agent_policy_ids and p.destination == merchant)
     ]
 
 
 # ── Pool accounting ───────────────────────────────────────────────────────────
+
 
 def add_premium(amount: Decimal) -> None:
     _pool["premiums"] += amount

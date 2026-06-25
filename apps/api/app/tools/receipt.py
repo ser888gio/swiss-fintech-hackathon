@@ -213,7 +213,9 @@ def _cover(payment: Payment) -> dict | None:
         "reason": coverage.reason or quote.reason,
         "receiptHash": quote.receipt_hash,
         "premiumTxHash": coverage.premium.tx_hash if coverage.premium else None,
-        "premiumExplorerUrl": coverage.premium.explorer_url if coverage.premium else None,
+        "premiumExplorerUrl": coverage.premium.explorer_url
+        if coverage.premium
+        else None,
     }
 
 

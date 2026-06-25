@@ -16,9 +16,6 @@ Guardrails applied before step 2:
 
 XLS-65 vault is used for the credit pool (via vault.py). XLS-66 LoanCreate/
 LoanRepay is delegated to lending.py when lending_enabled=True.
-
-Mock mode: full state machine runs in-process; no network calls. All operations
-return deterministic tx hashes.
 """
 
 from __future__ import annotations
@@ -38,16 +35,12 @@ log = logging.getLogger(__name__)
 _QUANTIZE = Decimal("0.000001")
 
 # ── In-memory receivable store ────────────────────────────────────────────────
-_receivables: dict[str, Receivable] = {}   # id → Receivable
-_by_invoice: dict[str, str] = {}           # invoice_id → id
-
-
-def reset_mock_state() -> None:
-    _receivables.clear()
-    _by_invoice.clear()
+_receivables: dict[str, Receivable] = {}  # id → Receivable
+_by_invoice: dict[str, str] = {}  # invoice_id → id
 
 
 # ── register_receivable ───────────────────────────────────────────────────────
+
 
 async def register_receivable(create: ReceivableCreate) -> Receivable:
     """Record a new trade-finance receivable. Status → registered.
@@ -84,6 +77,7 @@ async def register_receivable(create: ReceivableCreate) -> Receivable:
 
 # ── pay_supplier_early ────────────────────────────────────────────────────────
 
+
 async def pay_supplier_early(
     invoice_id: str,
     *,
@@ -105,11 +99,15 @@ async def pay_supplier_early(
 
     rec = _get_by_invoice(invoice_id)
     if rec.status not in (ReceivableStatus.registered, ReceivableStatus.funds_reserved):
-        raise InvalidReceivableState(f"receivable {invoice_id} is in state {rec.status}; cannot pay early")
+        raise InvalidReceivableState(
+            f"receivable {invoice_id} is in state {rec.status}; cannot pay early"
+        )
 
     face = Decimal(rec.amount).quantize(_QUANTIZE, rounding=ROUND_DOWN)
     discount = Decimal(rec.discount_rate).quantize(_QUANTIZE, rounding=ROUND_DOWN)
-    supplier_amount = (face * (Decimal("1") - discount)).quantize(_QUANTIZE, rounding=ROUND_DOWN)
+    supplier_amount = (face * (Decimal("1") - discount)).quantize(
+        _QUANTIZE, rounding=ROUND_DOWN
+    )
 
     # Idempotency guard via spend reservation
     idempotency_key = f"trade_finance:pay:{invoice_id}"
@@ -125,11 +123,7 @@ async def pay_supplier_early(
 
     try:
         # VaultWithdraw: draw face value from the credit pool
-        effective_vault_id = vault_id or settings.vault_id
-        if not settings.use_mock_xrpl:
-            effective_vault_id = vault_tool.require_vault_id(effective_vault_id)
-        else:
-            effective_vault_id = effective_vault_id or "mock-vault"
+        effective_vault_id = vault_tool.require_vault_id(vault_id or settings.vault_id)
         withdrawal = await vault_tool.withdraw(effective_vault_id, float(face))
         if Decimal(str(withdrawal.amount)) < face:
             raise InsufficientVaultLiquidity(
@@ -137,7 +131,12 @@ async def pay_supplier_early(
                 f"{face:.6f} is required before the supplier can be paid"
             )
 
-        rec = _update(rec, status=ReceivableStatus.credit_drawn, draw_tx_hash=withdrawal.tx_hash, draw_explorer_url=withdrawal.explorer_url)
+        rec = _update(
+            rec,
+            status=ReceivableStatus.credit_drawn,
+            draw_tx_hash=withdrawal.tx_hash,
+            draw_explorer_url=withdrawal.explorer_url,
+        )
 
         # Payment to supplier
         supplier_tx_hash, supplier_explorer_url = await _pay_supplier(
@@ -149,6 +148,7 @@ async def pay_supplier_early(
         if settings.lending_enabled:
             try:
                 from . import lending
+
                 loan_result = await lending.loan_create(
                     invoice_id=invoice_id,
                     amount=face,
@@ -156,7 +156,9 @@ async def pay_supplier_early(
                 )
                 loan_id = loan_result.loan_id
             except Exception as exc:
-                log.warning("XLS-66 LoanCreate failed for %s (non-fatal): %s", invoice_id, exc)
+                log.warning(
+                    "XLS-66 LoanCreate failed for %s (non-fatal): %s", invoice_id, exc
+                )
 
         rec = _update(
             rec,
@@ -178,6 +180,7 @@ async def pay_supplier_early(
 
 # ── collect_repayment ─────────────────────────────────────────────────────────
 
+
 async def collect_repayment(
     invoice_id: str,
     *,
@@ -185,9 +188,8 @@ async def collect_repayment(
 ) -> Receivable:
     """Receive buyer repayment and replenish the vault pool.
 
-    In real mode the buyer submits the Payment independently; the agent calls
-    this to record receipt and do the VaultDeposit. In mock mode the repayment
-    tx hash is synthetic.
+    The buyer submits the Payment independently; the agent calls this with the
+    on-ledger repayment tx hash to record receipt and do the VaultDeposit.
 
     Status: awaiting_maturity → repayment_received → credit_settled → closed
     """
@@ -201,20 +203,21 @@ async def collect_repayment(
             f"receivable {invoice_id} is in state {rec.status}; expected awaiting_maturity"
         )
 
+    if repayment_tx_hash is None:
+        raise ValueError(
+            "repayment_tx_hash is required (the buyer's on-ledger repayment)"
+        )
+
     face = Decimal(rec.amount).quantize(_QUANTIZE, rounding=ROUND_DOWN)
 
-    # Synthetic repayment hash in mock mode
-    if repayment_tx_hash is None:
-        repayment_tx_hash = xrpl_client.mock_tx_hash("repayment", invoice_id)
-
-    rec = _update(rec, status=ReceivableStatus.repayment_received, repayment_tx_hash=repayment_tx_hash)
+    rec = _update(
+        rec,
+        status=ReceivableStatus.repayment_received,
+        repayment_tx_hash=repayment_tx_hash,
+    )
 
     # VaultDeposit: replenish the pool
-    effective_vault_id = settings.vault_id
-    if not settings.use_mock_xrpl:
-        effective_vault_id = vault_tool.require_vault_id(effective_vault_id)
-    else:
-        effective_vault_id = effective_vault_id or "mock-vault"
+    effective_vault_id = vault_tool.require_vault_id(settings.vault_id)
     deposit = await vault_tool.deposit(effective_vault_id, float(face))
 
     # XLS-66 LoanRepay (if this draw used one)
@@ -222,10 +225,13 @@ async def collect_repayment(
     if settings.lending_enabled and rec.loan_id:
         try:
             from . import lending
+
             loan_repay = await lending.loan_repay(rec.loan_id, amount=face)
             settle_tx_hash = loan_repay.tx_hash
         except Exception as exc:
-            log.warning("XLS-66 LoanRepay failed for %s (non-fatal): %s", invoice_id, exc)
+            log.warning(
+                "XLS-66 LoanRepay failed for %s (non-fatal): %s", invoice_id, exc
+            )
 
     rec = _update(rec, status=ReceivableStatus.closed, settle_tx_hash=settle_tx_hash)
     _emit_audit("receivable_closed", rec)
@@ -233,6 +239,7 @@ async def collect_repayment(
 
 
 # ── Getters ───────────────────────────────────────────────────────────────────
+
 
 def get_receivable(record_id: str) -> Receivable | None:
     return _receivables.get(record_id)
@@ -249,16 +256,13 @@ def list_receivables() -> list[Receivable]:
 
 # ── Private helpers ───────────────────────────────────────────────────────────
 
+
 async def _pay_supplier(
     supplier: str,
     amount: Decimal,
     invoice_id: str,
     settings,
 ) -> tuple[str, str | None]:
-    if settings.use_mock_xrpl:
-        tx_hash = xrpl_client.mock_tx_hash("trade_finance_pay", invoice_id)
-        return tx_hash, None
-
     from ..ledger import Ledger
     from xrpl.models.transactions import Payment, Memo
     import json
@@ -271,10 +275,12 @@ async def _pay_supplier(
         destination=supplier,
         amount=xrpl_client.to_wire_amount(amount, settings.token_currency, settings),
         source_tag=settings.trade_finance_source_tag,
-        memos=[Memo(
-            memo_type="trade_finance/v1".encode().hex().upper(),
-            memo_data=memo_data.encode().hex().upper(),
-        )],
+        memos=[
+            Memo(
+                memo_type="trade_finance/v1".encode().hex().upper(),
+                memo_data=memo_data.encode().hex().upper(),
+            )
+        ],
     )
     result = await ledger.submit(tx, wallet)
     tx_hash = result["hash"]
@@ -282,9 +288,10 @@ async def _pay_supplier(
 
 
 def _agent_address(settings) -> str:
-    if settings.use_mock_xrpl or not settings.treasury_wallet_seed:
-        return settings.treasury_wallet_address or "rMOCK_TREASURY_0000000000000000000"
+    if not settings.treasury_wallet_seed:
+        return settings.treasury_wallet_address
     from ..ledger import Ledger
+
     return Ledger(settings).treasury_wallet.address
 
 
@@ -311,6 +318,7 @@ def _update(rec: Receivable, **kwargs) -> Receivable:
 
 def _emit_audit(event_type: str, rec: Receivable) -> None:
     from . import audit_log
+
     audit_log.append(
         event_type=event_type,
         actor="settlement_layer",
@@ -330,6 +338,7 @@ def _emit_audit(event_type: str, rec: Receivable) -> None:
 
 def _schedule_persist(rec: Receivable) -> None:
     import asyncio
+
     try:
         asyncio.get_running_loop()
         asyncio.create_task(_persist_receivable(rec))
@@ -342,6 +351,7 @@ async def _persist_receivable(rec: Receivable) -> None:
     if db.session_factory is None:
         return
     from ..models import ReceivableRecord
+
     try:
         async with db.session_factory() as session:
             row = ReceivableRecord(
@@ -360,7 +370,9 @@ async def _persist_receivable(rec: Receivable) -> None:
                 repayment_tx_hash=rec.repayment_tx_hash,
                 settle_tx_hash=rec.settle_tx_hash,
                 loan_id=rec.loan_id,
-                guardrail_trail=[g.model_dump() for g in rec.guardrail_trail] if rec.guardrail_trail else None,
+                guardrail_trail=[g.model_dump() for g in rec.guardrail_trail]
+                if rec.guardrail_trail
+                else None,
                 audit_event_id=rec.audit_event_id,
                 idempotency_key=f"trade_finance:{rec.invoice_id}",
                 created_at=rec.created_at,
@@ -374,17 +386,22 @@ async def _persist_receivable(rec: Receivable) -> None:
 
 # ── Errors ────────────────────────────────────────────────────────────────────
 
+
 class TradeFinanceError(Exception):
     pass
+
 
 class TradeFinanceDisabled(TradeFinanceError):
     pass
 
+
 class ReceivableNotFound(TradeFinanceError):
     pass
 
+
 class InvalidReceivableState(TradeFinanceError):
     pass
+
 
 class InsufficientVaultLiquidity(TradeFinanceError):
     pass

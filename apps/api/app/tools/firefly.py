@@ -64,8 +64,14 @@ def challenge_digest(
     """sha256 of the canonical payload, hex-encoded."""
     return hashlib.sha256(
         canonical_payload(
-            payment_id, amount, currency, dest,
-            network, owner, escrow_sequence, escrow_create_tx_hash,
+            payment_id,
+            amount,
+            currency,
+            dest,
+            network,
+            owner,
+            escrow_sequence,
+            escrow_create_tx_hash,
         ).encode()
     ).hexdigest()
 
@@ -83,7 +89,11 @@ def challenge_for_payment(payment: Payment) -> ApprovalChallenge:
         )
     settings = get_settings()
     network = settings.xrpl_network
-    owner = settings.treasury_wallet_address or "r_TREASURY_MOCK"
+    owner = settings.treasury_wallet_address
+    if not owner:
+        raise ValueError(
+            "treasury_wallet_address must be configured to build a Firefly approval challenge"
+        )
     return _build_approval_challenge(
         payment_id=payment.id,
         amount=payment.intent.amount,
@@ -107,8 +117,14 @@ def _build_approval_challenge(
     escrow_create_tx_hash: str,
 ) -> ApprovalChallenge:
     digest = challenge_digest(
-        payment_id, amount, currency, dest,
-        network, owner, escrow_sequence, escrow_create_tx_hash,
+        payment_id,
+        amount,
+        currency,
+        dest,
+        network,
+        owner,
+        escrow_sequence,
+        escrow_create_tx_hash,
     )
     return ApprovalChallenge(
         payment_id=payment_id,

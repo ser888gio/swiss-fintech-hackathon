@@ -14,11 +14,7 @@ cp ../../.env.example ../../.env   # then fill in values
 uvicorn app.main:app --reload --port 8000
 ```
 
-Open http://localhost:8000/docs for the interactive API.
-
-By default `USE_MOCK_XRPL=true`, so the full payment workflow runs offline with
-deterministic fake tx hashes. Set it to `false` and provide funded testnet
-wallet seeds to submit real XRPL transactions.
+Open [http://localhost:8000/docs](http://localhost:8000/docs) for the interactive API.
 
 ## Test
 
@@ -31,7 +27,7 @@ that the LLM is never allowed to make.
 
 ## Layout
 
-```
+```text
 app/
   main.py            FastAPI app + CORS
   config.py          env-backed settings

@@ -28,13 +28,24 @@ from ..schemas import Payment
 from . import receipt as receipt_tool
 
 _styles = getSampleStyleSheet()
-_TITLE = ParagraphStyle("AuditTitle", parent=_styles["Title"], fontSize=18, spaceAfter=2)
-_SUBTITLE = ParagraphStyle("AuditSubtitle", parent=_styles["Normal"], fontSize=9, textColor=colors.grey)
+_TITLE = ParagraphStyle(
+    "AuditTitle", parent=_styles["Title"], fontSize=18, spaceAfter=2
+)
+_SUBTITLE = ParagraphStyle(
+    "AuditSubtitle", parent=_styles["Normal"], fontSize=9, textColor=colors.grey
+)
 _SECTION = ParagraphStyle(
-    "AuditSection", parent=_styles["Heading2"], fontSize=12, spaceBefore=12, spaceAfter=4, textColor=colors.HexColor("#1f3b57")
+    "AuditSection",
+    parent=_styles["Heading2"],
+    fontSize=12,
+    spaceBefore=12,
+    spaceAfter=4,
+    textColor=colors.HexColor("#1f3b57"),
 )
 _BODY = ParagraphStyle("AuditBody", parent=_styles["Normal"], fontSize=9.5, leading=13)
-_MONO = ParagraphStyle("AuditMono", parent=_styles["Code"], fontSize=8, leading=10, wordWrap="CJK")
+_MONO = ParagraphStyle(
+    "AuditMono", parent=_styles["Code"], fontSize=8, leading=10, wordWrap="CJK"
+)
 
 
 def build_receipt_pdf(payment: Payment) -> bytes:
@@ -58,30 +69,42 @@ def build_receipt_pdf(payment: Payment) -> bytes:
             f"generated {_iso(datetime.now(timezone.utc))}",
             _SUBTITLE,
         ),
-        HRFlowable(width="100%", thickness=0.75, color=colors.HexColor("#1f3b57"), spaceBefore=6, spaceAfter=2),
+        HRFlowable(
+            width="100%",
+            thickness=0.75,
+            color=colors.HexColor("#1f3b57"),
+            spaceBefore=6,
+            spaceAfter=2,
+        ),
     ]
 
     intent = receipt.intent
-    flow += _section("Payment intent", [
-        ("From", intent.from_account),
-        ("To", intent.to),
-        ("Sender", f"{intent.sender_name} ({intent.sender_country})"),
-        ("Receiver", f"{intent.receiver_name} ({intent.receiver_country})"),
-        ("Receiver type", intent.receiver_entity_type.value),
-        ("Purpose", intent.purpose),
-        ("Amount", f"{intent.amount:.2f} {intent.currency}"),
-        ("Reference", intent.reference),
-    ])
+    flow += _section(
+        "Payment intent",
+        [
+            ("From", intent.from_account),
+            ("To", intent.to),
+            ("Sender", f"{intent.sender_name} ({intent.sender_country})"),
+            ("Receiver", f"{intent.receiver_name} ({intent.receiver_country})"),
+            ("Receiver type", intent.receiver_entity_type.value),
+            ("Purpose", intent.purpose),
+            ("Amount", f"{intent.amount:.2f} {intent.currency}"),
+            ("Reference", intent.reference),
+        ],
+    )
 
     route = receipt.route_quote
     if route is not None:
-        flow += _section("Route", [
-            ("Path", route.path_summary),
-            ("Source amount", f"{route.source_amount:.2f}"),
-            ("Destination amount", f"{route.dest_amount:.2f}"),
-            ("Rate", f"{route.rate:.6f}"),
-            ("Estimated fee", f"{route.estimated_fee:.2f}"),
-        ])
+        flow += _section(
+            "Route",
+            [
+                ("Path", route.path_summary),
+                ("Source amount", f"{route.source_amount:.2f}"),
+                ("Destination amount", f"{route.dest_amount:.2f}"),
+                ("Rate", f"{route.rate:.6f}"),
+                ("Estimated fee", f"{route.estimated_fee:.2f}"),
+            ],
+        )
 
     compliance = receipt.compliance
     if compliance is not None:
@@ -130,7 +153,12 @@ def build_receipt_pdf(payment: Payment) -> bytes:
         flow += _section("Deterministic guardrails", rows)
 
     settlement = [
-        ("Escrow sequence", str(receipt.escrow_sequence) if receipt.escrow_sequence is not None else "—"),
+        (
+            "Escrow sequence",
+            str(receipt.escrow_sequence)
+            if receipt.escrow_sequence is not None
+            else "—",
+        ),
         ("Approval signature", receipt.approval_signature or "—"),
         ("Transaction hash", receipt.tx_hash or "—"),
         ("Explorer", receipt.explorer_url or "—"),
@@ -144,14 +172,18 @@ def build_receipt_pdf(payment: Payment) -> bytes:
         flow.append(Paragraph(receipt.audit_explanation, _BODY))
 
     flow.append(Spacer(1, 10))
-    flow.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey, spaceAfter=4))
+    flow.append(
+        HRFlowable(width="100%", thickness=0.5, color=colors.grey, spaceAfter=4)
+    )
     flow.append(Paragraph("Integrity", _SECTION))
-    flow.append(Paragraph(
-        "SHA-256 hash of the canonical decision trail. This document is a "
-        "read-only render of data the backend computed; the hash can be "
-        "independently recomputed from the receipt to detect any tampering.",
-        _BODY,
-    ))
+    flow.append(
+        Paragraph(
+            "SHA-256 hash of the canonical decision trail. This document is a "
+            "read-only render of data the backend computed; the hash can be "
+            "independently recomputed from the receipt to detect any tampering.",
+            _BODY,
+        )
+    )
     flow.append(Paragraph(payment.receipt_hash or "(not yet anchored)", _MONO))
 
     doc.build(flow)
@@ -160,16 +192,23 @@ def build_receipt_pdf(payment: Payment) -> bytes:
 
 def _section(title: str, rows: list[tuple[str, str]]) -> list:
     table = Table(
-        [[Paragraph(f"<b>{label}</b>", _BODY), Paragraph(_escape(value), _BODY)] for label, value in rows],
+        [
+            [Paragraph(f"<b>{label}</b>", _BODY), Paragraph(_escape(value), _BODY)]
+            for label, value in rows
+        ],
         colWidths=[45 * mm, None],
         hAlign="LEFT",
     )
-    table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LINEBELOW", (0, 0), (-1, -2), 0.25, colors.HexColor("#e0e0e0")),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]))
+    table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LINEBELOW", (0, 0), (-1, -2), 0.25, colors.HexColor("#e0e0e0")),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
+    )
     return [Paragraph(title, _SECTION), table]
 
 

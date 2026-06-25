@@ -43,46 +43,62 @@ async def init_db(database_url: str) -> bool:
                 if conn.dialect.name == "postgresql":
                     # create_all does not alter the pre-existing service_payments
                     # table. Keep this additive upgrade safe for current Railway DBs.
-                    await conn.execute(text(
-                        "ALTER TABLE service_payments "
-                        "ADD COLUMN IF NOT EXISTS agent_id VARCHAR"
-                    ))
-                    await conn.execute(text(
-                        "ALTER TABLE service_payments "
-                        "ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'settled'"
-                    ))
-                    await conn.execute(text(
-                        "ALTER TABLE service_payments "
-                        "ADD COLUMN IF NOT EXISTS cover JSON"
-                    ))
+                    await conn.execute(
+                        text(
+                            "ALTER TABLE service_payments "
+                            "ADD COLUMN IF NOT EXISTS agent_id VARCHAR"
+                        )
+                    )
+                    await conn.execute(
+                        text(
+                            "ALTER TABLE service_payments "
+                            "ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'settled'"
+                        )
+                    )
+                    await conn.execute(
+                        text(
+                            "ALTER TABLE service_payments "
+                            "ADD COLUMN IF NOT EXISTS cover JSON"
+                        )
+                    )
                     # create_all does not add columns to an existing credentials
                     # table. Keep the off-ledger user association additive.
-                    await conn.execute(text(
-                        "ALTER TABLE credentials "
-                        "ADD COLUMN IF NOT EXISTS user_id VARCHAR"
-                    ))
-                    await conn.execute(text(
-                        "CREATE INDEX IF NOT EXISTS ix_credentials_user_id "
-                        "ON credentials (user_id)"
-                    ))
-                    await conn.execute(text(
-                        "ALTER TABLE credentials "
-                        "ADD COLUMN IF NOT EXISTS subject_country VARCHAR"
-                    ))
-                    await conn.execute(text(
-                        "ALTER TABLE credentials "
-                        "ADD COLUMN IF NOT EXISTS subject_entity_type VARCHAR"
-                    ))
-                    await conn.execute(text(
-                        "ALTER TABLE agents "
-                        "ADD COLUMN IF NOT EXISTS auto_insure JSON"
-                    ))
+                    await conn.execute(
+                        text(
+                            "ALTER TABLE credentials "
+                            "ADD COLUMN IF NOT EXISTS user_id VARCHAR"
+                        )
+                    )
+                    await conn.execute(
+                        text(
+                            "CREATE INDEX IF NOT EXISTS ix_credentials_user_id "
+                            "ON credentials (user_id)"
+                        )
+                    )
+                    await conn.execute(
+                        text(
+                            "ALTER TABLE credentials "
+                            "ADD COLUMN IF NOT EXISTS subject_country VARCHAR"
+                        )
+                    )
+                    await conn.execute(
+                        text(
+                            "ALTER TABLE credentials "
+                            "ADD COLUMN IF NOT EXISTS subject_entity_type VARCHAR"
+                        )
+                    )
+                    await conn.execute(
+                        text(
+                            "ALTER TABLE agents "
+                            "ADD COLUMN IF NOT EXISTS auto_insure JSON"
+                        )
+                    )
                 elif conn.dialect.name == "sqlite":
                     # SQLite doesn't support IF NOT EXISTS on ALTER TABLE
                     try:
-                        await conn.execute(text(
-                            "ALTER TABLE agents ADD COLUMN auto_insure JSON"
-                        ))
+                        await conn.execute(
+                            text("ALTER TABLE agents ADD COLUMN auto_insure JSON")
+                        )
                     except Exception:
                         pass  # column already exists
         session_factory = async_sessionmaker(engine, expire_on_commit=False)

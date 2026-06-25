@@ -40,6 +40,7 @@ from ..schemas import (
     Receivable,
     ReceivableCreate,
     ServicePaymentRecord,
+    TxnContext,
     X402Settlement,
 )
 from ..tools import audit, compliance, credentials, execution, firefly, receipt, routing
@@ -48,7 +49,11 @@ from ..tools import trade_finance as tf_tool
 from ..tools import x402 as x402_tool
 
 # Statuses that represent a terminal, immutable outcome.
-TERMINAL_STATUSES = {PaymentStatus.settled, PaymentStatus.released, PaymentStatus.blocked}
+TERMINAL_STATUSES = {
+    PaymentStatus.settled,
+    PaymentStatus.released,
+    PaymentStatus.blocked,
+}
 
 
 async def process_payment(
@@ -83,7 +88,10 @@ async def process_payment(
 
     credential = await credentials.verify_kyc(intent.to)
     if credential.checked:
-        _log(payment_id, f"KYC credential ({credential.credential_type}): {credential.reason}.")
+        _log(
+            payment_id,
+            f"KYC credential ({credential.credential_type}): {credential.reason}.",
+        )
 
     screen = compliance.check_compliance(intent, credential=credential)
     payment.compliance = screen
@@ -100,9 +108,10 @@ async def process_payment(
         amount_usd = await routing.convert_to_usd(intent.amount, intent.currency)
     # Run guardrails: G2 (sanctions) + G6 (threshold) for all payments;
     # G4 (scope) added when a business agent scope is provided.
-    has_agent_scope = agent_scope is not None and agent_id is not None
+    has_agent_scope = False
     spent_today = Decimal("0")
-    if has_agent_scope:
+    if agent_scope is not None and agent_id is not None:
+        has_agent_scope = True
         since = _now() - timedelta(hours=24)
         spent_today = store.agent_payments_sum(agent_id, since, intent.currency)
 
@@ -112,7 +121,9 @@ async def process_payment(
         aml_score=screen.aml_score,
         amount=Decimal(str(amount_usd)),
         spent_today=spent_today,
-        scope_max_per_tx=agent_scope.max_per_transaction if agent_scope else Decimal("0"),
+        scope_max_per_tx=agent_scope.max_per_transaction
+        if agent_scope
+        else Decimal("0"),
         scope_max_per_day=agent_scope.max_per_day if agent_scope else Decimal("0"),
         threshold_usd=settings.policy_threshold_usd,
         flag_score=settings.policy_compliance_flag_score,
@@ -134,7 +145,9 @@ async def process_payment(
     # Explicit demo switch: Testnet/Devnet can exercise a real direct payment
     # without the local Firefly bridge. Mainnet always fails closed and retains
     # the approval requirement, even if the switch is disabled by mistake.
-    if decision.requires_approval and not getattr(settings, "firefly_confirmation_enabled", True):
+    if decision.requires_approval and not getattr(
+        settings, "firefly_confirmation_enabled", True
+    ):
         if settings.xrpl_network == "xrpl:0":
             _log(
                 payment_id,
@@ -142,14 +155,17 @@ async def process_payment(
             )
         else:
             original_rule = decision.rule_fired or "policy_escalation"
-            decision = decision.model_copy(update={
-                "requires_approval": False,
-                "rule_fired": "firefly_bypass_non_production",
-                "reasons": list(decision.reasons) + [
-                    f"Firefly confirmation disabled for {settings.xrpl_network}; "
-                    f"original escalation rule: {original_rule}"
-                ],
-            })
+            decision = decision.model_copy(
+                update={
+                    "requires_approval": False,
+                    "rule_fired": "firefly_bypass_non_production",
+                    "reasons": list(decision.reasons)
+                    + [
+                        f"Firefly confirmation disabled for {settings.xrpl_network}; "
+                        f"original escalation rule: {original_rule}"
+                    ],
+                }
+            )
             _log(
                 payment_id,
                 f"Non-production Firefly bypass applied on {settings.xrpl_network}.",
@@ -165,13 +181,10 @@ async def process_payment(
     )
 
     counterparty_verified = bool(credential.verified)
-    counterparty_is_new = (
-        not counterparty_verified
-        and not (
-            agent_scope is not None
-            and agent_scope.allowed_addresses is not None
-            and intent.to in agent_scope.allowed_addresses
-        )
+    counterparty_is_new = not counterparty_verified and not (
+        agent_scope is not None
+        and agent_scope.allowed_addresses is not None
+        and intent.to in agent_scope.allowed_addresses
     )
     cover_rule = resolve_cover_rule(settings, agent_cover)
     cover_decision = evaluate_cover(
@@ -189,22 +202,30 @@ async def process_payment(
     if settings.insurance_enabled and cover_decision.required:
         risk_state = insurance_tool.get_agent_risk_state(intent.from_account)
         score_band = risk_state.score_band if risk_state else "STANDARD"
-        cpty_band = "unverified" if not counterparty_verified else "new" if counterparty_is_new else "verified"
+        cpty_band = (
+            "unverified"
+            if not counterparty_verified
+            else "new"
+            if counterparty_is_new
+            else "verified"
+        )
         quote_request = InsuranceQuoteRequest(
             agent_address=intent.from_account,
             score_band=score_band,
-            txn_context={
-                "category": intent.purpose,
-                "tenorBand": "instant",
-                "cptyBand": cpty_band,
-                "firstSeen": counterparty_is_new,
-                "amount": f"{amount_usd:.6f}",
-                "amountZ": min(amount_usd / max(settings.policy_threshold_usd, 1.0), 3.0),
-                "velocityZ": 0.0,
-                "concentrationZ": 0.0,
-                "activeLines": [],
-                "package": cover_decision.package,
-            },
+            txn_context=TxnContext(
+                category=intent.purpose,
+                tenor_band="instant",
+                cpty_band=cpty_band,
+                first_seen=counterparty_is_new,
+                amount=f"{amount_usd:.6f}",
+                amount_z=min(
+                    amount_usd / max(settings.policy_threshold_usd, 1.0), 3.0
+                ),
+                velocity_z=0.0,
+                concentration_z=0.0,
+                active_lines=[],
+                package=cover_decision.package,
+            ),
         )
         quote = insurance_tool.quote(quote_request)
         payment.coverage = PaymentCoverage(
@@ -279,7 +300,9 @@ async def process_payment(
 
     # Reserve agent spend before submitting (prevents double-spend on concurrent runs).
     if agent_id is not None and not decision.blocked:
-        store.reserve_agent_spend(agent_id, payment_id, Decimal(str(amount_usd)), intent.currency)
+        store.reserve_agent_spend(
+            agent_id, payment_id, Decimal(str(amount_usd)), intent.currency
+        )
 
     if decision.blocked:
         await _block(payment)
@@ -298,13 +321,17 @@ async def process_payment(
     return store.save(payment)
 
 
-async def _settle(payment: Payment, route, intent: PaymentIntent, memo: "execution.ComplianceMemo") -> None:
+async def _settle(
+    payment: Payment, route, intent: PaymentIntent, memo: "execution.ComplianceMemo"
+) -> None:
     _log_settlement_scale(payment.id, route, intent)
     result = await execution.execute_payment(payment.id, intent, route, memo=memo)
     payment.status = PaymentStatus.settled
     payment.tx_hash = result.tx_hash
     payment.explorer_url = result.explorer_url
-    payment.explorer_url_secondary = _secondary_explorer(result.tx_hash, result.explorer_url)
+    payment.explorer_url_secondary = _secondary_explorer(
+        result.tx_hash, result.explorer_url
+    )
     _log(payment.id, f"Auto-settled. Tx {result.tx_hash[:12]}…")
     if payment.coverage.status is CoverageStatus.bound:
         insurance_tool.record_outcome(
@@ -316,7 +343,9 @@ async def _settle(payment: Payment, route, intent: PaymentIntent, memo: "executi
     payment.receipt_hash = receipt.compute_receipt_hash(payment)
 
 
-async def _escalate(payment: Payment, route, intent: PaymentIntent, memo: "execution.ComplianceMemo") -> None:
+async def _escalate(
+    payment: Payment, route, intent: PaymentIntent, memo: "execution.ComplianceMemo"
+) -> None:
     _log_settlement_scale(payment.id, route, intent)
     escrow = await execution.lock_payment(payment.id, intent, route, memo=memo)
     payment.status = PaymentStatus.pending_approval
@@ -324,14 +353,20 @@ async def _escalate(payment: Payment, route, intent: PaymentIntent, memo: "execu
     payment.escrow_create_tx_hash = escrow.escrow_create_tx_hash
     payment.tx_hash = escrow.tx_hash
     payment.explorer_url = escrow.explorer_url
-    payment.explorer_url_secondary = _secondary_explorer(escrow.tx_hash, escrow.explorer_url)
-    reason = "; ".join(payment.policy_decision.reasons) if payment.policy_decision else ""
+    payment.explorer_url_secondary = _secondary_explorer(
+        escrow.tx_hash, escrow.explorer_url
+    )
+    reason = (
+        "; ".join(payment.policy_decision.reasons) if payment.policy_decision else ""
+    )
     _log(payment.id, f"Locked on-chain pending hardware approval ({reason}).")
 
 
 async def _block(payment: Payment) -> None:
     payment.status = PaymentStatus.blocked
-    reason = payment.policy_decision.block_reason if payment.policy_decision else "blocked"
+    reason = (
+        payment.policy_decision.block_reason if payment.policy_decision else "blocked"
+    )
     _log(payment.id, f"Refused: {reason}.")
     payment.receipt_hash = receipt.compute_receipt_hash(payment)
 
@@ -352,7 +387,9 @@ async def release_payment(payment_id: str, signature: str) -> Payment:
     payment.approval_signature = signature
     payment.tx_hash = result.tx_hash
     payment.explorer_url = result.explorer_url
-    payment.explorer_url_secondary = _secondary_explorer(result.tx_hash, result.explorer_url)
+    payment.explorer_url_secondary = _secondary_explorer(
+        result.tx_hash, result.explorer_url
+    )
     payment.updated_at = _now()
     _log(payment_id, f"Firefly signature verified. Released. Tx {result.tx_hash[:12]}…")
     if payment.coverage.status is CoverageStatus.bound:
@@ -401,6 +438,7 @@ def challenge_for(payment_id: str):
 
 # ── x402 pay-at-need (Feature A) ─────────────────────────────────────────────
 
+
 async def process_service_payment(
     service_url: str,
     *,
@@ -418,27 +456,29 @@ async def process_service_payment(
     settings = get_settings()
     from urllib.parse import urlparse
 
-    effective_agent = agent_address or settings.treasury_wallet_address or "rMOCK_TREASURY"
+    effective_agent = agent_address or settings.treasury_wallet_address
+    if not effective_agent:
+        raise x402_tool.X402Rejected("treasury wallet address is not configured")
     requirement = await x402_tool.fetch_requirement(service_url)
     host = urlparse(requirement.service_url).netloc
     scope = agent_scope or _agent_scope(settings)
     agent_key = agent_id or effective_agent
     since = datetime.now(timezone.utc) - timedelta(hours=24)
-    spent_today = store.agent_payments_sum(
-        agent_key, since, requirement.asset_currency
-    )
+    spent_today = store.agent_payments_sum(agent_key, since, requirement.asset_currency)
     from ..credentials.kya.tool import verify_agent_kya
     from ..credentials.kya.uri import AgentScope as KyaScope
 
     cred = await verify_agent_kya(effective_agent, required_scope=KyaScope.x402)
     trail: list[GuardrailResult] = []
     kya_ok = cred.verified if settings.credential_kyc_enabled else True
-    trail.append(GuardrailResult(
-        name="G1_kya",
-        passed=kya_ok,
-        rule_fired=None if kya_ok else "kya_unverified",
-        reason=None if kya_ok else "agent credential not verified",
-    ))
+    trail.append(
+        GuardrailResult(
+            name="G1_kya",
+            passed=kya_ok,
+            rule_fired=None if kya_ok else "kya_unverified",
+            reason=None if kya_ok else "agent credential not verified",
+        )
+    )
     if not kya_ok:
         _save_service_outcome(requirement, host, agent_id, "blocked", trail)
         raise GuardrailBlocked("kya_unverified", "agent credential not verified", trail)
@@ -455,12 +495,14 @@ async def process_service_payment(
         category=category,
         payee_is_known_merchant=_is_known_merchant(requirement, scope),
     )
-    trail.append(GuardrailResult(
-        name="G4_scope",
-        passed=scope_result.allowed,
-        rule_fired=scope_result.rule_fired,
-        reason=scope_result.reasons[0] if scope_result.reasons else None,
-    ))
+    trail.append(
+        GuardrailResult(
+            name="G4_scope",
+            passed=scope_result.allowed,
+            rule_fired=scope_result.rule_fired,
+            reason=scope_result.reasons[0] if scope_result.reasons else None,
+        )
+    )
     if not scope_result.allowed:
         reason = scope_result.reasons[0] if scope_result.reasons else "blocked"
         if scope_result.requires_approval:
@@ -475,12 +517,14 @@ async def process_service_payment(
         flag_score=settings.policy_compliance_flag_score,
     )
     g6_ok = not threshold.blocked and not threshold.requires_approval
-    trail.append(GuardrailResult(
-        name="G6_threshold",
-        passed=g6_ok,
-        rule_fired=threshold.rule_fired,
-        reason="; ".join(threshold.reasons) if threshold.reasons else None,
-    ))
+    trail.append(
+        GuardrailResult(
+            name="G6_threshold",
+            passed=g6_ok,
+            rule_fired=threshold.rule_fired,
+            reason="; ".join(threshold.reasons) if threshold.reasons else None,
+        )
+    )
     if not g6_ok:
         reason = "; ".join(threshold.reasons) or "over approval threshold"
         _save_service_outcome(requirement, host, agent_id, "blocked", trail)
@@ -505,12 +549,14 @@ async def process_service_payment(
         store.commit_agent_spend(agent_key, requirement.invoice_id)
     except Exception as exc:
         store.release_agent_spend(agent_key, requirement.invoice_id)
-        failure_trail = trail + [GuardrailResult(
-            name="merchant_proof",
-            passed=False,
-            rule_fired="settlement_or_proof_failed",
-            reason=str(exc),
-        )]
+        failure_trail = trail + [
+            GuardrailResult(
+                name="merchant_proof",
+                passed=False,
+                rule_fired="settlement_or_proof_failed",
+                reason=str(exc),
+            )
+        ]
         _save_service_outcome(requirement, host, agent_id, "blocked", failure_trail)
         raise
 
@@ -524,24 +570,24 @@ async def process_service_payment(
     )
     if getattr(settings, "insurance_enabled", False):
         try:
-            quote = await insurance_binding.quote(InsuranceQuoteRequest(
-                agent_address=effective_agent,
-                score_band="STANDARD",
-                txn_context={
-                    "category": category or service_type,
-                    "tenorBand": "instant",
-                    "cptyBand": "standard",
-                    "firstSeen": False,
-                    "amount": requirement.amount,
-                    "amountZ": 0.0,
-                    "velocityZ": 0.0,
-                    "concentrationZ": 0.0,
-                    "activeLines": [CoverLine.merchant_default],
-                },
-            ))
-            record.cover = await insurance_binding.bind_service_cover(
-                requirement.invoice_id, quote
+            quote = insurance_tool.quote(
+                InsuranceQuoteRequest(
+                    agent_address=effective_agent,
+                    score_band="STANDARD",
+                    txn_context=TxnContext(
+                        category=category or service_type,
+                        tenor_band="instant",
+                        cpty_band="standard",
+                        first_seen=False,
+                        amount=requirement.amount,
+                        amount_z=0.0,
+                        velocity_z=0.0,
+                        concentration_z=0.0,
+                        active_lines=[CoverLine.merchant_default],
+                    ),
+                )
             )
+            record.cover = quote
             record.updated_at = _now()
             store.update_service_payment(record)
         except Exception:
@@ -570,6 +616,7 @@ def _save_service_outcome(
     audit_event_id = settlement.audit_event_id if settlement else None
     if settlement is None:
         from ..tools import audit_log
+
         event = audit_log.append(
             event_type="x402_blocked",
             actor="policy_engine",
@@ -584,25 +631,28 @@ def _save_service_outcome(
             },
         )
         audit_event_id = event.event_id
-    return store.save_service_payment(ServicePaymentRecord(
-        id=str(uuid.uuid4()),
-        agent_id=agent_id,
-        status=status,
-        service_host=host,
-        invoice_id=requirement.invoice_id,
-        asset_currency=requirement.asset_currency,
-        asset_issuer=requirement.asset_issuer,
-        amount=requirement.amount,
-        tx_hash=settlement.tx_hash if settlement else None,
-        explorer_url=settlement.explorer_url if settlement else None,
-        guardrail_trail=trail,
-        audit_event_id=audit_event_id,
-        created_at=now,
-        updated_at=now,
-    ))
+    return store.save_service_payment(
+        ServicePaymentRecord(
+            id=str(uuid.uuid4()),
+            agent_id=agent_id,
+            status=status,
+            service_host=host,
+            invoice_id=requirement.invoice_id,
+            asset_currency=requirement.asset_currency,
+            asset_issuer=requirement.asset_issuer,
+            amount=requirement.amount,
+            tx_hash=settlement.tx_hash if settlement else None,
+            explorer_url=settlement.explorer_url if settlement else None,
+            guardrail_trail=trail,
+            audit_event_id=audit_event_id,
+            created_at=now,
+            updated_at=now,
+        )
+    )
 
 
 # ── On-chain credit / trade finance (Feature B) ───────────────────────────────
+
 
 async def register_receivable(create: ReceivableCreate) -> Receivable:
     """Register a trade-finance receivable. No guardrails — this is record-only."""
@@ -624,13 +674,14 @@ async def process_early_payment(
     rec = tf_tool.get_by_invoice(invoice_id)
     if rec is None:
         from ..tools.trade_finance import ReceivableNotFound
+
         raise ReceivableNotFound(invoice_id)
 
     face = Decimal(rec.amount)
     discount = Decimal(rec.discount_rate)
     supplier_amount = face * (Decimal("1") - discount)
 
-    effective_agent = agent_address or settings.treasury_wallet_address or "rMOCK_TREASURY"
+    effective_agent = agent_address or settings.treasury_wallet_address
     cred = await credentials.verify_kyc(effective_agent)
 
     # G4 is intentionally skipped for trade finance: receivable face values are
@@ -638,7 +689,9 @@ async def process_early_payment(
     # Firefly covers anything above policy_threshold_usd.
     result = evaluate_guardrails(
         context_kind="loan_underwrite",  # G1 + G6 (no G4 for trade finance)
-        agent_credential_verified=cred.verified if settings.credential_kyc_enabled else True,
+        agent_credential_verified=cred.verified
+        if settings.credential_kyc_enabled
+        else True,
         sanctioned=False,
         aml_score=0,
         amount=supplier_amount,
@@ -648,8 +701,14 @@ async def process_early_payment(
     trail = result.guardrail_trail
     if not result.allowed:
         if result.action == "review":
-            raise GuardrailEscalation(result.rule_fired or "G6_threshold", "requires_hardware_approval", trail)
-        raise GuardrailBlocked(result.rule_fired or "guardrail", result.reasons[0] if result.reasons else "blocked", trail)
+            raise GuardrailEscalation(
+                result.rule_fired or "G6_threshold", "requires_hardware_approval", trail
+            )
+        raise GuardrailBlocked(
+            result.rule_fired or "guardrail",
+            result.reasons[0] if result.reasons else "blocked",
+            trail,
+        )
 
     return await tf_tool.pay_supplier_early(invoice_id, guardrail_trail=trail)
 
@@ -658,17 +717,23 @@ async def collect_repayment(
     invoice_id: str, *, repayment_tx_hash: str | None = None
 ) -> Receivable:
     """Collect buyer repayment and replenish vault. No additional guardrails."""
-    return await tf_tool.collect_repayment(invoice_id, repayment_tx_hash=repayment_tx_hash)
+    return await tf_tool.collect_repayment(
+        invoice_id, repayment_tx_hash=repayment_tx_hash
+    )
 
 
 # ── Agent-to-Agent Delegation (Feature C) ─────────────────────────────────────
 
-async def process_delegation_fund(create: DelegationGrantCreate) -> "delegation_tool.DelegationGrant":
+
+async def process_delegation_fund(
+    create: DelegationGrantCreate,
+) -> "delegation_tool.DelegationGrant":
     """Grant delegation and fund the sub-agent. Runs G1 on the parent."""
     settings = get_settings()
     treasury_address = settings.treasury_wallet_address.strip()
     if not treasury_address and settings.treasury_wallet_seed:
         from ..tools.wallet import connected_address
+
         treasury_address = connected_address()
     if create.parent_address != treasury_address:
         raise GuardrailBlocked(
@@ -680,23 +745,32 @@ async def process_delegation_fund(create: DelegationGrantCreate) -> "delegation_
     from ..credentials.kya.tool import verify_agent_kya
     from ..credentials.kya.uri import AgentScope as KyaScope
 
-    cred = await verify_agent_kya(create.parent_address, required_scope=KyaScope.delegation)
+    cred = await verify_agent_kya(
+        create.parent_address, required_scope=KyaScope.delegation
+    )
 
     result = evaluate_guardrails(
         context_kind="delegation_fund",
-        agent_credential_verified=cred.verified if settings.credential_kyc_enabled else True,
+        agent_credential_verified=cred.verified
+        if settings.credential_kyc_enabled
+        else True,
         amount=Decimal(str(create.max_total)),
         spent_today=Decimal("0"),
         scope_max_per_tx=Decimal(str(create.max_per_tx)),
         scope_max_per_day=Decimal(str(create.max_per_day)),
     )
     if not result.allowed:
-        raise GuardrailBlocked(result.rule_fired or "guardrail", result.reasons[0] if result.reasons else "blocked", result.guardrail_trail)
+        raise GuardrailBlocked(
+            result.rule_fired or "guardrail",
+            result.reasons[0] if result.reasons else "blocked",
+            result.guardrail_trail,
+        )
 
     return await delegation_tool.grant_delegation(create)
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
+
 
 def _policy_decision_from(result: ConstraintResult) -> PolicyDecision:
     """Derive a PolicyDecision from a ConstraintResult for downstream consumers."""
@@ -725,8 +799,10 @@ def _agent_scope(settings) -> AgentScope:
 
 # ── Guardrail exceptions ──────────────────────────────────────────────────────
 
+
 class GuardrailBlocked(Exception):
     """A guardrail hard-blocked the action. No payment submitted."""
+
     def __init__(self, guardrail: str, reason: str, trail: list[GuardrailResult]):
         super().__init__(f"{guardrail}: {reason}")
         self.guardrail = guardrail
@@ -736,6 +812,7 @@ class GuardrailBlocked(Exception):
 
 class GuardrailEscalation(Exception):
     """A guardrail demands Firefly escalation (not a hard block)."""
+
     def __init__(self, guardrail: str, reason: str, trail: list[GuardrailResult]):
         super().__init__(f"{guardrail}: {reason}")
         self.guardrail = guardrail
@@ -775,7 +852,7 @@ def _log_settlement_scale(payment_id: str, route, intent: PaymentIntent) -> None
     same helper the execution tool uses, so the log and the submitted tx agree.
     """
     settings = get_settings()
-    if settings.use_mock_xrpl or settings.testnet_settlement_scale == 1.0:
+    if settings.testnet_settlement_scale == 1.0:
         return
     on_ledger = execution.scaled_settlement(route.dest_amount, settings)
     _log(
@@ -789,7 +866,9 @@ def _log_settlement_scale(payment_id: str, route, intent: PaymentIntent) -> None
 
 
 def _log(payment_id: str, message: str) -> None:
-    store.append_log(AgentLogEntry(payment_id=payment_id, timestamp=_now(), message=message))
+    store.append_log(
+        AgentLogEntry(payment_id=payment_id, timestamp=_now(), message=message)
+    )
 
 
 def _now() -> datetime:

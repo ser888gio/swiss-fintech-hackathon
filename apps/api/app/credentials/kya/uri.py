@@ -23,20 +23,20 @@ from enum import Enum
 
 
 class AgentType(str, Enum):
-    orchestrator = "orchestrator"   # top-level payment orchestrator
-    sub_agent    = "sub_agent"      # delegated sub-agent
-    monitor      = "monitor"        # compliance / audit monitor (read-only)
-    api_gateway  = "api_gateway"    # external API integration agent
-    unknown      = "unknown"
+    orchestrator = "orchestrator"  # top-level payment orchestrator
+    sub_agent = "sub_agent"  # delegated sub-agent
+    monitor = "monitor"  # compliance / audit monitor (read-only)
+    api_gateway = "api_gateway"  # external API integration agent
+    unknown = "unknown"
 
 
 class AgentScope(str, Enum):
-    payment          = "payment"     # initiate / route payments
-    x402             = "x402"        # pay-at-need (x402 protocol)
-    delegation       = "delegation"  # grant sub-agent delegations
-    compliance       = "compliance"  # run compliance screens
+    payment = "payment"  # initiate / route payments
+    x402 = "x402"  # pay-at-need (x402 protocol)
+    delegation = "delegation"  # grant sub-agent delegations
+    compliance = "compliance"  # run compliance screens
     credential_issue = "cred_issue"  # issue KYC / KYA credentials
-    read_only        = "read_only"   # query only, no writes
+    read_only = "read_only"  # query only, no writes
 
 
 @dataclass
@@ -44,7 +44,7 @@ class AgentIdentity:
     """Agent identity decoded from a KYA credential URI."""
 
     agent_type: AgentType = AgentType.unknown
-    principal: str = ""              # controlling XRPL address
+    principal: str = ""  # controlling XRPL address
     scopes: list[AgentScope] = field(default_factory=list)
     ref: str = ""
     issued_on: str = ""
@@ -71,26 +71,27 @@ class AgentIdentity:
 # ── Short-key codec maps ──────────────────────────────────────────────────────
 
 _SCOPE_SHORT: dict[AgentScope, str] = {
-    AgentScope.payment:          "pay",
-    AgentScope.x402:             "x402",
-    AgentScope.delegation:       "del",
-    AgentScope.compliance:       "cmp",
+    AgentScope.payment: "pay",
+    AgentScope.x402: "x402",
+    AgentScope.delegation: "del",
+    AgentScope.compliance: "cmp",
     AgentScope.credential_issue: "ci",
-    AgentScope.read_only:        "ro",
+    AgentScope.read_only: "ro",
 }
 _SCOPE_FROM_SHORT: dict[str, AgentScope] = {v: k for k, v in _SCOPE_SHORT.items()}
 
 _TYPE_SHORT: dict[AgentType, str] = {
     AgentType.orchestrator: "orch",
-    AgentType.sub_agent:    "sub",
-    AgentType.monitor:      "mon",
-    AgentType.api_gateway:  "apigw",
-    AgentType.unknown:      "unk",
+    AgentType.sub_agent: "sub",
+    AgentType.monitor: "mon",
+    AgentType.api_gateway: "apigw",
+    AgentType.unknown: "unk",
 }
 _TYPE_FROM_SHORT: dict[str, AgentType] = {v: k for k, v in _TYPE_SHORT.items()}
 
 
 # ── Encoder / decoder ─────────────────────────────────────────────────────────
+
 
 def build_kya_uri(identity: AgentIdentity) -> str:
     """Encode an AgentIdentity as a compact JSON string for the Credential URI field.
@@ -142,6 +143,7 @@ def parse_kya_uri(uri: str | None) -> AgentIdentity | None:
 
 
 # ── Convenience constructors ──────────────────────────────────────────────────
+
 
 def orchestrator_identity(*, principal: str, ref: str = "") -> AgentIdentity:
     """Full-scope orchestrator: pay, delegate, x402, compliance, credential issuance."""

@@ -25,7 +25,9 @@ async def issue_credential(request: CredentialIssueRequest) -> CredentialRecord:
     try:
         return await credential_agent.issue(request)
     except Exception as exc:  # surface agent/config errors as a clean 502
-        raise HTTPException(status_code=502, detail=f"credential issuance failed: {exc}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"credential issuance failed: {exc}"
+        ) from exc
 
 
 @router.get("", response_model=list[CredentialRecord])
@@ -53,7 +55,9 @@ async def accept_credential(record_id: str) -> CredentialRecord:
     except credential_agent.CredentialNotFound as exc:
         raise HTTPException(status_code=404, detail="credential not found") from exc
     except credential_agent.InvalidCredentialState as exc:
-        raise HTTPException(status_code=409, detail="credential is not awaiting acceptance") from exc
+        raise HTTPException(
+            status_code=409, detail="credential is not awaiting acceptance"
+        ) from exc
     except NotImplementedError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:

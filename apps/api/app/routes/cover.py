@@ -57,12 +57,14 @@ async def cover_bind(req: CoverBindRequest) -> CoverPolicy:
 @router.get("/policies", response_model=list[CoverPolicy])
 async def list_cover_policies(agent: str | None = None) -> list[CoverPolicy]:
     from ..cover import store
+
     return store.list_policies(agent_address=agent)
 
 
 @router.get("/policies/{agent_address}", response_model=list[CoverPolicy])
 async def agent_cover_policies(agent_address: str) -> list[CoverPolicy]:
     from ..cover import store
+
     return store.list_policies(agent_address=agent_address)
 
 
@@ -76,7 +78,9 @@ async def cover_claim(evidence: CoverClaimEvidence) -> CoverPayout:
     except cover_tool.AlreadyClaimed as exc:
         raise HTTPException(status_code=409, detail=f"payment already claimed: {exc}")
     except cover_tool.NoCoveredDivergence as exc:
-        raise HTTPException(status_code=422, detail=f"no covered divergence detected: {exc}")
+        raise HTTPException(
+            status_code=422, detail=f"no covered divergence detected: {exc}"
+        )
     except cover_tool.PolicyNotFound as exc:
         raise HTTPException(status_code=404, detail=f"policy not found: {exc}")
     except cover_tool.PaymentNotFound as exc:
@@ -90,6 +94,7 @@ async def cover_claim(evidence: CoverClaimEvidence) -> CoverPayout:
 @router.get("/payouts", response_model=list[CoverPayout])
 async def list_cover_payouts(policy_id: str | None = None) -> list[CoverPayout]:
     from ..cover import store
+
     return store.list_payouts(policy_id=policy_id)
 
 
@@ -101,6 +106,7 @@ async def cover_pool() -> CoverPoolStatus:
 @router.get("/agents/{address}/risk")
 async def cover_agent_risk(address: str):
     from ..cover import store
+
     snap = store.get_agent_risk_snapshot(address)
     if snap is None:
         raise HTTPException(status_code=404, detail="no risk record for this agent")
@@ -108,6 +114,7 @@ async def cover_agent_risk(address: str):
 
 
 # ── Demo 4.1 — deterministic underpayment claim ───────────────────────────────
+
 
 @router.post("/demo/underpayment", status_code=201)
 async def demo_underpayment(req: CoverDemoUnderpaymentRequest) -> dict:
@@ -124,7 +131,9 @@ async def demo_underpayment(req: CoverDemoUnderpaymentRequest) -> dict:
     _require_cover()
     settings = get_settings()
     if req.paid_amount >= req.invoice_amount:
-        raise HTTPException(status_code=422, detail="paidAmount must be less than invoiceAmount")
+        raise HTTPException(
+            status_code=422, detail="paidAmount must be less than invoiceAmount"
+        )
 
     from decimal import Decimal as _D
     from ..cover import store as cover_store
@@ -137,10 +146,15 @@ async def demo_underpayment(req: CoverDemoUnderpaymentRequest) -> dict:
     agent_label: str
     if req.agent_id and req.agent_id != "example-treasury-agent":
         from .agents import _agents as _registered_agents
+
         agent_obj = _registered_agents.get(req.agent_id)
         if agent_obj is None:
-            raise HTTPException(status_code=404, detail=f"Unknown agent: {req.agent_id}")
-        agent_address = req.agent_id   # agents use their id as their identifier in cover store
+            raise HTTPException(
+                status_code=404, detail=f"Unknown agent: {req.agent_id}"
+            )
+        agent_address = (
+            req.agent_id
+        )  # agents use their id as their identifier in cover store
         agent_label = agent_obj.name
     else:
         agent_address = settings.treasury_wallet_address or "rDEMO_AGENT"
@@ -152,7 +166,11 @@ async def demo_underpayment(req: CoverDemoUnderpaymentRequest) -> dict:
     cover_store.reset_pair_payouts(agent_address, demo_merchant)
 
     # Detect whether the agent has an active cover policy.
-    active_policies = [p for p in list_policies(agent_address=agent_address) if p.status.value == "active"]
+    active_policies = [
+        p
+        for p in list_policies(agent_address=agent_address)
+        if p.status.value == "active"
+    ]
 
     is_insured = bool(active_policies)
     insured_policy = active_policies[0] if active_policies else None
@@ -164,68 +182,83 @@ async def demo_underpayment(req: CoverDemoUnderpaymentRequest) -> dict:
         per_claim_limit = insured_policy.per_claim_limit
         # Cancel and re-create so cover_remaining is reset between demo runs.
         cover_store.cancel_policy(insured_policy.id)
-        q = cover_tool.quote(CoverQuoteRequest(
-            agent_address=agent_address,
-            score_band="STANDARD",
-            cover_cap="5000",
-            per_claim_limit=per_claim_limit,
-            term_days=365,
-        ))
+        q = cover_tool.quote(
+            CoverQuoteRequest(
+                agent_address=agent_address,
+                score_band="STANDARD",
+                cover_cap="5000",
+                per_claim_limit=per_claim_limit,
+                term_days=365,
+            )
+        )
         if q.decision != "OFFER":
-            raise HTTPException(status_code=422, detail=f"cover not available: {q.reason}")
-        policy = await cover_tool.bind(CoverBindRequest(
-            agent_address=agent_address,
-            score_band="STANDARD",
-            cover_cap="5000",
-            per_claim_limit=per_claim_limit,
-            term_days=365,
-            quote=q,
-        ), simulate_settlement=True)
+            raise HTTPException(
+                status_code=422, detail=f"cover not available: {q.reason}"
+            )
+        policy = await cover_tool.bind(
+            CoverBindRequest(
+                agent_address=agent_address,
+                score_band="STANDARD",
+                cover_cap="5000",
+                per_claim_limit=per_claim_limit,
+                term_days=365,
+                quote=q,
+            )
+        )
     else:
         # Uninsured agent: no policy exists — synthetic zero-coverage path.
         coverage_rate = 0.0
         per_claim_limit = str(round(shortfall, 2))
 
-        q = cover_tool.quote(CoverQuoteRequest(
-            agent_address=agent_address,
-            score_band="STANDARD",
-            cover_cap="5000",
-            per_claim_limit=per_claim_limit,
-            term_days=365,
-        ))
+        q = cover_tool.quote(
+            CoverQuoteRequest(
+                agent_address=agent_address,
+                score_band="STANDARD",
+                cover_cap="5000",
+                per_claim_limit=per_claim_limit,
+                term_days=365,
+            )
+        )
         if q.decision != "OFFER":
-            raise HTTPException(status_code=422, detail=f"cover not available: {q.reason}")
-        policy = await cover_tool.bind(CoverBindRequest(
-            agent_address=agent_address,
-            score_band="STANDARD",
-            cover_cap="5000",
-            per_claim_limit=per_claim_limit,
-            term_days=365,
-            quote=q,
-        ), simulate_settlement=True)
+            raise HTTPException(
+                status_code=422, detail=f"cover not available: {q.reason}"
+            )
+        policy = await cover_tool.bind(
+            CoverBindRequest(
+                agent_address=agent_address,
+                score_band="STANDARD",
+                cover_cap="5000",
+                per_claim_limit=per_claim_limit,
+                term_days=365,
+                quote=q,
+            )
+        )
 
     # Step 2: create a settled payment with an underpayment hallucination.
     # amount=$480 < expected_amount=$500, same recipient → reconcile detects underpayment.
     # This is below the $500 Firefly threshold so policy engine auto-settles.
     payment_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
-    intent = PaymentIntent(**{
-        "from": agent_address,
-        "to": demo_merchant,
-        "senderName": "Demo Treasury Agent",
-        "senderCountry": "CH",
-        "receiverName": "Demo Merchant",
-        "receiverCountry": "DE",
-        "receiverEntityType": ReceiverEntityType.company,
-        "purpose": "supplier_invoice",
-        "amount": float(req.paid_amount),
-        "currency": "RLUSD",
-        "reference": f"INV-DEMO-{payment_id[:8]}",
-        "expectedAmount": float(req.invoice_amount),
-        "expectedRecipient": demo_merchant,
-    })
+    intent = PaymentIntent(
+        **{
+            "from": agent_address,
+            "to": demo_merchant,
+            "senderName": "Demo Treasury Agent",
+            "senderCountry": "CH",
+            "receiverName": "Demo Merchant",
+            "receiverCountry": "DE",
+            "receiverEntityType": ReceiverEntityType.company,
+            "purpose": "supplier_invoice",
+            "amount": float(req.paid_amount),
+            "currency": "RLUSD",
+            "reference": f"INV-DEMO-{payment_id[:8]}",
+            "expectedAmount": float(req.invoice_amount),
+            "expectedRecipient": demo_merchant,
+        }
+    )
 
     from ..schemas import Payment
+
     payment = Payment(
         id=payment_id,
         intent=intent,
@@ -240,10 +273,12 @@ async def demo_underpayment(req: CoverDemoUnderpaymentRequest) -> dict:
     payment_store.save(payment)
 
     # Step 3: file the claim — all financial data derived server-side
-    payout = await cover_tool.settle_claim(CoverClaimEvidence(
-        policy_id=policy.id,
-        payment_id=payment_id,
-    ), simulate_settlement=True)
+    payout = await cover_tool.settle_claim(
+        CoverClaimEvidence(
+            policy_id=policy.id,
+            payment_id=payment_id,
+        )
+    )
 
     coverage_pct = round(coverage_rate * 100, 1)
     if is_insured:

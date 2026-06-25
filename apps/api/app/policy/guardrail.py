@@ -83,6 +83,7 @@ def evaluate_guardrails(
 
 # ── Per-guardrail pure functions ──────────────────────────────────────────────
 
+
 def _g1_kya(**kw) -> GuardrailResult:
     ok = kw["agent_credential_verified"]
     return GuardrailResult(
@@ -105,7 +106,9 @@ def _g2_sanctions(**kw) -> GuardrailResult:
 
 def _g3_aml(**kw) -> GuardrailResult:
     # Placeholder — AML enrichment not yet wired to an external VASP source.
-    return GuardrailResult(name="G3_aml", passed=True, rule_fired=None, reason="not_wired")
+    return GuardrailResult(
+        name="G3_aml", passed=True, rule_fired=None, reason="not_wired"
+    )
 
 
 def _g4_scope(**kw) -> GuardrailResult:
@@ -133,13 +136,17 @@ def _g4_scope(**kw) -> GuardrailResult:
 def _g5_delegation(**kw) -> GuardrailResult:
     budget = kw["delegation_budget_remaining"]
     if budget is None:
-        return GuardrailResult(name="G5_delegation", passed=True, rule_fired=None, reason="no_grant")
+        return GuardrailResult(
+            name="G5_delegation", passed=True, rule_fired=None, reason="no_grant"
+        )
     ok = kw["amount"] <= budget
     return GuardrailResult(
         name="G5_delegation",
         passed=ok,
         rule_fired=None if ok else "delegation_budget_exceeded",
-        reason=None if ok else f"spend {kw['amount']} exceeds remaining budget {budget}",
+        reason=None
+        if ok
+        else f"spend {kw['amount']} exceeds remaining budget {budget}",
     )
 
 
@@ -163,7 +170,12 @@ def _g6_threshold(**kw) -> GuardrailResult:
 def _g7_hardware_veto(**kw) -> GuardrailResult:
     # Hardware veto is enforced out-of-band via Firefly signature verification in
     # release_payment — not at intake time.
-    return GuardrailResult(name="G7_hardware_veto", passed=True, rule_fired=None, reason="enforced_at_release")
+    return GuardrailResult(
+        name="G7_hardware_veto",
+        passed=True,
+        rule_fired=None,
+        reason="enforced_at_release",
+    )
 
 
 # ── Dispatch tables ───────────────────────────────────────────────────────────
@@ -179,10 +191,10 @@ _GUARDRAIL_FNS = {
 }
 
 _CONTEXT_GUARDRAILS: dict[str, list[str]] = {
-    "payment":          ["G2_sanctions", "G6_threshold"],
-    "agent_payment":    ["G2_sanctions", "G4_scope", "G6_threshold"],
-    "service_payment":  ["G1_kya", "G4_scope"],
-    "delegation_fund":  ["G1_kya", "G4_scope", "G5_delegation"],
-    "loan_underwrite":  ["G1_kya", "G2_sanctions", "G6_threshold"],
+    "payment": ["G2_sanctions", "G6_threshold"],
+    "agent_payment": ["G2_sanctions", "G4_scope", "G6_threshold"],
+    "service_payment": ["G1_kya", "G4_scope"],
+    "delegation_fund": ["G1_kya", "G4_scope", "G5_delegation"],
+    "loan_underwrite": ["G1_kya", "G2_sanctions", "G6_threshold"],
     "insurance_payout": ["G2_sanctions", "G3_aml", "G6_threshold", "G7_hardware_veto"],
 }

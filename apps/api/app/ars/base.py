@@ -21,7 +21,9 @@ from decimal import Decimal
 from typing import Literal
 
 
-ContextKind = Literal["payment", "loan_underwrite", "insurance_payout", "delegation_fund"]
+ContextKind = Literal[
+    "payment", "loan_underwrite", "insurance_payout", "delegation_fund"
+]
 
 
 @dataclass(frozen=True)
@@ -38,7 +40,7 @@ class ConstraintResult:
 
 @dataclass(frozen=True)
 class GuardrailOutcome:
-    name: str          # e.g. "G1_kya", "G4_scope"
+    name: str  # e.g. "G1_kya", "G4_scope"
     passed: bool
     rule_fired: str | None = None
     reason: str | None = None
@@ -48,7 +50,7 @@ class GuardrailOutcome:
 class SettlementReceipt:
     tx_hash: str
     explorer_url: str | None
-    network: str           # "mock" | "testnet" | "devnet" | "mainnet"
+    network: str  # "testnet" | "devnet" | "mainnet"
     amount: Decimal
     currency: str
 
@@ -90,8 +92,7 @@ class ConstraintEngine(ABC):
         allowed_service_hosts: list[str] | None = None,
         service_host: str | None = None,
         delegation_budget_remaining: Decimal | None = None,
-    ) -> ConstraintResult:
-        ...
+    ) -> ConstraintResult: ...
 
 
 class SettlementLayer(ABC):
@@ -108,8 +109,7 @@ class SettlementLayer(ABC):
         memo_data: dict | None = None,
         source_tag: int | None = None,
         invoice_id: str | None = None,
-    ) -> SettlementReceipt:
-        ...
+    ) -> SettlementReceipt: ...
 
     @abstractmethod
     async def lock(
@@ -122,12 +122,10 @@ class SettlementLayer(ABC):
         finish_after: int,
         memo_data: dict | None = None,
         source_tag: int | None = None,
-    ) -> EscrowReceipt:
-        ...
+    ) -> EscrowReceipt: ...
 
     @abstractmethod
-    async def finish_escrow(self, *, escrow_sequence: int) -> SettlementReceipt:
-        ...
+    async def finish_escrow(self, *, escrow_sequence: int) -> SettlementReceipt: ...
 
 
 class FeeEscrow(ABC):
@@ -142,16 +140,17 @@ class FeeEscrow(ABC):
         payee: str,
         amount: Decimal,
         currency: str,
-    ) -> EscrowReceipt:
-        ...
+    ) -> EscrowReceipt: ...
 
     @abstractmethod
-    async def release_fee(self, *, job_id: str, escrow_sequence: int) -> SettlementReceipt:
-        ...
+    async def release_fee(
+        self, *, job_id: str, escrow_sequence: int
+    ) -> SettlementReceipt: ...
 
     @abstractmethod
-    async def cancel_fee(self, *, job_id: str, escrow_sequence: int) -> SettlementReceipt:
-        ...
+    async def cancel_fee(
+        self, *, job_id: str, escrow_sequence: int
+    ) -> SettlementReceipt: ...
 
 
 class CollateralVault(ABC):
@@ -165,14 +164,12 @@ class CollateralVault(ABC):
         job_id: str,
         amount: Decimal,
         currency: str,
-    ) -> EscrowReceipt:
-        ...
+    ) -> EscrowReceipt: ...
 
     @abstractmethod
     async def release_collateral(
         self, *, job_id: str, escrow_sequence: int
-    ) -> SettlementReceipt:
-        ...
+    ) -> SettlementReceipt: ...
 
     @abstractmethod
     async def slash(
@@ -182,5 +179,4 @@ class CollateralVault(ABC):
         escrow_sequence: int,
         merchant: str,
         amount: Decimal,
-    ) -> SettlementReceipt:
-        ...
+    ) -> SettlementReceipt: ...
