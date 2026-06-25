@@ -16,7 +16,15 @@ _ROOT_ENV = (
 
 
 class Settings(BaseSettings):
-    """Runtime configuration, loaded from environment / root .env."""
+    """Runtime configuration, loaded from environment / root .env.
+
+    Risk appetite: the governance/risk thresholds defined here (escalation, AML
+    scoring, agent spend caps, delegation/x402 scopes, insurance loadings and the
+    cover mandate) are catalogued together in docs/risk-appetite.md, which maps
+    each field to its env var, default, and what it gates. The actuarial
+    calibration constants live in app/insurance/tables.py and are referenced from
+    that same doc. Keep the doc in sync when changing a default here.
+    """
 
     model_config = SettingsConfigDict(env_file=(str(_ROOT_ENV), ".env"), extra="ignore")
 
