@@ -173,7 +173,6 @@ TREASURY_WALLET_SEED={treasury_seed}
 RELEASE_WALLET_SEED={treasury_seed}
 TOKEN_CURRENCY={currency}
 TOKEN_ISSUER_ADDRESS={issuer_addr}
-USE_MOCK_XRPL=false
 XRPL_NETWORK=xrpl:devnet
 VAULT_XRPL_ENDPOINT={endpoint}
 

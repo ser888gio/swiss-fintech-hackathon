@@ -3,7 +3,7 @@
 
 Validates that your real-network setup works *outside* the full agent: it
 connects to XRPL_ENDPOINT with TREASURY_WALLET_SEED, checks the balance, and can
-send a real XRP payment. Use it before flipping the API to USE_MOCK_XRPL=false.
+send a real XRP payment. Use it to validate connectivity before running the full API.
 
 Run from apps/api (after `pip install -r requirements.txt`):
 

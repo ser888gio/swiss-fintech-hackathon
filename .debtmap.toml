@@ -1,0 +1,14 @@
+# Debtmap Configuration
+
+[ignore]
+patterns = [
+    "node_modules/**",
+    ".venv/**",
+    "venv/**",
+    "apps/firefly-pixie/build/**",
+    "apps/firefly-pixie/components/firefly-ethers/db/**",
+    "apps/firefly-pixie/components/firefly-ethers/third-party/**",
+    "apps/firefly-pixie/components/firefly-scene/tools/lib/**",
+    "apps/firefly-pixie/components/firefly-scene/tools/src.ts/font-gen/**",
+    "*.min.js"
+]

@@ -331,25 +331,8 @@ start_database() {
 ensure_firefly_keys() {
   [[ "${START_BRIDGE:-1}" == "1" ]] || return 0
 
-  if [[ -n "${FIREFLY_DEVICE_PATH:-}" ]]; then
-    [[ -n "${FIREFLY_PUBLIC_KEY:-}" ]] || die "FIREFLY_DEVICE_PATH is set, but FIREFLY_PUBLIC_KEY is missing."
-    return 0
-  fi
-
-  local key_output line key value
-  key_output="$(cd "$ROOT_DIR" && npm run --silent keygen --workspace apps/firefly-bridge)"
-
-  while IFS='=' read -r key value; do
-    case "$key" in
-      FIREFLY_PUBLIC_KEY)
-        export "$key=$value"
-        ;;
-    esac
-  done <<< "$key_output"
-
-  [[ -n "${FIREFLY_MOCK_PRIVATE_KEY:-}" && -n "${FIREFLY_PUBLIC_KEY:-}" ]] || die "Firefly key generation failed."
-
-  warn "Using session-only Firefly mock keys. Add them to .env if you need stable approvals across restarts."
+  [[ -n "${FIREFLY_DEVICE_PATH:-}" ]] || die "FIREFLY_DEVICE_PATH is not set. Connect the Firefly Pixie and set FIREFLY_DEVICE_PATH (e.g. COM3 or /dev/ttyUSB0). Run 'npm run keygen --workspace apps/firefly-bridge' once to provision the device key."
+  [[ -n "${FIREFLY_PUBLIC_KEY:-}" ]] || die "FIREFLY_PUBLIC_KEY is not set. Run 'npm run keygen --workspace apps/firefly-bridge' to generate a keypair and flash the private key onto the device."
 }
 
 wait_for_http() {

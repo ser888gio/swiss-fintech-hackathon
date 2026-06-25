@@ -301,8 +301,8 @@ class CredentialIssueRequest(CamelModel):
     expiration: datetime | None = None
     note: str | None = None
     # When true, the agent also runs the subject-side CredentialAccept so the
-    # credential is immediately usable. Used by the inline KYC gate (mock, or
-    # Testnet when CREDENTIAL_SUBJECT_SEED is configured).
+    # credential is immediately usable. Used by the inline KYC gate when
+    # CREDENTIAL_SUBJECT_SEED is configured.
     auto_accept: bool = False
 
 
@@ -481,7 +481,7 @@ class MPTStatus(CamelModel):
 
     issuance_id: str | None = None
     enabled: bool
-    network: str  # "mock" | "testnet" | "devnet"
+    network: str  # "testnet" | "devnet" | "mainnet"
     metadata_hex: str  # hex-encoded "COMPLY" metadata
     total_minted: int
     authorized_count: int

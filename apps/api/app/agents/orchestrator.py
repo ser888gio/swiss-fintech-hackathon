@@ -87,11 +87,7 @@ async def process_payment(
     _log(payment_id, f"Routed: {route.path_summary}, settling {route.dest_amount}.")
 
     credential = await credentials.verify_kyc(intent.to)
-    if credential.checked:
-        _log(
-            payment_id,
-            f"KYC credential ({credential.credential_type}): {credential.reason}.",
-        )
+    _log_credential(payment_id, credential)
 
     screen = compliance.check_compliance(intent, credential=credential)
     payment.compliance = screen
@@ -102,31 +98,10 @@ async def process_payment(
     # threshold and flag score come from config; the engine still owns the rule.
     # When the token settles in USD the route already carries that conversion,
     # so reuse it instead of fetching the same rate a second time.
-    if settings.token_currency.upper() == "USD":
-        amount_usd = route.dest_amount
-    else:
-        amount_usd = await routing.convert_to_usd(intent.amount, intent.currency)
-    # Run guardrails: G2 (sanctions) + G6 (threshold) for all payments;
-    # G4 (scope) added when a business agent scope is provided.
-    has_agent_scope = False
-    spent_today = Decimal("0")
-    if agent_scope is not None and agent_id is not None:
-        has_agent_scope = True
-        since = _now() - timedelta(hours=24)
-        spent_today = store.agent_payments_sum(agent_id, since, intent.currency)
-
-    g_result = evaluate_guardrails(
-        context_kind="agent_payment" if has_agent_scope else "payment",
-        sanctioned=screen.sanctioned,
-        aml_score=screen.aml_score,
-        amount=Decimal(str(amount_usd)),
-        spent_today=spent_today,
-        scope_max_per_tx=agent_scope.max_per_transaction
-        if agent_scope
-        else Decimal("0"),
-        scope_max_per_day=agent_scope.max_per_day if agent_scope else Decimal("0"),
-        threshold_usd=settings.policy_threshold_usd,
-        flag_score=settings.policy_compliance_flag_score,
+    amount_usd = await _payment_amount_usd(settings, intent, route)
+    has_agent_scope, spent_today = _agent_spend_context(agent_id, agent_scope, intent)
+    g_result = _evaluate_payment_guardrails(
+        settings, screen, amount_usd, spent_today, agent_scope, has_agent_scope
     )
     payment.guardrail_trail = list(g_result.guardrail_trail)
 
@@ -145,31 +120,7 @@ async def process_payment(
     # Explicit demo switch: Testnet/Devnet can exercise a real direct payment
     # without the local Firefly bridge. Mainnet always fails closed and retains
     # the approval requirement, even if the switch is disabled by mistake.
-    if decision.requires_approval and not getattr(
-        settings, "firefly_confirmation_enabled", True
-    ):
-        if settings.xrpl_network == "xrpl:0":
-            _log(
-                payment_id,
-                "Firefly bypass ignored on Mainnet; hardware approval remains required.",
-            )
-        else:
-            original_rule = decision.rule_fired or "policy_escalation"
-            decision = decision.model_copy(
-                update={
-                    "requires_approval": False,
-                    "rule_fired": "firefly_bypass_non_production",
-                    "reasons": list(decision.reasons)
-                    + [
-                        f"Firefly confirmation disabled for {settings.xrpl_network}; "
-                        f"original escalation rule: {original_rule}"
-                    ],
-                }
-            )
-            _log(
-                payment_id,
-                f"Non-production Firefly bypass applied on {settings.xrpl_network}.",
-            )
+    decision = _apply_firefly_bypass(payment_id, decision, settings)
     payment.policy_decision = decision
     _log(
         payment_id,
@@ -180,105 +131,16 @@ async def process_payment(
         ),
     )
 
-    counterparty_verified = bool(credential.verified)
-    counterparty_is_new = not counterparty_verified and not (
-        agent_scope is not None
-        and agent_scope.allowed_addresses is not None
-        and intent.to in agent_scope.allowed_addresses
+    decision = await _apply_payment_coverage(
+        payment,
+        intent,
+        settings,
+        credential,
+        agent_scope,
+        agent_cover,
+        amount_usd,
+        decision,
     )
-    cover_rule = resolve_cover_rule(settings, agent_cover)
-    cover_decision = evaluate_cover(
-        rule=cover_rule,
-        amount_usd=Decimal(str(amount_usd)),
-        counterparty_cover_required=intent.cover_required,
-        counterparty_threshold_usd=(
-            Decimal(str(intent.cover_required_above_usd))
-            if intent.cover_required_above_usd is not None
-            else None
-        ),
-        counterparty_is_new=counterparty_is_new,
-        counterparty_verified=counterparty_verified,
-    )
-    if settings.insurance_enabled and cover_decision.required:
-        risk_state = insurance_tool.get_agent_risk_state(intent.from_account)
-        score_band = risk_state.score_band if risk_state else "STANDARD"
-        cpty_band = (
-            "unverified"
-            if not counterparty_verified
-            else "new"
-            if counterparty_is_new
-            else "verified"
-        )
-        quote_request = InsuranceQuoteRequest(
-            agent_address=intent.from_account,
-            score_band=score_band,
-            txn_context=TxnContext(
-                category=intent.purpose,
-                tenor_band="instant",
-                cpty_band=cpty_band,
-                first_seen=counterparty_is_new,
-                amount=f"{amount_usd:.6f}",
-                amount_z=min(
-                    amount_usd / max(settings.policy_threshold_usd, 1.0), 3.0
-                ),
-                velocity_z=0.0,
-                concentration_z=0.0,
-                active_lines=[],
-                package=cover_decision.package,
-            ),
-        )
-        quote = insurance_tool.quote(quote_request)
-        payment.coverage = PaymentCoverage(
-            status=CoverageStatus.review,
-            required_by=cover_decision.required_by,
-            quote=quote,
-            reason=quote.reason,
-        )
-        if quote.decision.value == "DECLINE":
-            payment.coverage.status = CoverageStatus.declined
-            payment.policy_decision = decision.model_copy(
-                update={
-                    "blocked": True,
-                    "requires_approval": False,
-                    "block_reason": quote.reason,
-                    "reasons": list(decision.reasons) + [quote.reason],
-                    "rule_fired": "insurance_decline",
-                }
-            )
-            decision = payment.policy_decision
-        elif quote.decision.value == "REVIEW":
-            payment.policy_decision = decision.model_copy(
-                update={
-                    "requires_approval": True,
-                    "reasons": list(decision.reasons) + [quote.reason],
-                    "rule_fired": decision.rule_fired or "insurance_review",
-                }
-            )
-            decision = payment.policy_decision
-        else:
-            premium = await insurance_tool.bind(
-                BindRequest(
-                    job_id=payment_id,
-                    agent_address=intent.from_account,
-                    score_band=quote_request.score_band,
-                    currency=settings.token_currency,
-                    quote=quote,
-                )
-            )
-            payment.coverage = PaymentCoverage(
-                status=CoverageStatus.bound,
-                required_by=cover_decision.required_by,
-                quote=quote,
-                premium=premium,
-                reason="Coverage quoted and bound before payment settlement.",
-            )
-            _log(
-                payment_id,
-                (
-                    f"Insurance auto-bound: premium {premium.premium_amount} {premium.currency} "
-                    f"({quote.receipt_hash[:12]}...)."
-                ),
-            )
 
     # Narration is generated only after every deterministic gate has produced
     # the final decision. It explains that decision; it never changes it.
@@ -298,27 +160,286 @@ async def process_payment(
         receipt_hash=receipt.compute_decision_hash(payment),
     )
 
-    # Reserve agent spend before submitting (prevents double-spend on concurrent runs).
-    if agent_id is not None and not decision.blocked:
-        store.reserve_agent_spend(
-            agent_id, payment_id, Decimal(str(amount_usd)), intent.currency
+    await _finalize_payment(payment, route, intent, memo, agent_id, amount_usd)
+
+    payment.updated_at = _now()
+    return store.save(payment)
+
+
+def _log_credential(payment_id: str, credential) -> None:
+    if credential.checked:
+        _log(
+            payment_id,
+            f"KYC credential ({credential.credential_type}): {credential.reason}.",
         )
+
+
+async def _payment_amount_usd(settings, intent: PaymentIntent, route) -> Decimal:
+    if settings.token_currency.upper() == "USD":
+        return Decimal(str(route.dest_amount))
+    return Decimal(str(await routing.convert_to_usd(intent.amount, intent.currency)))
+
+
+def _agent_spend_context(
+    agent_id: str | None,
+    agent_scope: AgentScope | None,
+    intent: PaymentIntent,
+) -> tuple[bool, Decimal]:
+    if agent_scope is None or agent_id is None:
+        return False, Decimal("0")
+    since = _now() - timedelta(hours=24)
+    return True, store.agent_payments_sum(agent_id, since, intent.currency)
+
+
+def _evaluate_payment_guardrails(
+    settings,
+    screen,
+    amount_usd: Decimal,
+    spent_today: Decimal,
+    agent_scope: AgentScope | None,
+    has_agent_scope: bool,
+) -> ConstraintResult:
+    return evaluate_guardrails(
+        context_kind="agent_payment" if has_agent_scope else "payment",
+        sanctioned=screen.sanctioned,
+        aml_score=screen.aml_score,
+        amount=amount_usd,
+        spent_today=spent_today,
+        scope_max_per_tx=agent_scope.max_per_transaction
+        if agent_scope
+        else Decimal("0"),
+        scope_max_per_day=agent_scope.max_per_day if agent_scope else Decimal("0"),
+        threshold_usd=settings.policy_threshold_usd,
+        flag_score=settings.policy_compliance_flag_score,
+    )
+
+
+def _log_agent_scope_result(
+    payment_id: str,
+    agent_id: str | None,
+    result: ConstraintResult,
+    has_agent_scope: bool,
+) -> None:
+    if not has_agent_scope:
+        return
+    g4 = next((s for s in result.guardrail_trail if s.name == "G4_scope"), None)
+    if g4:
+        reason = f" - {g4.reason}" if g4.reason else ""
+        _log(
+            payment_id,
+            f"Agent scope [{agent_id}]: "
+            f"{g4.rule_fired or 'all checks passed'}{reason}",
+        )
+
+
+def _apply_firefly_bypass(
+    payment_id: str, decision: PolicyDecision, settings
+) -> PolicyDecision:
+    if not decision.requires_approval:
+        return decision
+    if getattr(settings, "firefly_confirmation_enabled", True):
+        return decision
+    if settings.xrpl_network == "xrpl:0":
+        _log(
+            payment_id,
+            "Firefly bypass ignored on Mainnet; hardware approval remains required.",
+        )
+        return decision
+
+    original_rule = decision.rule_fired or "policy_escalation"
+    _log(
+        payment_id,
+        f"Non-production Firefly bypass applied on {settings.xrpl_network}.",
+    )
+    return decision.model_copy(
+        update={
+            "requires_approval": False,
+            "rule_fired": "firefly_bypass_non_production",
+            "reasons": list(decision.reasons)
+            + [
+                f"Firefly confirmation disabled for {settings.xrpl_network}; "
+                f"original escalation rule: {original_rule}"
+            ],
+        }
+    )
+
+
+async def _apply_payment_coverage(
+    payment: Payment,
+    intent: PaymentIntent,
+    settings,
+    credential,
+    agent_scope: AgentScope | None,
+    agent_cover: AutoInsureConfig | None,
+    amount_usd: Decimal,
+    decision: PolicyDecision,
+) -> PolicyDecision:
+    counterparty_verified = bool(credential.verified)
+    counterparty_is_new = _counterparty_is_new(
+        intent, agent_scope, counterparty_verified
+    )
+    cover_decision = evaluate_cover(
+        rule=resolve_cover_rule(settings, agent_cover),
+        amount_usd=amount_usd,
+        counterparty_cover_required=intent.cover_required,
+        counterparty_threshold_usd=_cover_threshold(intent),
+        counterparty_is_new=counterparty_is_new,
+        counterparty_verified=counterparty_verified,
+    )
+    if not settings.insurance_enabled or not cover_decision.required:
+        return decision
+
+    quote_request = _coverage_quote_request(
+        intent,
+        settings,
+        amount_usd,
+        counterparty_is_new,
+        counterparty_verified,
+        cover_decision,
+    )
+    quote = insurance_tool.quote(quote_request)
+    payment.coverage = PaymentCoverage(
+        status=CoverageStatus.review,
+        required_by=cover_decision.required_by,
+        quote=quote,
+        reason=quote.reason,
+    )
+    if quote.decision.value in {"DECLINE", "REVIEW"}:
+        return _coverage_policy_decision(payment, decision, quote)
+
+    premium = await insurance_tool.bind(
+        BindRequest(
+            job_id=payment.id,
+            agent_address=intent.from_account,
+            score_band=quote_request.score_band,
+            currency=settings.token_currency,
+            quote=quote,
+        )
+    )
+    payment.coverage = PaymentCoverage(
+        status=CoverageStatus.bound,
+        required_by=cover_decision.required_by,
+        quote=quote,
+        premium=premium,
+        reason="Coverage quoted and bound before payment settlement.",
+    )
+    _log(
+        payment.id,
+        f"Insurance auto-bound: premium {premium.premium_amount} {premium.currency} "
+        f"({quote.receipt_hash[:12]}...).",
+    )
+    return decision
+
+
+def _counterparty_is_new(
+    intent: PaymentIntent,
+    agent_scope: AgentScope | None,
+    counterparty_verified: bool,
+) -> bool:
+    if counterparty_verified:
+        return False
+    return not (
+        agent_scope is not None
+        and agent_scope.allowed_addresses is not None
+        and intent.to in agent_scope.allowed_addresses
+    )
+
+
+def _cover_threshold(intent: PaymentIntent) -> Decimal | None:
+    if intent.cover_required_above_usd is None:
+        return None
+    return Decimal(str(intent.cover_required_above_usd))
+
+
+def _coverage_quote_request(
+    intent: PaymentIntent,
+    settings,
+    amount_usd: Decimal,
+    counterparty_is_new: bool,
+    counterparty_verified: bool,
+    cover_decision,
+) -> InsuranceQuoteRequest:
+    risk_state = insurance_tool.get_agent_risk_state(intent.from_account)
+    score_band = risk_state.score_band if risk_state else "STANDARD"
+    cpty_band = _counterparty_band(counterparty_is_new, counterparty_verified)
+    return InsuranceQuoteRequest(
+        agent_address=intent.from_account,
+        score_band=score_band,
+        txn_context=TxnContext(
+            category=intent.purpose,
+            tenor_band="instant",
+            cpty_band=cpty_band,
+            first_seen=counterparty_is_new,
+            amount=f"{amount_usd:.6f}",
+            amount_z=min(
+                amount_usd / Decimal(str(max(settings.policy_threshold_usd, 1.0))),
+                Decimal("3.0"),
+            ),
+            velocity_z=0.0,
+            concentration_z=0.0,
+            active_lines=[],
+            package=cover_decision.package,
+        ),
+    )
+
+
+def _counterparty_band(counterparty_is_new: bool, counterparty_verified: bool) -> str:
+    if not counterparty_verified:
+        return "unverified"
+    return "new" if counterparty_is_new else "verified"
+
+
+def _coverage_policy_decision(
+    payment: Payment, decision: PolicyDecision, quote
+) -> PolicyDecision:
+    if quote.decision.value == "DECLINE":
+        payment.coverage.status = CoverageStatus.declined
+        updated = decision.model_copy(
+            update={
+                "blocked": True,
+                "requires_approval": False,
+                "block_reason": quote.reason,
+                "reasons": list(decision.reasons) + [quote.reason],
+                "rule_fired": "insurance_decline",
+            }
+        )
+    else:
+        updated = decision.model_copy(
+            update={
+                "requires_approval": True,
+                "reasons": list(decision.reasons) + [quote.reason],
+                "rule_fired": decision.rule_fired or "insurance_review",
+            }
+        )
+    payment.policy_decision = updated
+    return updated
+
+
+async def _finalize_payment(
+    payment: Payment,
+    route,
+    intent: PaymentIntent,
+    memo: "execution.ComplianceMemo",
+    agent_id: str | None,
+    amount_usd: Decimal,
+) -> None:
+    decision = payment.policy_decision
+    if decision is None:
+        raise RuntimeError("payment policy decision missing")
+    if agent_id is not None and not decision.blocked:
+        store.reserve_agent_spend(agent_id, payment.id, amount_usd, intent.currency)
 
     if decision.blocked:
         await _block(payment)
         if agent_id is not None:
-            store.release_agent_spend(agent_id, payment_id)
-    elif decision.requires_approval:
+            store.release_agent_spend(agent_id, payment.id)
+        return
+    if decision.requires_approval:
         await _escalate(payment, route, intent, memo)
-        if agent_id is not None:
-            store.commit_agent_spend(agent_id, payment_id)
     else:
         await _settle(payment, route, intent, memo)
-        if agent_id is not None:
-            store.commit_agent_spend(agent_id, payment_id)
-
-    payment.updated_at = _now()
-    return store.save(payment)
+    if agent_id is not None:
+        store.commit_agent_spend(agent_id, payment.id)
 
 
 async def _settle(
@@ -463,26 +584,97 @@ async def process_service_payment(
     host = urlparse(requirement.service_url).netloc
     scope = agent_scope or _agent_scope(settings)
     agent_key = agent_id or effective_agent
-    since = datetime.now(timezone.utc) - timedelta(hours=24)
-    spent_today = store.agent_payments_sum(agent_key, since, requirement.asset_currency)
+    trail = await _service_guardrail_trail(
+        requirement,
+        host,
+        effective_agent,
+        agent_key,
+        agent_id,
+        scope,
+        service_type,
+        category,
+        settings,
+    )
+    settlement = await _settle_service_requirement(
+        requirement, trail, agent_key, agent_id, host
+    )
+
+    record = _save_service_outcome(
+        requirement,
+        host,
+        agent_id,
+        "settled",
+        trail,
+        settlement=settlement,
+    )
+    _maybe_attach_service_cover(
+        record, requirement, effective_agent, category or service_type, settings
+    )
+    return settlement
+
+
+async def _service_guardrail_trail(
+    requirement,
+    host: str,
+    effective_agent: str,
+    agent_key: str,
+    agent_id: str | None,
+    scope: AgentScope,
+    service_type: str,
+    category: str | None,
+    settings,
+) -> list[GuardrailResult]:
+    trail = await _service_kya_trail(
+        requirement, host, effective_agent, agent_id, settings
+    )
+    spent_today = store.agent_payments_sum(
+        agent_key,
+        datetime.now(timezone.utc) - timedelta(hours=24),
+        requirement.asset_currency,
+    )
+    _append_service_scope_trail(
+        requirement, host, agent_id, scope, service_type, category, spent_today, trail
+    )
+    _append_service_threshold_trail(requirement, host, agent_id, settings, trail)
+    return trail
+
+
+async def _service_kya_trail(
+    requirement,
+    host: str,
+    effective_agent: str,
+    agent_id: str | None,
+    settings,
+) -> list[GuardrailResult]:
     from ..credentials.kya.tool import verify_agent_kya
     from ..credentials.kya.uri import AgentScope as KyaScope
 
     cred = await verify_agent_kya(effective_agent, required_scope=KyaScope.x402)
-    trail: list[GuardrailResult] = []
     kya_ok = cred.verified if settings.credential_kyc_enabled else True
-    trail.append(
+    trail = [
         GuardrailResult(
             name="G1_kya",
             passed=kya_ok,
             rule_fired=None if kya_ok else "kya_unverified",
             reason=None if kya_ok else "agent credential not verified",
         )
-    )
+    ]
     if not kya_ok:
         _save_service_outcome(requirement, host, agent_id, "blocked", trail)
         raise GuardrailBlocked("kya_unverified", "agent credential not verified", trail)
+    return trail
 
+
+def _append_service_scope_trail(
+    requirement,
+    host: str,
+    agent_id: str | None,
+    scope: AgentScope,
+    service_type: str,
+    category: str | None,
+    spent_today: Decimal,
+    trail: list[GuardrailResult],
+) -> None:
     scope_result = evaluate_scope(
         Decimal(requirement.amount),
         scope,
@@ -510,6 +702,14 @@ async def process_service_payment(
         _save_service_outcome(requirement, host, agent_id, "blocked", trail)
         raise GuardrailBlocked(scope_result.rule_fired or "G4_scope", reason, trail)
 
+
+def _append_service_threshold_trail(
+    requirement,
+    host: str,
+    agent_id: str | None,
+    settings,
+    trail: list[GuardrailResult],
+) -> None:
     threshold = engine.evaluate(
         float(Decimal(requirement.amount)),
         0,
@@ -530,6 +730,14 @@ async def process_service_payment(
         _save_service_outcome(requirement, host, agent_id, "blocked", trail)
         raise GuardrailBlocked(threshold.rule_fired or "G6_threshold", reason, trail)
 
+
+async def _settle_service_requirement(
+    requirement,
+    trail: list[GuardrailResult],
+    agent_key: str,
+    agent_id: str | None,
+    host: str,
+) -> X402Settlement:
     reserved = store.reserve_agent_spend(
         agent_key,
         requirement.invoice_id,
@@ -538,62 +746,65 @@ async def process_service_payment(
     )
     if not reserved:
         raise x402_tool.X402Rejected("invoice was already reserved or settled")
-
     try:
         settlement = await x402_tool.settle_x402(
-            requirement,
-            guardrail_trail=trail,
-            agent_id=agent_id,
+            requirement, guardrail_trail=trail, agent_id=agent_id
         )
         await x402_tool.retry_with_proof(requirement, settlement)
         store.commit_agent_spend(agent_key, requirement.invoice_id)
+        return settlement
     except Exception as exc:
         store.release_agent_spend(agent_key, requirement.invoice_id)
-        failure_trail = trail + [
-            GuardrailResult(
-                name="merchant_proof",
-                passed=False,
-                rule_fired="settlement_or_proof_failed",
-                reason=str(exc),
-            )
-        ]
-        _save_service_outcome(requirement, host, agent_id, "blocked", failure_trail)
+        _save_service_outcome(
+            requirement, host, agent_id, "blocked", _service_failure_trail(trail, exc)
+        )
         raise
 
-    record = _save_service_outcome(
-        requirement,
-        host,
-        agent_id,
-        "settled",
-        trail,
-        settlement=settlement,
-    )
-    if getattr(settings, "insurance_enabled", False):
-        try:
-            quote = insurance_tool.quote(
-                InsuranceQuoteRequest(
-                    agent_address=effective_agent,
-                    score_band="STANDARD",
-                    txn_context=TxnContext(
-                        category=category or service_type,
-                        tenor_band="instant",
-                        cpty_band="standard",
-                        first_seen=False,
-                        amount=requirement.amount,
-                        amount_z=0.0,
-                        velocity_z=0.0,
-                        concentration_z=0.0,
-                        active_lines=[CoverLine.merchant_default],
-                    ),
-                )
+
+def _service_failure_trail(
+    trail: list[GuardrailResult], exc: Exception
+) -> list[GuardrailResult]:
+    return trail + [
+        GuardrailResult(
+            name="merchant_proof",
+            passed=False,
+            rule_fired="settlement_or_proof_failed",
+            reason=str(exc),
+        )
+    ]
+
+
+def _maybe_attach_service_cover(
+    record: ServicePaymentRecord,
+    requirement,
+    effective_agent: str,
+    category: str,
+    settings,
+) -> None:
+    if not getattr(settings, "insurance_enabled", False):
+        return
+    try:
+        record.cover = insurance_tool.quote(
+            InsuranceQuoteRequest(
+                agent_address=effective_agent,
+                score_band="STANDARD",
+                txn_context=TxnContext(
+                    category=category,
+                    tenor_band="instant",
+                    cpty_band="standard",
+                    first_seen=False,
+                    amount=requirement.amount,
+                    amount_z=0.0,
+                    velocity_z=0.0,
+                    concentration_z=0.0,
+                    active_lines=[CoverLine.merchant_default],
+                ),
             )
-            record.cover = quote
-            record.updated_at = _now()
-            store.update_service_payment(record)
-        except Exception:
-            # Cover is an integration hook; settlement remains authoritative.
-            pass
-    return settlement
+        )
+        record.updated_at = _now()
+        store.update_service_payment(record)
+    except Exception:
+        pass
 
 
 def _is_known_merchant(requirement, scope: AgentScope) -> bool:
@@ -835,8 +1046,8 @@ class SignatureRejected(Exception):
 def _secondary_explorer(tx_hash: str | None, primary_url: str | None) -> str | None:
     """Cross-check explorer link (bithomp), tied to the primary's liveness.
 
-    Returns None whenever the primary is None (mock mode / no real tx), so a
-    stale fake hash never produces a dead second link.
+    Returns None whenever the primary is None (no tx hash), so a stale
+    hash never produces a dead second link.
     """
     if not tx_hash or primary_url is None:
         return None

@@ -133,9 +133,8 @@ async def issue_kya(body: KYAIssueRequest) -> KYAIssueResponse:
     and authorized scopes into the XRPL Credential URI field using the compact
     JSON format defined in tools/kya_uri.py.
 
-    In mock mode (USE_MOCK_XRPL=true) the credential is stored in memory and
-    the response includes mock=true. In real mode it submits a CredentialCreate
-    to the ledger.
+    Submits a CredentialCreate to the ledger and stores the credential in
+    memory for the session.
 
     This endpoint is called once per agent deployment to bind the agent wallet
     to a declared identity before it can initiate payments or delegate actions.

@@ -63,7 +63,7 @@ worst, produce bad narration — never a bad payment.
 - Backend: Python 3.11+, FastAPI, SQLAlchemy (async), Pydantic, `xrpl-py`,
   `httpx`, OpenAI SDK.
 - Frontend: TypeScript, React 18, Vite.
-- Bridge: TypeScript, Node 20, Express, `serialport` (or a mock device).
+- Bridge: TypeScript, Node 20, Express, `serialport`.
 - DB: PostgreSQL.
 - Monorepo: npm workspaces for the TS packages; the Python API lives alongside
   in `apps/api` and is run with its own venv.

@@ -32,8 +32,7 @@ apps/api/app/tools/vault.py
   balance() -> float
 ```
 
-Both functions follow the same mockable pattern as `execution.py`:
-`if settings.use_mock_xrpl: return deterministic fake result`.
+Both functions submit real XRPL transactions, consistent with `execution.py`.
 
 The orchestrator (or a scheduled job) triggers sweeps:
 
@@ -69,4 +68,4 @@ path — same as any other large payment. The agent narrates; code decides.
 
 The vault primitives are unchanged (XLS-65/66 → mainnet when activated). The
 sweep policy bounds and the Firefly withdrawal gate are already mainnet-ready
-(same code). Replace mock RLUSD with real RLUSD; add a yield-rate oracle feed.
+(same code). Replace testnet RLUSD with Mainnet RLUSD; add a yield-rate oracle feed.

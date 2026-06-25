@@ -30,9 +30,8 @@ through a bridge on the operator's own machine.
   `https://web-production-cba3.up.railway.app`.
 - **Firefly bridge (`apps/firefly-bridge`)** — **Local machine only.** Node/Express
   server on port `4747` (`apps/firefly-bridge/src/index.ts:8`). Owns the USB/serial
-  connection to the Firefly Pixie (`SerialFireflyDevice`) or a `MockFireflyDevice`
-  for demos. Exposes `/health` and `/sign`. The Railway API never connects to
-  hardware — by design.
+  connection to the Firefly Pixie (`SerialFireflyDevice`). Exposes `/health`
+  and `/sign`. The Railway API never connects to hardware — by design.
 - **Firefly Pixie device** — Physical secp256k1 signer. Displays the human-readable
   approval request and signs only on a physical button press.
 
@@ -75,8 +74,7 @@ through a bridge on the operator's own machine.
   hash, preventing fund redirection or cross-network replay (`firefly.py:33-51`).
 - **Secrets** — Wallet seeds, issuer seeds, OpenAI/Plaid/OpenSanctions keys, and
   the Firefly key live only in environment / Railway variables, never in the repo
-  (`config.py`). Mock mode (`USE_MOCK_XRPL`, default `true`) lets the full flow run
-  with no wallet.
+  (`config.py`). All flows require real wallet credentials.
 
 ### External Services
 
@@ -110,7 +108,7 @@ through a bridge on the operator's own machine.
 
 ## Environment Differences
 
-- **Production default**: `USE_MOCK_XRPL=true`, `testnet_settlement_scale=1.0`,
+- **Production default**: `testnet_settlement_scale=1.0`,
   `firefly_confirmation_enabled=true`, `demo_mode=false`. Mainnet
   (`xrpl_network=xrpl:0`) always fails closed — the Firefly bypass is ignored
   (`orchestrator.py:133-138`).

@@ -234,66 +234,122 @@ async def run_controller(
     # cadence timestamps; all policy, credential, reservation, and settlement
     # checks still execute normally below.
     if force:
-        for agent_id in MAERSK_SUBAGENTS:
-            for goal in treasury_agent.list_agent_goals(agent_id):
-                treasury_agent.add_agent_goal(
-                    agent_id, goal.model_copy(update={"last_triggered_at": None})
-                )
+        _reset_maersk_goal_cadence()
     if simulate:
-        evaluated = 0
-        eligible: list[str] = []
-        skipped: list[str] = []
-        trail: list[str] = []
-        for agent_id in MAERSK_SUBAGENTS:
-            agent = _agents.get(agent_id)
-            if not agent or agent.status != AgentStatus.active:
-                continue
-            scope = _build_scope(agent)
-            for goal in treasury_agent.list_agent_goals(agent_id):
-                evaluated += 1
-                host = urlparse(goal.service_url).netloc if goal.service_url else None
-                decision = evaluate_scope(
-                    Decimal(str(goal.amount)),
-                    scope,
-                    Decimal("0"),
-                    service_host=host,
-                    service_type=goal.service_type,
-                    asset=goal.currency,
-                    network=agent.allowed_network,
-                    category=goal.category or goal.purpose,
-                    payee_is_known_merchant=True,
-                )
-                if decision.allowed:
-                    eligible.append(f"SIM-{agent_id}-{goal.id[:8]}")
-                    trail.append(
-                        f"[{agent_id}] {goal.name}: ELIGIBLE — scope, asset, host, "
-                        f"per-transaction and daily limits passed ({goal.amount:g} {goal.currency})."
-                    )
-                else:
-                    skipped.append(goal.id)
-                    outcome = "ESCALATE" if decision.requires_approval else "BLOCK"
-                    trail.append(
-                        f"[{agent_id}] {goal.name}: {outcome} — "
-                        f"{decision.rule_fired}: {'; '.join(decision.reasons)}"
-                    )
-        now = datetime.now(timezone.utc)
-        return TreasuryAgentRun(
-            id=str(uuid.uuid4()),
-            started_at=started,
-            completed_at=now,
-            goals_evaluated=evaluated,
-            goals_triggered=len(eligible),
-            payments_initiated=eligible,
-            payments_skipped=skipped,
-            trigger_log=trail,
-            narration=(
-                f"Simulation evaluated {evaluated} due service goals through the deterministic "
-                f"agent scope policy. {len(eligible)} are eligible for autonomous x402 settlement; "
-                f"{len(skipped)} require escalation or are blocked. No funds moved in this judge simulation."
-            ),
-            status="simulated",
-            agent_id="maersk-controller",
+        return _simulate_controller_run(started)
+    runs = await _run_maersk_subagents()
+    aggregate = await _aggregate_controller_run(started, runs, settings)
+    treasury_agent._agent_runs.setdefault("maersk-controller", []).append(aggregate)
+    treasury_agent._schedule(treasury_agent._persist_run(aggregate))
+    return aggregate
+
+
+def _reset_maersk_goal_cadence() -> None:
+    for agent_id in MAERSK_SUBAGENTS:
+        for goal in treasury_agent.list_agent_goals(agent_id):
+            treasury_agent.add_agent_goal(
+                agent_id, goal.model_copy(update={"last_triggered_at": None})
+            )
+
+
+def _simulate_controller_run(started: datetime) -> TreasuryAgentRun:
+    evaluated = 0
+    eligible: list[str] = []
+    skipped: list[str] = []
+    trail: list[str] = []
+    for agent_id in MAERSK_SUBAGENTS:
+        agent = _agents.get(agent_id)
+        if not agent or agent.status != AgentStatus.active:
+            continue
+        count, agent_eligible, agent_skipped, agent_trail = _simulate_agent_goals(
+            agent_id, agent
         )
+        evaluated += count
+        eligible.extend(agent_eligible)
+        skipped.extend(agent_skipped)
+        trail.extend(agent_trail)
+    return _simulation_run(started, evaluated, eligible, skipped, trail)
+
+
+def _simulate_agent_goals(
+    agent_id: str, agent: Agent
+) -> tuple[int, list[str], list[str], list[str]]:
+    scope = _build_scope(agent)
+    eligible: list[str] = []
+    skipped: list[str] = []
+    trail: list[str] = []
+    goals = treasury_agent.list_agent_goals(agent_id)
+    for goal in goals:
+        host = urlparse(goal.service_url).netloc if goal.service_url else None
+        decision = _simulate_goal_scope(agent, scope, goal, host)
+        if decision.allowed:
+            eligible.append(f"SIM-{agent_id}-{goal.id[:8]}")
+            trail.append(_eligible_simulation_log(agent_id, goal))
+        else:
+            skipped.append(goal.id)
+            trail.append(_blocked_simulation_log(agent_id, goal, decision))
+    return len(goals), eligible, skipped, trail
+
+
+def _eligible_simulation_log(agent_id: str, goal: TreasuryGoal) -> str:
+    return (
+        f"[{agent_id}] {goal.name}: ELIGIBLE - scope, asset, host, "
+        f"per-transaction and daily limits passed ({goal.amount:g} {goal.currency})."
+    )
+
+
+def _blocked_simulation_log(agent_id: str, goal: TreasuryGoal, decision) -> str:
+    outcome = "ESCALATE" if decision.requires_approval else "BLOCK"
+    return (
+        f"[{agent_id}] {goal.name}: {outcome} - "
+        f"{decision.rule_fired}: {'; '.join(decision.reasons)}"
+    )
+
+
+def _simulation_run(
+    started: datetime,
+    evaluated: int,
+    eligible: list[str],
+    skipped: list[str],
+    trail: list[str],
+) -> TreasuryAgentRun:
+    return TreasuryAgentRun(
+        id=str(uuid.uuid4()),
+        started_at=started,
+        completed_at=datetime.now(timezone.utc),
+        goals_evaluated=evaluated,
+        goals_triggered=len(eligible),
+        payments_initiated=eligible,
+        payments_skipped=skipped,
+        trigger_log=trail,
+        narration=(
+            f"Simulation evaluated {evaluated} due service goals through the "
+            f"deterministic agent scope policy. {len(eligible)} are eligible for "
+            f"autonomous x402 settlement; {len(skipped)} require escalation or are "
+            "blocked. No funds moved in this judge simulation."
+        ),
+        status="simulated",
+        agent_id="maersk-controller",
+    )
+
+
+def _simulate_goal_scope(
+    agent: Agent, scope: AgentScope, goal: TreasuryGoal, host: str | None
+):
+    return evaluate_scope(
+        Decimal(str(goal.amount)),
+        scope,
+        Decimal("0"),
+        service_host=host,
+        service_type=goal.service_type,
+        asset=goal.currency,
+        network=agent.allowed_network,
+        category=goal.category or goal.purpose,
+        payee_is_known_merchant=True,
+    )
+
+
+async def _run_maersk_subagents() -> list[TreasuryAgentRun]:
     runs: list[TreasuryAgentRun] = []
     for agent_id in MAERSK_SUBAGENTS:
         agent = _agents.get(agent_id)
@@ -303,6 +359,14 @@ async def run_controller(
                     agent_id, _build_scope(agent), agent.auto_insure
                 )
             )
+    return runs
+
+
+async def _aggregate_controller_run(
+    started: datetime,
+    runs: list[TreasuryAgentRun],
+    settings,
+) -> TreasuryAgentRun:
     payments = [payment for run in runs for payment in run.payments_initiated]
     skipped = [goal for run in runs for goal in run.payments_skipped]
     trail = [f"[{run.agent_id}] {line}" for run in runs for line in run.trigger_log]
@@ -312,7 +376,7 @@ async def run_controller(
         for goal in treasury_agent.list_agent_goals(agent_id)
     ]
     narration = await treasury_agent._narrate(goals, trail, payments, settings)
-    aggregate = TreasuryAgentRun(
+    return TreasuryAgentRun(
         id=str(uuid.uuid4()),
         started_at=started,
         completed_at=datetime.now(timezone.utc),
@@ -325,9 +389,6 @@ async def run_controller(
         status="completed",
         agent_id="maersk-controller",
     )
-    treasury_agent._agent_runs.setdefault("maersk-controller", []).append(aggregate)
-    treasury_agent._schedule(treasury_agent._persist_run(aggregate))
-    return aggregate
 
 
 @router.get("/{agent_id}", response_model=Agent)

@@ -65,7 +65,7 @@ SCENARIOS: dict[str, dict] = {
         "name": "KYC Forge",
         "description": "Accept a KYC credential for an unverified address without proper issuance.",
         "hint": "Can you claim verified status by calling accept directly?",
-        "expected_block": "KYC check — mock verify sees no issued credential chain",
+        "expected_block": "KYC check — no issued credential found on-chain",
     },
     "AT-3": {
         "name": "Structuring",

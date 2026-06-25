@@ -237,17 +237,7 @@ async def cmd_provision(settings, args) -> None:
         print(f"== {net.name} ({net.endpoint}) ==")
         async with _client(net.endpoint) as client:
             for label, wallet in wallets.items():
-                balance = await _balance_xrp(client, wallet.classic_address)
-                if balance is None:
-                    print(f"  {label}: not funded — requesting from faucet ...")
-                    balance = await _fund_existing(client, wallet, net)
-                    print(f"  {label}: funded -> {balance:.6f} XRP")
-                elif balance < MIN_FUNDED_XRP:
-                    print(f"  {label}: {balance:.6f} XRP < floor — topping up ...")
-                    balance = await _fund_existing(client, wallet, net)
-                    print(f"  {label}: topped up -> {balance:.6f} XRP")
-                else:
-                    print(f"  {label}: already funded ({balance:.6f} XRP) — skipping")
+                await _ensure_wallet_funded(client, wallet, label, net)
             # RLUSD trust line is a Testnet-only service (issuer is Testnet-only).
             if args.rlusd and net.name == "testnet":
                 await _ensure_rlusd_trust_line(client, wallets["treasury"], net)
@@ -256,6 +246,21 @@ async def cmd_provision(settings, args) -> None:
 
 
 # ── verify ──────────────────────────────────────────────────────────────────
+
+
+async def _ensure_wallet_funded(client, wallet, label: str, net) -> None:
+    balance = await _balance_xrp(client, wallet.classic_address)
+    if balance is None:
+        print(f"  {label}: not funded - requesting from faucet ...")
+        balance = await _fund_existing(client, wallet, net)
+        print(f"  {label}: funded -> {balance:.6f} XRP")
+        return
+    if balance < MIN_FUNDED_XRP:
+        print(f"  {label}: {balance:.6f} XRP < floor - topping up ...")
+        balance = await _fund_existing(client, wallet, net)
+        print(f"  {label}: topped up -> {balance:.6f} XRP")
+        return
+    print(f"  {label}: already funded ({balance:.6f} XRP) - skipping")
 
 
 async def cmd_verify(settings, args) -> None:

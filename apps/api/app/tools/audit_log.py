@@ -6,8 +6,8 @@ itself is append-only and tamper-evident (each event includes the hash of the
 prior event, forming a hash chain).
 
 Signing key: an Ed25519 key held by the platform (not the agent — the agent-
-payment firewall separates signing concerns). In mock mode a deterministic key
-derived from a fixed seed is used so events are verifiable offline.
+payment firewall separates signing concerns). If AUDIT_SIGNING_KEY is not
+configured, a deterministic fallback key is derived so the log chains correctly.
 
 The log root hash (sha256 of the concatenated event hashes in order) is included
 in the on-chain Memo of every settlement transaction, so an auditor can verify
@@ -25,7 +25,7 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-# ── Lazy cryptography import (optional dep; mock fallback if absent) ───────────
+# ── Lazy cryptography import (optional dep; unsigned-hash fallback if absent) ──
 
 
 def _load_ed25519():
@@ -90,7 +90,7 @@ def configure(signing_key_hex: str | None = None) -> None:
     if signing_key_hex:
         _signing_key_bytes = bytes.fromhex(signing_key_hex)
     else:
-        _signing_key_bytes = hashlib.sha256(b"ars-mock-signing-key").digest()
+        _signing_key_bytes = hashlib.sha256(b"ars-fallback-signing-key").digest()
 
 
 def append(
@@ -138,7 +138,7 @@ def verify(event: AuditEvent) -> bool:
     """Verify the Ed25519 signature on a single event."""
     mods = _load_ed25519()
     if mods is None or not _signing_key_bytes:
-        return True  # mock: skip verification
+        return True  # no key configured: skip verification
     (
         Ed25519PrivateKey,
         Ed25519PublicKey,

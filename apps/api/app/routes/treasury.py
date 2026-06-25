@@ -198,8 +198,7 @@ async def get_mpt_status() -> MPTStatus:
 async def create_mpt_issuance() -> MPTStatus:
     """MPTokenIssuanceCreate: provision the COMPLY compliance-attestation issuance.
 
-    In mock mode this is instantaneous. In real mode it submits a
-    MPTokenIssuanceCreate tx on the configured network (Testnet by default).
+    Submits a MPTokenIssuanceCreate tx on the configured network (Testnet by default).
     The returned issuance_id should be stored in MPT_ISSUANCE_ID.
     """
     await mptoken_tool.create_issuance()
@@ -211,8 +210,8 @@ async def create_mpt_issuance() -> MPTStatus:
 async def authorize_mpt_holder(request: MPTAuthorizeRequest) -> MPTAttestationRecord:
     """MPTokenAuthorize: authorize an address to receive COMPLY attestation tokens.
 
-    In mock mode adds the holder to the in-memory authorized list.
-    In real mode submits MPTokenAuthorize from the treasury account.
+    Submits MPTokenAuthorize from the treasury account and adds the holder
+    to the in-memory authorized list.
     """
     result = await mptoken_tool.authorize_holder(
         _current_mpt_issuance_id(), request.holder

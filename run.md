@@ -38,9 +38,8 @@ Key variables:
 
 | Variable | Meaning |
 |---|---|
-| `USE_MOCK_XRPL` | `true` (default) = offline with fake tx hashes; `false` = submit real XRPL txns |
 | `XRPL_ENDPOINT` | `wss://s.altnet.rippletest.net:51233` (Testnet) |
-| `TREASURY_WALLET_SEED` | funded Testnet wallet — the agent's operating account (real mode) |
+| `TREASURY_WALLET_SEED` | funded Testnet wallet — the agent's operating account |
 | `TOKEN_CURRENCY` | settlement currency (`XRP`, or a token with `TOKEN_ISSUER_ADDRESS`) |
 | `CREDENTIAL_KYC_ENABLED` | `true` requires the receiver to hold an accepted XLS-70 KYC credential |
 | `DEMO_MODE` | enables the tamper-proof demo endpoint (`/payments/{id}/release-tampered`) |
@@ -82,34 +81,18 @@ npm install                                   # from repo root
 npm run keygen --workspace apps/firefly-bridge
 ```
 
-Copy the printed values into `.env`:
-- `FIREFLY_MOCK_PRIVATE_KEY` — used by the bridge to sign (simulator mode)
-- `FIREFLY_PUBLIC_KEY` — used by the API to verify the signature
-
-Then start it:
+Flash `FIREFLY_DEVICE_PRIVATE_KEY` onto the Firefly Pixie and copy the printed
+`FIREFLY_PUBLIC_KEY` into `.env`. Then start the bridge:
 
 ```bash
-npm run dev:bridge
+FIREFLY_DEVICE_PATH=COM3 FIREFLY_PUBLIC_KEY=<hex> npm run dev:bridge
 ```
 
-`DEVICE_MODE=simulator` (default) signs locally — no hardware needed.
-`DEVICE_MODE=hardware` drives a real Firefly (ESP32-C3) over `BRIDGE_SERIAL_PORT`.
+The bridge requires a physical device connected at `FIREFLY_DEVICE_PATH`.
 
-## 5. Tests
+## 5. Live transactions (Testnet)
 
-```bash
-cd apps/api
-pytest
-```
-
-The suite mocks XRPL and is hermetic (it forces mock mode via
-`tests/conftest.py`), so it passes regardless of your local `.env`.
-
-## Real Testnet mode (live transactions)
-
-To submit real transactions instead of mocks:
-
-1. Set `USE_MOCK_XRPL=false` and put a funded Testnet seed in `TREASURY_WALLET_SEED`.
+1. Put a funded Testnet seed in `TREASURY_WALLET_SEED`.
 2. Verify connectivity and fund a wallet with the smoke-test helper:
 
    ```bash

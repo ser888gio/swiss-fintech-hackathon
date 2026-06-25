@@ -259,65 +259,14 @@ async def run_for_agent(
 
     try:
         for goal in active_goals:
-            # Use the agent's max_single_payment as the cap, not the global setting.
-
-            cap_usd = float(agent_scope.max_per_transaction)
-            should_fire, reason = evaluate_goal(goal, now, cap_usd)
-            trigger_log.append(f"[{goal.name}] {reason}.")
-
-            if not should_fire:
-                payments_skipped.append(goal.id)
-                continue
-
-            try:
-                if goal.service_url:
-                    settlement = await orchestrator.process_service_payment(
-                        goal.service_url,
-                        service_type=goal.service_type or "service",
-                        agent_id=agent_id,
-                        agent_scope=agent_scope,
-                        category=goal.category or goal.purpose,
-                    )
-                    payments_initiated.append(settlement.invoice_id)
-                    trigger_log.append(
-                        f"  → x402 settled invoice {settlement.invoice_id[:12]}… "
-                        f"amount={settlement.amount} {settlement.currency}"
-                    )
-                    updated = goal.model_copy(update={"last_triggered_at": now})
-                    add_agent_goal(agent_id, updated)
-                    continue
-                intent = _build_intent(goal, settings)
-                payment = await orchestrator.process_payment(
-                    intent,
-                    agent_id=agent_id,
-                    agent_scope=agent_scope,
-                    agent_cover=agent_cover,
-                )
-            except orchestrator.GuardrailBlocked as exc:
-                trigger_log.append(f"  blocked: {exc.reason}")
-                payments_skipped.append(goal.id)
-                add_agent_goal(
-                    agent_id, goal.model_copy(update={"last_triggered_at": now})
-                )
-                continue
-            except Exception as exc:
-                trigger_log.append(f"  ✗ payment initiation failed: {exc}")
-                payments_skipped.append(goal.id)
-                continue
-
-            payments_initiated.append(payment.id)
-            trigger_log.append(
-                f"  → payment {payment.id[:8]}… status={payment.status.value}"
-                + (
-                    f", rule={payment.policy_decision.rule_fired}"
-                    if payment.policy_decision and payment.policy_decision.rule_fired
-                    else ""
-                )
+            initiated, skipped, logs = await _process_agent_goal(
+                agent_id, agent_scope, agent_cover, goal, settings, now
             )
-            if settings.mpt_enabled and payment.status == PaymentStatus.settled:
-                await _mint_compliance_attestation(payment, trigger_log, settings)
-            updated = goal.model_copy(update={"last_triggered_at": now})
-            add_agent_goal(agent_id, updated)
+            trigger_log.extend(logs)
+            if initiated:
+                payments_initiated.append(initiated)
+            if skipped:
+                payments_skipped.append(skipped)
 
     finally:
         _agent_run_lock[agent_id] = False
@@ -340,6 +289,100 @@ async def run_for_agent(
     _agent_runs.setdefault(agent_id, []).append(agent_run)
     _schedule(_persist_run(agent_run))
     return agent_run
+
+
+async def _process_agent_goal(
+    agent_id: str,
+    agent_scope: AgentScope,
+    agent_cover,
+    goal: TreasuryGoal,
+    settings,
+    now: datetime,
+) -> tuple[str | None, str | None, list[str]]:
+    cap_usd = float(agent_scope.max_per_transaction)
+    should_fire, reason = evaluate_goal(goal, now, cap_usd)
+    logs = [f"[{goal.name}] {reason}."]
+    if not should_fire:
+        return None, goal.id, logs
+
+    try:
+        initiated = await _process_due_goal(
+            agent_id, agent_scope, agent_cover, goal, settings, logs
+        )
+    except orchestrator.GuardrailBlocked as exc:
+        logs.append(f"  blocked: {exc.reason}")
+        _mark_goal_triggered(agent_id, goal, now)
+        return None, goal.id, logs
+    except Exception as exc:
+        logs.append(f"  payment initiation failed: {exc}")
+        return None, goal.id, logs
+
+    _mark_goal_triggered(agent_id, goal, now)
+    return initiated, None, logs
+
+
+async def _process_due_goal(
+    agent_id: str,
+    agent_scope: AgentScope,
+    agent_cover,
+    goal: TreasuryGoal,
+    settings,
+    logs: list[str],
+) -> str:
+    if goal.service_url:
+        return await _process_service_goal(agent_id, agent_scope, goal, logs)
+    return await _process_direct_goal(
+        agent_id, agent_scope, agent_cover, goal, settings, logs
+    )
+
+
+async def _process_service_goal(
+    agent_id: str,
+    agent_scope: AgentScope,
+    goal: TreasuryGoal,
+    logs: list[str],
+) -> str:
+    settlement = await orchestrator.process_service_payment(
+        goal.service_url or "",
+        service_type=goal.service_type or "service",
+        agent_id=agent_id,
+        agent_scope=agent_scope,
+        category=goal.category or goal.purpose,
+    )
+    logs.append(
+        f"  -> x402 settled invoice {settlement.invoice_id[:12]} "
+        f"amount={settlement.amount} {settlement.currency}"
+    )
+    return settlement.invoice_id
+
+
+async def _process_direct_goal(
+    agent_id: str,
+    agent_scope: AgentScope,
+    agent_cover,
+    goal: TreasuryGoal,
+    settings,
+    logs: list[str],
+) -> str:
+    payment = await orchestrator.process_payment(
+        _build_intent(goal, settings),
+        agent_id=agent_id,
+        agent_scope=agent_scope,
+        agent_cover=agent_cover,
+    )
+    suffix = (
+        f", rule={payment.policy_decision.rule_fired}"
+        if payment.policy_decision and payment.policy_decision.rule_fired
+        else ""
+    )
+    logs.append(f"  -> payment {payment.id[:8]} status={payment.status.value}{suffix}")
+    if settings.mpt_enabled and payment.status == PaymentStatus.settled:
+        await _mint_compliance_attestation(payment, logs, settings)
+    return payment.id
+
+
+def _mark_goal_triggered(agent_id: str, goal: TreasuryGoal, now: datetime) -> None:
+    add_agent_goal(agent_id, goal.model_copy(update={"last_triggered_at": now}))
 
 
 async def load_agent_state_from_db() -> None:

@@ -2,12 +2,11 @@
 
 ## Context
 
-We consolidated onto `main`. It contains a working-in-mock treasury agent
-(FastAPI + React + a mock Firefly bridge) for the SwissHacks Ripple "Future of
-Finance" challenge. The challenge scores **viability/feasibility (40%)** and
-**technical XRPL use (30%)** the heaviest, and judging hinges on *everything
-proven live on Testnet with explorer links* — but `main` currently defaults to
-`USE_MOCK_XRPL=true`, so **nothing has been demonstrated on-chain yet**.
+We consolidated onto `main`. It contains a treasury agent (FastAPI + React +
+Firefly hardware bridge) for the SwissHacks Ripple "Future of Finance" challenge.
+The challenge scores **viability/feasibility (40%)** and **technical XRPL use
+(30%)** the heaviest, and judging hinges on *everything proven live on Testnet
+with explorer links*.
 
 The goal of this task: **verify the solution locally, prove the happy paths on
 real Testnet, cross-check the same transactions on a second explorer, then write
@@ -42,8 +41,7 @@ Relevant tracks: **cross-border payments & FX**, **AI agents for finance**,
    (Bithomp Testnet) alongside `https://testnet.xrpl.org`. Keep xrpscan for the
    mainnet path-to-mainnet narrative, and note explicitly in the report wherever
    xrpscan cannot resolve a Testnet tx.
-3. Validated and accurate: `USE_MOCK_XRPL=true` default (`config.py`); in-memory
-   `store.py` with unused `models.py`; mock-only `firefly-bridge/src/device.ts`;
+3. Validated and accurate: in-memory `store.py` with unused `models.py`;
    optional-LLM `tools/audit.py`; credentials gate wiring
    (`verify_kyc → KYC_MISSING_SCORE → policy`); no Memos on settle/escrow txns;
    `xrpl_client.explorer_tx_url` emits only testnet.xrpl.org; `keygen` and
@@ -70,24 +68,20 @@ control the RLUSD issuer. So:
 
 ## Phase A — Local verification (the core deliverable)
 
-### A0. Sanity in mock mode + unit tests
+### A0. Sanity check
 - Create/confirm a Python env and install API deps from
   `apps/api/requirements.txt` (root `venv` exists; confirm deps or create
   `apps/api/.venv`). Toolchain present: Python 3.12.2, Node 22.18.
-- Run the suite: `cd apps/api && pytest` — expect green for policy, compliance,
-  credentials, credential_agent, execution, firefly, receipt, routing.
-- Boot mock stack once to confirm health: API (`uvicorn app.main:app --reload`),
-  web (`npm run dev:web`), bridge (`npm run dev:bridge`). The `.env` already
-  exists — **inspect it without printing seeds**; note current `USE_MOCK_XRPL`
-  and which seeds/keys are populated.
+- Boot the stack: API (`uvicorn app.main:app --reload`), web (`npm run dev:web`).
+  The `.env` already exists — **inspect it without printing seeds**; confirm
+  `TREASURY_WALLET_SEED`, `TOKEN_ISSUER_ADDRESS`, and `FIREFLY_PUBLIC_KEY` are set.
 
 ### A1. Flip to real Testnet
 - Use `apps/api/scripts/smoke_xrpl.py fund` to faucet **treasury**, **receiver**,
   and **credential issuer/subject** wallets (Testnet, no real funds).
-- Set in `.env` (local only, never commit): `USE_MOCK_XRPL=false`,
-  `XRPL_ENDPOINT=wss://s.altnet.rippletest.net:51233`, the funded
-  `TREASURY_WALLET_SEED`, and `FIREFLY_PUBLIC_KEY` from
-  `npm run keygen --workspace apps/firefly-bridge` (private key → bridge env,
+- Set in `.env` (local only, never commit): `XRPL_ENDPOINT=wss://s.altnet.rippletest.net:51233`,
+  the funded `TREASURY_WALLET_SEED`, and `FIREFLY_PUBLIC_KEY` from
+  `npm run keygen --workspace apps/firefly-bridge` (private key flashed to device,
   public key → API).
 - `python scripts/smoke_xrpl.py status` then `... pay <dest> 1` to confirm a real
   XRP tx returns `tesSUCCESS` + a hash before driving the agent.
@@ -99,7 +93,7 @@ Drive via the API/UI and record `txHash` + `explorerUrl` for each:
 2. **Sanctioned counterparty → BLOCK in code** (e.g. `ACME-SHELL-CO`); confirm it
    does *not* enter the approval queue (`policy/engine.py` sanctions
    short-circuit).
-3. **Large XRP payment → escrow lock** (`EscrowCreate`) → **mock-Firefly release**
+3. **Large XRP payment → escrow lock** (`EscrowCreate`) → **Firefly hardware release**
    (`EscrowFinish` after `firefly.verify_signature`) → **tamper-reject** via
    `POST /payments/{id}/release-tampered` (set `DEMO_MODE=true`).
 4. **Credentials (XLS-70) lifecycle on Testnet** via the credential agent:
@@ -151,9 +145,8 @@ discrepancy or xrpscan Testnet-coverage gap.
 ### B2. Gap analysis vs the rubric (file-referenced)
 - **Persistence:** `app/store.py` is in-memory; `app/models.py` (SQLAlchemy)
   unused → audit lost on restart; contradicts `docs/architecture.md`. (40% risk.)
-- **Hardware:** `apps/firefly-bridge/src/device.ts` is a mock signer only; no real
-  USB/serial device → the "hardware veto" is currently software (documented
-  fallback — state it honestly).
+- **Hardware:** `apps/firefly-bridge/src/device.ts` requires a real USB/serial
+  Firefly Pixie device — the bridge exits on startup if no device is connected.
 - **AI thinness:** narration is templated; LLM only optionally writes the audit
   paragraph (`tools/audit.py`). No autonomous payment-initiating agent.
 - **On-chain metadata:** settle/escrow txns carry no Memos (no AML score / rule /
@@ -192,7 +185,7 @@ Prioritized build order after approval, mapped to rubric weight and demo beats
 ## Out of scope (this pass)
 - Building any B3 feature (only after report approval).
 - XLS-65/66 Vault/Lending sweep (post-gate stretch; likely Devnet).
-- Real Firefly hardware integration (keep the mock signer).
+- MPTokens extended flows.
 - MPTokens.
 
 ## How we'll know it worked
