@@ -9,4 +9,4 @@
 	url = https://github.com/firefly/component-display.git
 [submodule "apps/firefly-pixie/components/firefly-ethers"]
 	path = apps/firefly-pixie/components/firefly-ethers
-	url = https://github.com/ethers-io/ethers.c.git
+	url = https://github.com/ser888gio/ethers.c.git
