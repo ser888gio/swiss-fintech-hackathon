@@ -1,6 +1,6 @@
 [submodule "apps/firefly-pixie/components/firefly-hollows"]
 	path = apps/firefly-pixie/components/firefly-hollows
-	url = https://github.com/firefly/component-hollows.git
+	url = https://github.com/ser888gio/component-hollows.git
 [submodule "apps/firefly-pixie/components/firefly-scene"]
 	path = apps/firefly-pixie/components/firefly-scene
 	url = https://github.com/firefly/component-scene.git
