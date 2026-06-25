@@ -37,12 +37,18 @@ def evaluate(
 
     reasons: list[str] = []
     if amount_usd > threshold_usd:
-        reasons.append(f"amount ${amount_usd:,.0f} exceeds threshold ${threshold_usd:,.0f}")
+        reasons.append(
+            f"amount ${amount_usd:,.0f} exceeds threshold ${threshold_usd:,.0f}"
+        )
     if aml_score > flag_score:
         reasons.append(f"AML score {aml_score} exceeds flag score {flag_score}")
 
     if not reasons:
         return PolicyDecision(requires_approval=False, rule_fired=None, reasons=[])
 
-    rule_fired = "amount_threshold" if amount_usd > threshold_usd else "compliance_score"
-    return PolicyDecision(requires_approval=True, rule_fired=rule_fired, reasons=reasons)
+    rule_fired = (
+        "amount_threshold" if amount_usd > threshold_usd else "compliance_score"
+    )
+    return PolicyDecision(
+        requires_approval=True, rule_fired=rule_fired, reasons=reasons
+    )

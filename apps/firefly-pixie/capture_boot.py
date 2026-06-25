@@ -5,6 +5,7 @@ USB-Serial/JTAG re-enumerates when the chip resets (the COM port drops and comes
 back), so this resets via the EN line, then reconnects across the re-enumeration
 and reads for a fixed window. pyserial ships with the IDF python env.
 """
+
 import sys
 import time
 
@@ -24,29 +25,35 @@ def open_port():
 
 
 def main() -> int:
-    # Phase 1 — pulse EN (RTS) low→high to reset the chip into the app.
+    p = reset_device()
+    total = read_boot_log(p)
+    log(f"captured {total} bytes")
+    return 0
+
+
+def reset_device():
+    # Pulse EN (RTS) low/high to reset the chip into the app.
     try:
         p = open_port()
-        p.setDTR(False)   # IO9 high → normal boot (not download)
-        p.setRTS(True)    # EN low  → hold in reset
+        p.setDTR(False)  # IO9 high means normal boot, not download mode.
+        p.setRTS(True)  # EN low holds reset.
         time.sleep(0.15)
-        p.setRTS(False)   # EN high → release, boot
+        p.setRTS(False)  # EN high releases reset.
         log("reset pulse sent")
+        return p
     except Exception as exc:  # noqa: BLE001
         log(f"reset open failed: {exc}")
-        p = None
+        return None
 
-    # Phase 2 — read, reopening across the USB re-enumeration.
+
+def read_boot_log(p) -> int:
+    # Read, reopening across the USB re-enumeration.
     start = time.time()
     total = 0
     while time.time() - start < READ_SECONDS:
+        p = ensure_open(p)
         if p is None:
-            try:
-                p = open_port()
-                log("reopened port")
-            except Exception:  # noqa: BLE001
-                time.sleep(0.2)
-                continue
+            continue
         try:
             data = p.read(4096)
         except Exception as exc:  # noqa: BLE001
@@ -62,13 +69,29 @@ def main() -> int:
             total += len(data)
             sys.stdout.write(data.decode("utf-8", "replace"))
             sys.stdout.flush()
+    close_port(p)
+    return total
 
-    log(f"captured {total} bytes")
+
+def ensure_open(p):
+    if p is not None:
+        return p
+    try:
+        p = open_port()
+        log("reopened port")
+        return p
+    except Exception:  # noqa: BLE001
+        time.sleep(0.2)
+        return None
+
+
+def close_port(p) -> None:
+    if p is None:
+        return
     try:
         p.close()
     except Exception:  # noqa: BLE001
         pass
-    return 0
 
 
 if __name__ == "__main__":

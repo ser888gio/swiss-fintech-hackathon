@@ -10,10 +10,6 @@ Amendment availability:
   pitch; if it fails, set lending_enabled=False and fall back to the XLS-65
   early-payment path in trade_finance.py.
 
-In mock mode (settings.use_mock_xrpl=True): in-memory state machine, no network.
-All operations return deterministic tx hashes so the trade-finance round-trip
-is fully demonstrable offline.
-
 Determinism boundary: the LLM never calls this. Only trade_finance.py calls
 loan_create / loan_repay after all guardrails have passed.
 """
@@ -22,7 +18,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import ROUND_DOWN, Decimal
@@ -34,16 +29,13 @@ log = logging.getLogger(__name__)
 
 _QUANTIZE = Decimal("0.000001")
 
-# ── Mock lending state ────────────────────────────────────────────────────────
+# ── In-memory loan cache (populated from real tx results) ────────────────────
 
-_loans: dict[str, dict] = {}   # loan_id → {status, amount, currency, ...}
-
-
-def reset_mock_state() -> None:
-    _loans.clear()
+_loans: dict[str, dict] = {}  # loan_id → {status, amount, currency, ...}
 
 
 # ── Result types ──────────────────────────────────────────────────────────────
+
 
 @dataclass
 class LoanResult:
@@ -52,11 +44,12 @@ class LoanResult:
     explorer_url: str | None
     amount: Decimal
     currency: str
-    status: str          # "created" | "repaid" | "cancelled"
+    status: str  # "created" | "repaid" | "cancelled"
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ── Amendment gate ────────────────────────────────────────────────────────────
+
 
 async def check_amendment_enabled() -> bool:
     """Query Devnet to confirm the XLS-66 amendment is active.
@@ -66,11 +59,9 @@ async def check_amendment_enabled() -> bool:
     still works — it just skips the LoanCreate step).
     """
     settings = get_settings()
-    if settings.use_mock_xrpl:
-        return True  # mock always claims enabled
-
     try:
         from xrpl.models.requests import ServerInfo
+
         async with xrpl_client.async_client(settings.lending_xrpl_endpoint) as client:
             resp = await client.request(ServerInfo())
         info = resp.result.get("info", {})
@@ -78,7 +69,9 @@ async def check_amendment_enabled() -> bool:
         # XLS-66 amendment hash — confirm this against the Devnet state before demo.
         # The hash below is illustrative; replace with the real value from
         # https://xrpl.org/known-amendments.html once the amendment is ratified.
-        XLS66_AMENDMENT_HASH = "B9E739EB5B4F77B6DFE4B42B403B9F8D2BABB56B5E19E0CE80C6AF2A3B93E1A"
+        XLS66_AMENDMENT_HASH = (
+            "B9E739EB5B4F77B6DFE4B42B403B9F8D2BABB56B5E19E0CE80C6AF2A3B93E1A"
+        )
         return XLS66_AMENDMENT_HASH in amendments
     except Exception as exc:
         log.warning("Amendment check failed: %s", exc)
@@ -86,6 +79,7 @@ async def check_amendment_enabled() -> bool:
 
 
 # ── LoanCreate ────────────────────────────────────────────────────────────────
+
 
 async def loan_create(
     *,
@@ -106,9 +100,6 @@ async def loan_create(
     loan_id = _make_loan_id(invoice_id)
     amount_q = amount.quantize(_QUANTIZE, rounding=ROUND_DOWN)
 
-    if settings.use_mock_xrpl:
-        return _mock_loan_create(loan_id, invoice_id, amount_q, currency)
-
     return await _real_loan_create(
         loan_id=loan_id,
         invoice_id=invoice_id,
@@ -121,6 +112,7 @@ async def loan_create(
 
 # ── LoanRepay ─────────────────────────────────────────────────────────────────
 
+
 async def loan_repay(loan_id: str, *, amount: Decimal) -> LoanResult:
     """XLS-66 LoanRepay: repay the loan, releasing collateral.
 
@@ -132,13 +124,11 @@ async def loan_repay(loan_id: str, *, amount: Decimal) -> LoanResult:
 
     amount_q = amount.quantize(_QUANTIZE, rounding=ROUND_DOWN)
 
-    if settings.use_mock_xrpl:
-        return _mock_loan_repay(loan_id, amount_q)
-
     return await _real_loan_repay(loan_id=loan_id, amount=amount_q, settings=settings)
 
 
 # ── Real-mode implementations ─────────────────────────────────────────────────
+
 
 async def _real_loan_create(
     *,
@@ -154,7 +144,9 @@ async def _real_loan_create(
     import json
 
     if not loan_broker_address:
-        raise LendingConfigError("lending_loan_broker_address must be set for real-mode LoanCreate")
+        raise LendingConfigError(
+            "lending_loan_broker_address must be set for real-mode LoanCreate"
+        )
 
     ledger = Ledger(settings)
     wallet = ledger.treasury_wallet
@@ -164,14 +156,15 @@ async def _real_loan_create(
     # fails the amendment is not yet supported; surface the error clearly.
     try:
         from xrpl.models.transactions import LoanCreate
-        from xrpl.models.currencies import IssuedCurrency
     except ImportError as exc:
         raise LendingNotSupported(
             "xrpl-py does not yet export LoanCreate — upgrade xrpl-py to a "
             "version that supports XLS-66, or set lending_enabled=False."
         ) from exc
 
-    memo_data = json.dumps({"invoice_id": invoice_id, "loan_id": loan_id}, separators=(",", ":"))
+    memo_data = json.dumps(
+        {"invoice_id": invoice_id, "loan_id": loan_id}, separators=(",", ":")
+    )
     from xrpl.models.transactions import Memo
 
     tx = LoanCreate(
@@ -179,16 +172,20 @@ async def _real_loan_create(
         loan_broker=loan_broker_address,
         amount=xrpl_client.to_wire_amount(amount, currency, settings),
         source_tag=settings.lending_source_tag,
-        memos=[Memo(
-            memo_type="lending/v1".encode().hex().upper(),
-            memo_data=memo_data.encode().hex().upper(),
-        )],
+        memos=[
+            Memo(
+                memo_type="lending/v1".encode().hex().upper(),
+                memo_data=memo_data.encode().hex().upper(),
+            )
+        ],
     )
     result = await ledger.submit(tx, wallet, endpoint=settings.lending_xrpl_endpoint)
     tx_hash = result["hash"]
     # The loan sequence is in the tx metadata
     actual_loan_id = _parse_loan_sequence(result) or loan_id
-    explorer_url = xrpl_client.explorer_tx_url_for(tx_hash, settings.lending_xrpl_endpoint)
+    explorer_url = xrpl_client.explorer_tx_url_for(
+        tx_hash, settings.lending_xrpl_endpoint
+    )
 
     _loans[actual_loan_id] = {
         "status": "created",
@@ -234,7 +231,9 @@ async def _real_loan_repay(*, loan_id: str, amount: Decimal, settings) -> LoanRe
     )
     result = await ledger.submit(tx, wallet, endpoint=settings.lending_xrpl_endpoint)
     tx_hash = result["hash"]
-    explorer_url = xrpl_client.explorer_tx_url_for(tx_hash, settings.lending_xrpl_endpoint)
+    explorer_url = xrpl_client.explorer_tx_url_for(
+        tx_hash, settings.lending_xrpl_endpoint
+    )
 
     if loan_id in _loans:
         _loans[loan_id]["status"] = "repaid"
@@ -250,49 +249,8 @@ async def _real_loan_repay(*, loan_id: str, amount: Decimal, settings) -> LoanRe
     )
 
 
-# ── Mock implementations ──────────────────────────────────────────────────────
-
-def _mock_loan_create(
-    loan_id: str, invoice_id: str, amount: Decimal, currency: str
-) -> LoanResult:
-    tx_hash = xrpl_client.mock_tx_hash("loan_create", loan_id)
-    _loans[loan_id] = {
-        "status": "created",
-        "amount": str(amount),
-        "currency": currency,
-        "invoice_id": invoice_id,
-        "create_tx_hash": tx_hash,
-    }
-    _emit_audit("loan_created", loan_id, amount, currency, tx_hash)
-    return LoanResult(
-        loan_id=loan_id,
-        tx_hash=tx_hash,
-        explorer_url=None,
-        amount=amount,
-        currency=currency,
-        status="created",
-    )
-
-
-def _mock_loan_repay(loan_id: str, amount: Decimal) -> LoanResult:
-    loan = _loans.get(loan_id, {})
-    if not loan:
-        raise LoanNotFound(loan_id)
-    currency = loan.get("currency", "RLUSD")
-    tx_hash = xrpl_client.mock_tx_hash("loan_repay", loan_id)
-    _loans[loan_id]["status"] = "repaid"
-    _emit_audit("loan_repaid", loan_id, amount, currency, tx_hash)
-    return LoanResult(
-        loan_id=loan_id,
-        tx_hash=tx_hash,
-        explorer_url=None,
-        amount=amount,
-        currency=currency,
-        status="repaid",
-    )
-
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _make_loan_id(invoice_id: str) -> str:
     return hashlib.sha256(f"loan:{invoice_id}".encode()).hexdigest()[:32]
@@ -303,12 +261,18 @@ def _parse_loan_sequence(result: dict) -> str | None:
     for node in result.get("meta", {}).get("AffectedNodes", []):
         created = node.get("CreatedNode", {})
         if created.get("LedgerEntryType") in ("Loan", "LoanOffer"):
-            return str(created.get("LedgerIndex") or created.get("NewFields", {}).get("LoanSequence", ""))
+            return str(
+                created.get("LedgerIndex")
+                or created.get("NewFields", {}).get("LoanSequence", "")
+            )
     return None
 
 
-def _emit_audit(event_type: str, loan_id: str, amount: Decimal, currency: str, tx_hash: str) -> None:
+def _emit_audit(
+    event_type: str, loan_id: str, amount: Decimal, currency: str, tx_hash: str
+) -> None:
     from . import audit_log
+
     audit_log.append(
         event_type=event_type,
         actor="settlement_layer",
@@ -324,17 +288,22 @@ def _emit_audit(event_type: str, loan_id: str, amount: Decimal, currency: str, t
 
 # ── Errors ────────────────────────────────────────────────────────────────────
 
+
 class LendingError(Exception):
     pass
+
 
 class LendingDisabled(LendingError):
     pass
 
+
 class LendingNotSupported(LendingError):
     pass
 
+
 class LendingConfigError(LendingError):
     pass
+
 
 class LoanNotFound(LendingError):
     pass

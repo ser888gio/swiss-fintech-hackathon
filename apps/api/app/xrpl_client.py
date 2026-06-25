@@ -3,13 +3,12 @@
 Kept small on purpose: the tools own transaction building, this module owns
 connection details, explorer URLs, pathfinding, and credential lookups.
 
-`xrpl-py` is imported lazily inside each function so mock mode (and the test
-suite) never need the dependency loaded. Only real-mode code paths pull it in.
+`xrpl-py` is imported lazily inside each function so importing this module does
+not require the dependency to be loaded.
 """
 
 from __future__ import annotations
 
-import hashlib
 from typing import Any
 
 from .config import get_settings
@@ -68,16 +67,9 @@ def explorer_tx_url_for(tx_hash: str, endpoint: str) -> str:
     return explorer_tx_url(tx_hash)
 
 
-def network_label(endpoint: str, *, use_mock: bool) -> str:
-    """Network name for an endpoint: 'mock' | 'devnet' | 'testnet'."""
-    if use_mock:
-        return "mock"
+def network_label(endpoint: str) -> str:
+    """Network name for an endpoint: 'devnet' | 'testnet'."""
     return "devnet" if "devnet" in endpoint else "testnet"
-
-
-def mock_tx_hash(kind: str, key: str) -> str:
-    """Deterministic fake tx hash for mock mode (no network access)."""
-    return hashlib.sha256(f"{kind}:{key}".encode()).hexdigest().upper()
 
 
 def currency_code(currency: str) -> str:
@@ -103,7 +95,9 @@ def token_amount(currency: str, value, settings):
     from xrpl.models.amounts import IssuedCurrencyAmount
 
     return IssuedCurrencyAmount(
-        currency=currency_code(currency), issuer=settings.token_issuer_address, value=str(value)
+        currency=currency_code(currency),
+        issuer=settings.token_issuer_address,
+        value=str(value),
     )
 
 

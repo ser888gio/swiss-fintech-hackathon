@@ -11,14 +11,14 @@ from decimal import Decimal
 
 from ..schemas import CoverLineKind, CoverLossBearerKind
 
-_AMOUNT_TOLERANCE = Decimal("0.005")   # 0.5 % rounding tolerance
+_AMOUNT_TOLERANCE = Decimal("0.005")  # 0.5 % rounding tolerance
 
 
 @dataclass(frozen=True)
 class CoverEvent:
     line: CoverLineKind
-    classification: str          # "underpayment" | "wrong_recipient" | "non_delivery"
-    loss: Decimal                # positive amount to pay out
+    classification: str  # "underpayment" | "wrong_recipient" | "non_delivery"
+    loss: Decimal  # positive amount to pay out
     loss_bearer: CoverLossBearerKind
 
 

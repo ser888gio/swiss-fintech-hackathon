@@ -10,9 +10,8 @@ credential. That gate is a deterministic sanctions screen
 (`compliance.is_sanctioned`). A misbehaving model can, at worst, produce bad
 narration — never issue a credential to a sanctioned party.
 
-Mock mode (settings.use_mock_xrpl) runs the whole lifecycle offline with
-deterministic fake tx hashes. Real mode submits CredentialCreate / CredentialAccept
-to the configured network so the flow can be proven on Testnet.
+The lifecycle submits CredentialCreate / CredentialAccept to the configured
+network so the flow can be proven on Testnet.
 """
 
 from __future__ import annotations
@@ -64,13 +63,7 @@ async def issue(request: CredentialIssueRequest) -> CredentialRecord:
 
     # Deterministic gate — code decides, never the LLM.
     if compliance.is_sanctioned(request.subject, request.subject_name):
-        record.status = CredentialRecordStatus.refused
-        record.refused_reason = "subject matches sanctions screen"
-        record.audit_explanation = (
-            "Issuance refused by deterministic sanctions screen; no credential created."
-        )
-        _log(record_id, "Refused: subject matches sanctions screen. No credential issued.")
-        return _touch(record)
+        return _refuse_sanctioned(record)
 
     _log(record_id, "Sanctions screen clear. Submitting CredentialCreate.")
     try:
@@ -81,40 +74,7 @@ async def issue(request: CredentialIssueRequest) -> CredentialRecord:
             credential_type=credential_type,
         )
     except Exception as exc:  # network/config errors must not crash the agent
-        # tecDUPLICATE means the credential already exists on-ledger — re-issuing
-        # is a no-op, not a failure. Reflect its real state so the flow is
-        # idempotent (a subject can be "issued KYC" again without an error).
-        if "tecNO_TARGET" in str(exc):
-            record.status = CredentialRecordStatus.failed
-            record.refused_reason = (
-                f"Subject account {request.subject} does not exist on the ledger — "
-                "fund the account first (minimum base reserve: 10 XRP on Testnet)."
-            )
-            _log(record_id, f"Failed: subject account not funded on-ledger (tecNO_TARGET).")
-            return _touch(record)
-        if "tecDUPLICATE" in str(exc):
-            _log(record_id, "Credential already exists on-ledger (tecDUPLICATE); checking its status.")
-            status = await credentials.verify_kyc(request.subject)
-            record.verified = status.verified
-            record.accepted = status.verified
-            record.status = (
-                CredentialRecordStatus.verified if status.verified else CredentialRecordStatus.issued
-            )
-            record.audit_explanation = (
-                f"Credential '{credential_type}' already present for {request.subject}; "
-                + ("verified on-ledger." if status.verified else "awaiting subject acceptance.")
-            )
-            _log(record_id, f"Reused existing credential: {status.reason}.")
-            if not status.verified and request.auto_accept:
-                try:
-                    return await accept(record_id)
-                except (NotImplementedError, InvalidCredentialState, ValueError) as accept_exc:
-                    _log(record_id, f"Auto-accept skipped: {accept_exc}.")
-            return _touch(record)
-        record.status = CredentialRecordStatus.failed
-        record.refused_reason = f"CredentialCreate failed: {exc}"
-        _log(record_id, f"Failed to submit CredentialCreate: {exc}.")
-        return _touch(record)
+        return await _handle_issue_error(record, request, credential_type, exc)
 
     record.tx_hash = result.get("txHash")
     record.explorer_url = result.get("explorerUrl")
@@ -124,7 +84,10 @@ async def issue(request: CredentialIssueRequest) -> CredentialRecord:
         "Awaiting subject CredentialAccept before it is usable."
     )
     short = (record.tx_hash or "")[:12]
-    _log(record_id, f"CredentialCreate submitted. Tx {short}… Awaiting subject acceptance.")
+    _log(
+        record_id,
+        f"CredentialCreate submitted. Tx {short}… Awaiting subject acceptance.",
+    )
     _touch(record)
 
     if request.auto_accept:
@@ -145,7 +108,10 @@ async def accept(record_id: str, subject_seed: str | None = None) -> CredentialR
     record = store.get_credential(record_id)
     if record is None:
         raise CredentialNotFound(record_id)
-    if record.status not in {CredentialRecordStatus.issued, CredentialRecordStatus.accepted}:
+    if record.status not in {
+        CredentialRecordStatus.issued,
+        CredentialRecordStatus.accepted,
+    }:
         raise InvalidCredentialState(record.status)
 
     result = await credentials.accept_credential(
@@ -159,7 +125,92 @@ async def accept(record_id: str, subject_seed: str | None = None) -> CredentialR
     record.accept_tx_hash = result.get("txHash")
     record.accept_explorer_url = result.get("explorerUrl")
     short = (record.accept_tx_hash or "")[:12]
-    _log(record_id, f"Subject accepted the credential. Tx {short}… Credential is now usable.")
+    _log(
+        record_id,
+        f"Subject accepted the credential. Tx {short}… Credential is now usable.",
+    )
+    return _touch(record)
+
+
+def _refuse_sanctioned(record: CredentialRecord) -> CredentialRecord:
+    record.status = CredentialRecordStatus.refused
+    record.refused_reason = "subject matches sanctions screen"
+    record.audit_explanation = (
+        "Issuance refused by deterministic sanctions screen; no credential created."
+    )
+    _log(record.id, "Refused: subject matches sanctions screen. No credential issued.")
+    return _touch(record)
+
+
+async def _handle_issue_error(
+    record: CredentialRecord,
+    request: CredentialIssueRequest,
+    credential_type: str,
+    exc: Exception,
+) -> CredentialRecord:
+    message = str(exc)
+    if "tecNO_TARGET" in message:
+        return _fail_missing_subject(record, request.subject)
+    if "tecDUPLICATE" in message:
+        return await _reuse_duplicate_credential(record, request, credential_type)
+    return _fail_issue(record, exc)
+
+
+def _fail_missing_subject(record: CredentialRecord, subject: str) -> CredentialRecord:
+    record.status = CredentialRecordStatus.failed
+    record.refused_reason = (
+        f"Subject account {subject} does not exist on the ledger; "
+        "fund the account first (minimum base reserve: 10 XRP on Testnet)."
+    )
+    _log(record.id, "Failed: subject account not funded on-ledger (tecNO_TARGET).")
+    return _touch(record)
+
+
+async def _reuse_duplicate_credential(
+    record: CredentialRecord,
+    request: CredentialIssueRequest,
+    credential_type: str,
+) -> CredentialRecord:
+    _log(
+        record.id,
+        "Credential already exists on-ledger (tecDUPLICATE); checking its status.",
+    )
+    status = await credentials.verify_kyc(request.subject)
+    record.verified = status.verified
+    record.accepted = status.verified
+    record.status = (
+        CredentialRecordStatus.verified
+        if status.verified
+        else CredentialRecordStatus.issued
+    )
+    record.audit_explanation = _duplicate_audit_text(
+        credential_type, request.subject, status.verified
+    )
+    _log(record.id, f"Reused existing credential: {status.reason}.")
+    if not status.verified and request.auto_accept:
+        return await _try_auto_accept(record)
+    return _touch(record)
+
+
+def _duplicate_audit_text(
+    credential_type: str, subject: str, verified: bool
+) -> str:
+    state = "verified on-ledger." if verified else "awaiting subject acceptance."
+    return f"Credential '{credential_type}' already present for {subject}; {state}"
+
+
+async def _try_auto_accept(record: CredentialRecord) -> CredentialRecord:
+    try:
+        return await accept(record.id)
+    except (NotImplementedError, InvalidCredentialState, ValueError) as exc:
+        _log(record.id, f"Auto-accept skipped: {exc}.")
+        return _touch(record)
+
+
+def _fail_issue(record: CredentialRecord, exc: Exception) -> CredentialRecord:
+    record.status = CredentialRecordStatus.failed
+    record.refused_reason = f"CredentialCreate failed: {exc}"
+    _log(record.id, f"Failed to submit CredentialCreate: {exc}.")
     return _touch(record)
 
 

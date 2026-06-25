@@ -43,7 +43,9 @@ async def convert_to_usd(amount: float, currency: str) -> float:
     return round(amount * rate, 2)
 
 
-async def quote_amount(amount: float, source_currency: str, settle_currency: str) -> RouteQuote:
+async def quote_amount(
+    amount: float, source_currency: str, settle_currency: str
+) -> RouteQuote:
     """Return a deterministic quote preview for a source amount and currency."""
     rate = await _fetch_rate(source_currency, settle_currency)
     is_xrp = settle_currency.upper() == "XRP"
@@ -53,9 +55,13 @@ async def quote_amount(amount: float, source_currency: str, settle_currency: str
     # SendMax caps the source spend with a slippage buffer; DeliverMin floors the
     # delivered amount when partial payments are enabled (best practice so a
     # payment still lands if a path narrows between quote and submission).
-    send_max = round(dest_amount * (1 + settings.route_slippage_bps / 10_000), 6 if is_xrp else 2)
+    send_max = round(
+        dest_amount * (1 + settings.route_slippage_bps / 10_000), 6 if is_xrp else 2
+    )
     deliver_min = dest_amount if settings.route_partial_payment else None
-    path_summary = f"{source_currency.upper()}->{settle_currency.upper()} @ {rate:.6f} (direct)"
+    path_summary = (
+        f"{source_currency.upper()}->{settle_currency.upper()} @ {rate:.6f} (direct)"
+    )
     return RouteQuote(
         source_amount=amount,
         dest_amount=dest_amount,
@@ -70,12 +76,12 @@ async def quote_amount(amount: float, source_currency: str, settle_currency: str
 async def _attach_xrpl_path(
     intent: PaymentIntent, settle_currency: str, quote: RouteQuote
 ) -> RouteQuote:
-    """Enrich a quote with the cheapest ripple_path_find alternative (real mode).
+    """Enrich a quote with the cheapest ripple_path_find alternative.
 
     Best-effort: any failure leaves the deterministic direct-path quote intact.
     """
     settings = get_settings()
-    if settings.use_mock_xrpl or not settings.token_issuer_address:
+    if not settings.token_issuer_address:
         return quote
     # A same-asset issued-currency transfer is already direct. Asking
     # ripple_path_find for it can return an unnecessary computed path which then
@@ -85,7 +91,9 @@ async def _attach_xrpl_path(
 
     try:
         source_account = Ledger(settings).treasury_wallet.address
-        destination_amount = xrpl_client.token_amount(settle_currency, quote.dest_amount, settings)
+        destination_amount = xrpl_client.token_amount(
+            settle_currency, quote.dest_amount, settings
+        )
         alternatives = await xrpl_client.find_payment_paths(
             source_account, intent.to, destination_amount
         )
@@ -113,7 +121,12 @@ def _cheapest_alternative(alternatives: list[dict]) -> dict | None:
     ranked = [alt for alt in alternatives if alt.get("paths_computed") is not None]
     if not ranked:
         return None
-    return min(ranked, key=lambda alt: _alternative_source_value(alt.get("source_amount")) or float("inf"))
+    return min(
+        ranked,
+        key=lambda alt: (
+            _alternative_source_value(alt.get("source_amount")) or float("inf")
+        ),
+    )
 
 
 def _alternative_source_value(source_amount) -> float | None:

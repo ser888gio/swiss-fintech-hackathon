@@ -14,10 +14,6 @@ The credential's URI field carries a compact AgentIdentity (see kya/uri.py):
 Policy boundary: this tool only *reports* KYA status. Whether a missing or
 out-of-scope KYA credential blocks an action is decided by deterministic code
 in ars/constraint_engine.py, never by the LLM.
-
-In mock mode (settings.use_mock_xrpl) all lookups are offline and deterministic.
-The treasury wallet address is automatically pre-credentialed as an orchestrator
-so the payment flow works without a separate /kyc/kya/issue call in demos.
 """
 
 from __future__ import annotations
@@ -26,37 +22,11 @@ from ... import xrpl_client
 from ...config import get_settings
 from ...schemas import AgentIdentityStatus, KYAIssueResponse
 from . import uri as kya_uri
-from .uri import AgentIdentity, AgentScope, AgentType
-
-
-# ── Mock state ─────────────────────────────────────────────────────────────────
-
-# (agent_address, issuer, credential_type) → AgentIdentity
-_MOCK_KYA: dict[tuple[str, str, str], AgentIdentity] = {}
-
-
-def reset_kya_mock_state() -> None:
-    """Clear all mock KYA credentials (used by tests for isolation)."""
-    _MOCK_KYA.clear()
-
-
-def _auto_seed_mock(settings, issuer: str) -> None:
-    """Pre-credential the treasury wallet as a full-scope orchestrator in mock mode.
-
-    This ensures the payment workflow doesn't require a separate KYA issuance
-    step in local dev and hackathon demos. The treasury wallet address (or a
-    hard-coded mock address when not configured) is treated as already verified.
-    """
-    treasury = settings.treasury_wallet_address or "r_TREASURY_MOCK"
-    key = (treasury, issuer, "KYA")
-    if key not in _MOCK_KYA:
-        _MOCK_KYA[key] = kya_uri.orchestrator_identity(
-            principal=treasury,
-            ref="auto-seeded-mock",
-        )
+from .uri import AgentIdentity, AgentScope
 
 
 # ── Issue ─────────────────────────────────────────────────────────────────────
+
 
 async def issue_kya_credential(
     *,
@@ -66,31 +36,11 @@ async def issue_kya_credential(
 ) -> KYAIssueResponse:
     """Issue a KYA credential to an AI agent wallet.
 
-    Mock mode: stores the identity in memory and returns a synthetic record.
-    Real mode: submits CredentialCreate via the ledger helper (mirrors KYC issuance).
+    Submits CredentialCreate via the ledger helper (mirrors KYC issuance).
     """
     settings = get_settings()
     issuer = settings.credential_issuer_address or settings.token_issuer_address
     uri_str = kya_uri.build_kya_uri(identity)
-
-    if settings.use_mock_xrpl:
-        key = (agent_address, issuer, credential_type)
-        _MOCK_KYA[key] = identity
-        return KYAIssueResponse(
-            agent_address=agent_address,
-            issuer=issuer,
-            credential_type=credential_type,
-            uri=uri_str,
-            identity={
-                "agent_type": identity.agent_type.value,
-                "principal": identity.principal,
-                "scopes": [s.value for s in identity.scopes],
-                "ref": identity.ref,
-                "issued_on": identity.issued_on,
-            },
-            mock=True,
-            status="accepted",
-        )
 
     from ...ledger import Ledger
     from xrpl.models.transactions import CredentialAccept, CredentialCreate
@@ -106,21 +56,29 @@ async def issue_kya_credential(
     )
     subject_wallet = ledger.wallet(subject_seed)
     try:
-        await ledger.submit(CredentialCreate(
-            account=issuer_wallet.address,
-            subject=agent_address,
-            credential_type=xrpl_client.credential_type_hex(credential_type),
-            uri=str_to_hex(uri_str).upper(),
-        ), issuer_wallet, endpoint=endpoint)
+        await ledger.submit(
+            CredentialCreate(
+                account=issuer_wallet.address,
+                subject=agent_address,
+                credential_type=xrpl_client.credential_type_hex(credential_type),
+                uri=str_to_hex(uri_str).upper(),
+            ),
+            issuer_wallet,
+            endpoint=endpoint,
+        )
     except Exception as exc:
         if "tecDUPLICATE" not in str(exc):
             raise
     try:
-        accepted = await ledger.submit(CredentialAccept(
-            account=subject_wallet.address,
-            issuer=issuer,
-            credential_type=xrpl_client.credential_type_hex(credential_type),
-        ), subject_wallet, endpoint=endpoint)
+        accepted = await ledger.submit(
+            CredentialAccept(
+                account=subject_wallet.address,
+                issuer=issuer,
+                credential_type=xrpl_client.credential_type_hex(credential_type),
+            ),
+            subject_wallet,
+            endpoint=endpoint,
+        )
     except Exception as exc:
         if "tecDUPLICATE" not in str(exc):
             raise
@@ -137,12 +95,12 @@ async def issue_kya_credential(
             "ref": identity.ref,
             "issued_on": identity.issued_on,
         },
-        mock=False,
         status="accepted" if accepted else "issued",
     )
 
 
 # ── Verify ────────────────────────────────────────────────────────────────────
+
 
 async def verify_agent_kya(
     agent_address: str,
@@ -158,11 +116,7 @@ async def verify_agent_kya(
     issuer = settings.credential_issuer_address or settings.token_issuer_address
     credential_type = "KYA"
 
-    if settings.use_mock_xrpl:
-        _auto_seed_mock(settings, issuer)
-        return _mock_verify_kya(agent_address, issuer, credential_type, required_scope)
-
-    # Real mode: use the same xrpl-py AccountObjects lookup as KYC. Keeping KYA
+    # Use the same xrpl-py AccountObjects lookup as KYC. Keeping KYA
     # on this shared boundary avoids a second, incompatible Ledger API.
     try:
         from ... import xrpl_client
@@ -193,7 +147,9 @@ async def verify_agent_kya(
             identity=identity,
             required_scope=required_scope,
             verified=identity is not None,
-            reason="KYA credential verified on ledger" if identity else "KYA credential URI could not be decoded",
+            reason="KYA credential verified on ledger"
+            if identity
+            else "KYA credential URI could not be decoded",
         )
     except Exception as exc:
         return AgentIdentityStatus(
@@ -207,35 +163,6 @@ async def verify_agent_kya(
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
-
-def _mock_verify_kya(
-    agent_address: str,
-    issuer: str,
-    credential_type: str,
-    required_scope: AgentScope | None,
-) -> AgentIdentityStatus:
-    key = (agent_address, issuer, credential_type)
-    identity = _MOCK_KYA.get(key)
-
-    if identity is None:
-        return AgentIdentityStatus(
-            checked=True,
-            verified=False,
-            agent_address=agent_address,
-            issuer=issuer,
-            credential_type=credential_type,
-            reason="No KYA credential found (mock mode)",
-        )
-
-    return _build_status(
-        agent_address=agent_address,
-        issuer=issuer,
-        credential_type=credential_type,
-        identity=identity,
-        required_scope=required_scope,
-        verified=True,
-        reason="KYA credential verified (mock mode)",
-    )
 
 
 def _build_status(

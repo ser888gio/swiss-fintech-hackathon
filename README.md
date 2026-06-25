@@ -238,8 +238,8 @@ External connections from the API:
 
 **Path to Mainnet (three config swaps, architecture unchanged):**
 1. Testnet endpoint → Mainnet XRPL endpoint
-2. Mock RLUSD issuer → real Ripple RLUSD issuer
-3. Mock compliance → real sanctions provider (Elliptic, Chainalysis)
+2. Testnet RLUSD issuer → Mainnet Ripple RLUSD issuer
+3. OpenSanctions fallback → enterprise sanctions provider (Elliptic, Chainalysis)
 4. Local Firefly bridge → HSM/custody signer (adapter interface already abstracted)
 
 ---
@@ -280,7 +280,7 @@ npm run dev:web
 npm run dev:bridge
 ```
 
-The API defaults to `USE_MOCK_XRPL=true` — the full flow (auto-settle, lock, hardware approve, release) runs offline with deterministic fake tx hashes. Flip it off and supply funded testnet wallet seeds to hit XRPL testnet live.
+Supply a funded Testnet wallet seed in `TREASURY_WALLET_SEED` and set `XRPL_ENDPOINT` to hit XRPL Testnet live.
 
 ---
 

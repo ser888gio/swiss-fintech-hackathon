@@ -21,11 +21,9 @@ from decimal import ROUND_HALF_UP, Decimal
 from .. import store as payment_store
 from .. import xrpl_client
 from ..config import get_settings
-from ..insurance.engine import PoolState
 from ..schemas import (
     CoverBindRequest,
     CoverClaimEvidence,
-    CoverLineKind,
     CoverLossBearerKind,
     CoverPolicy,
     CoverPolicyStatus,
@@ -43,6 +41,7 @@ _Q2 = Decimal("0.01")
 
 
 # ── Quote ─────────────────────────────────────────────────────────────────────
+
 
 def quote(req: CoverQuoteRequest) -> CoverQuote:
     """Price a cover policy (pure, no I/O). Capacity checked against current store."""
@@ -67,20 +66,23 @@ def quote(req: CoverQuoteRequest) -> CoverQuote:
 
 # ── Bind ──────────────────────────────────────────────────────────────────────
 
-async def bind(req: CoverBindRequest, *, simulate_settlement: bool = False) -> CoverPolicy:
+
+async def bind(req: CoverBindRequest) -> CoverPolicy:
     """Re-quote, reserve capacity, settle premium, create policy."""
     settings = get_settings()
     if not settings.cover_enabled:
         raise CoverDisabled("cover_enabled is False")
 
-    q = quote(CoverQuoteRequest(
-        agent_address=req.agent_address,
-        score_band=req.score_band,
-        cover_cap=req.cover_cap,
-        per_claim_limit=req.per_claim_limit,
-        term_days=req.term_days,
-        lines=req.lines,
-    ))
+    q = quote(
+        CoverQuoteRequest(
+            agent_address=req.agent_address,
+            score_band=req.score_band,
+            cover_cap=req.cover_cap,
+            per_claim_limit=req.per_claim_limit,
+            term_days=req.term_days,
+            lines=req.lines,
+        )
+    )
     if q.decision != "OFFER":
         raise CoverUnavailable(q.decision, q.reason or "cover not offered")
 
@@ -89,10 +91,7 @@ async def bind(req: CoverBindRequest, *, simulate_settlement: bool = False) -> C
     per_claim_d = Decimal(q.per_claim_limit).quantize(_Q2)
 
     # Settle premium from treasury wallet → pool account
-    if simulate_settlement:
-        tx_hash, explorer_url = xrpl_client.mock_tx_hash("cover_demo_premium", req.agent_address), None
-    else:
-        tx_hash, explorer_url = await _settle_premium(req.agent_address, premium, settings)
+    tx_hash, explorer_url = await _settle_premium(req.agent_address, premium, settings)
 
     now = datetime.now(timezone.utc)
     policy_id = str(uuid.uuid4())
@@ -119,20 +118,24 @@ async def bind(req: CoverBindRequest, *, simulate_settlement: bool = False) -> C
     store.save_policy(policy)
     store.reserve(policy_id, cover_cap_d)
     store.add_premium(premium)
-    _emit_audit("cover_policy_bound", {
-        "policy_id": policy_id,
-        "agent_address": req.agent_address,
-        "premium": str(premium),
-        "cover_cap": str(cover_cap_d),
-        "term_days": req.term_days,
-        "tx_hash": tx_hash,
-    })
+    _emit_audit(
+        "cover_policy_bound",
+        {
+            "policy_id": policy_id,
+            "agent_address": req.agent_address,
+            "premium": str(premium),
+            "cover_cap": str(cover_cap_d),
+            "term_days": req.term_days,
+            "tx_hash": tx_hash,
+        },
+    )
     return policy
 
 
 # ── Claim ─────────────────────────────────────────────────────────────────────
 
-async def settle_claim(evidence: CoverClaimEvidence, *, simulate_settlement: bool = False) -> CoverPayout:
+
+async def settle_claim(evidence: CoverClaimEvidence) -> CoverPayout:
     """Load immutable records, reconcile, validate, settle payout."""
     settings = get_settings()
     if not settings.cover_enabled:
@@ -153,6 +156,7 @@ async def settle_claim(evidence: CoverClaimEvidence, *, simulate_settlement: boo
 
     # Derive the cover event from the settled payment + its intent ground truth
     from .reconcile import reconcile
+
     event = reconcile(
         expected_amount=payment.intent.expected_amount,
         executed_amount=payment.intent.amount,
@@ -189,14 +193,20 @@ async def settle_claim(evidence: CoverClaimEvidence, *, simulate_settlement: boo
         GuardrailResult(
             name="CP2_payment_settled",
             passed=payment.status == PaymentStatus.settled,
-            rule_fired=None if payment.status == PaymentStatus.settled else "payment_not_settled",
-            reason=None if payment.status == PaymentStatus.settled else f"payment is {payment.status.value}",
+            rule_fired=None
+            if payment.status == PaymentStatus.settled
+            else "payment_not_settled",
+            reason=None
+            if payment.status == PaymentStatus.settled
+            else f"payment is {payment.status.value}",
         ),
         GuardrailResult(
             name="CP7_collusion",
             passed=collusion < 2,
             rule_fired="collusion" if collusion >= 2 else None,
-            reason=f"{collusion} prior claims against this merchant" if collusion >= 2 else None,
+            reason=f"{collusion} prior claims against this merchant"
+            if collusion >= 2
+            else None,
         ),
     ]
 
@@ -216,22 +226,25 @@ async def settle_claim(evidence: CoverClaimEvidence, *, simulate_settlement: boo
     )
 
     # Settle on-ledger
-    if simulate_settlement:
-        tx_hash, explorer_url = xrpl_client.mock_tx_hash("cover_demo_payout", evidence.payment_id), None
-    else:
-        tx_hash, explorer_url = await _settle_payout(destination, payout_amount, evidence.payment_id, settings)
+    tx_hash, explorer_url = await _settle_payout(
+        destination, payout_amount, evidence.payment_id, settings
+    )
 
     # Update policy in-place (decrement cover_remaining)
     now = datetime.now(timezone.utc)
     new_used = (Decimal(policy.cover_used) + payout_amount).quantize(_Q2)
     new_remaining = max(Decimal("0"), remaining - payout_amount).quantize(_Q2)
-    new_status = CoverPolicyStatus.exhausted if new_remaining <= Decimal("0") else policy.status
-    updated_policy = policy.model_copy(update={
-        "cover_used": str(new_used),
-        "cover_remaining": str(new_remaining),
-        "status": new_status,
-        "updated_at": now,
-    })
+    new_status = (
+        CoverPolicyStatus.exhausted if new_remaining <= Decimal("0") else policy.status
+    )
+    updated_policy = policy.model_copy(
+        update={
+            "cover_used": str(new_used),
+            "cover_remaining": str(new_remaining),
+            "status": new_status,
+            "updated_at": now,
+        }
+    )
     store.save_policy(updated_policy)
     if new_status == CoverPolicyStatus.exhausted:
         store.release_reservation(policy.id)
@@ -241,12 +254,16 @@ async def settle_claim(evidence: CoverClaimEvidence, *, simulate_settlement: boo
     store.add_claim(payout_amount)
 
     # Reprice the agent posterior
-    store.record_default(policy.agent_address, payout_amount, settings.insurance_tau_days)
+    store.record_default(
+        policy.agent_address, payout_amount, settings.insurance_tau_days
+    )
 
     # LLM narration (cosmetic only — payout already decided above)
     narration = narrate.narrate_claim(event, policy)
 
-    receipt = _payout_receipt(evidence.policy_id, evidence.payment_id, str(payout_amount), destination)
+    receipt = _payout_receipt(
+        evidence.policy_id, evidence.payment_id, str(payout_amount), destination
+    )
 
     payout = CoverPayout(
         id=str(uuid.uuid4()),
@@ -266,19 +283,23 @@ async def settle_claim(evidence: CoverClaimEvidence, *, simulate_settlement: boo
         created_at=now,
     )
     store.save_payout(payout)
-    _emit_audit("cover_claim_settled", {
-        "policy_id": evidence.policy_id,
-        "payment_id": evidence.payment_id,
-        "line": line.value,
-        "classification": event.classification,
-        "amount_paid": str(payout_amount),
-        "destination": destination,
-        "tx_hash": tx_hash,
-    })
+    _emit_audit(
+        "cover_claim_settled",
+        {
+            "policy_id": evidence.policy_id,
+            "payment_id": evidence.payment_id,
+            "line": line.value,
+            "classification": event.classification,
+            "amount_paid": str(payout_amount),
+            "destination": destination,
+            "tx_hash": tx_hash,
+        },
+    )
     return payout
 
 
 # ── Pool status ───────────────────────────────────────────────────────────────
+
 
 def get_pool_status() -> CoverPoolStatus:
     settings = get_settings()
@@ -298,12 +319,15 @@ def get_pool_status() -> CoverPoolStatus:
 
 # ── On-ledger settlement ──────────────────────────────────────────────────────
 
+
 async def _settle_premium(
     agent_address: str, premium: Decimal, settings
 ) -> tuple[str, str | None]:
-    pool_account = getattr(settings, "cover_pool_account", "") or getattr(settings, "insurance_vault_address", "")
-    if getattr(settings, "use_mock_xrpl", True) or not pool_account:
-        return xrpl_client.mock_tx_hash("cover_premium", agent_address), None
+    pool_account = getattr(settings, "cover_pool_account", "") or getattr(
+        settings, "insurance_vault_address", ""
+    )
+    if not pool_account:
+        raise CoverConfigError("cover pool account is not configured")
     return await _pay(pool_account, premium, agent_address, "cover_premium", settings)
 
 
@@ -312,8 +336,6 @@ async def _settle_payout(
 ) -> tuple[str | None, str | None]:
     if amount <= Decimal("0"):
         return None, None
-    if settings.use_mock_xrpl:
-        return xrpl_client.mock_tx_hash("cover_payout", payment_id), None
     if not destination:
         raise CoverConfigError("payout destination is empty")
     return await _pay(destination, amount, payment_id, "cover_payout", settings)
@@ -329,15 +351,18 @@ async def _pay(
     wallet = ledger.treasury_wallet
     memo_data = json.dumps({kind: ref}, separators=(",", ":"))
     from ..tools import execution
+
     on_ledger = execution.scaled_settlement(float(amount), settings)
     tx = Payment(
         account=wallet.address,
         destination=destination,
         amount=xrpl_client.token_amount(settings.token_currency, on_ledger, settings),
-        memos=[Memo(
-            memo_type="cover/v1".encode().hex().upper(),
-            memo_data=memo_data.encode().hex().upper(),
-        )],
+        memos=[
+            Memo(
+                memo_type="cover/v1".encode().hex().upper(),
+                memo_data=memo_data.encode().hex().upper(),
+            )
+        ],
     )
     result = await ledger.submit(tx, wallet)
     tx_hash = result["hash"]
@@ -346,13 +371,24 @@ async def _pay(
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _payout_receipt(policy_id: str, payment_id: str, amount: str, destination: str) -> str:
-    payload = {"policy_id": policy_id, "payment_id": payment_id, "amount": amount, "destination": destination}
-    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+def _payout_receipt(
+    policy_id: str, payment_id: str, amount: str, destination: str
+) -> str:
+    payload = {
+        "policy_id": policy_id,
+        "payment_id": payment_id,
+        "amount": amount,
+        "destination": destination,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
 
 
 def _emit_audit(event_type: str, payload: dict) -> None:
     from ..tools import audit_log
+
     audit_log.append(
         event_type=event_type,
         actor="cover_tool",
@@ -363,14 +399,18 @@ def _emit_audit(event_type: str, payload: dict) -> None:
 
 # ── Errors ────────────────────────────────────────────────────────────────────
 
+
 class CoverError(Exception):
     pass
+
 
 class CoverDisabled(CoverError):
     pass
 
+
 class CoverConfigError(CoverError):
     pass
+
 
 class CoverUnavailable(CoverError):
     def __init__(self, decision: str, reason: str):
@@ -378,17 +418,22 @@ class CoverUnavailable(CoverError):
         self.decision = decision
         self.reason = reason
 
+
 class PolicyNotFound(CoverError):
     pass
+
 
 class PaymentNotFound(CoverError):
     pass
 
+
 class AlreadyClaimed(CoverError):
     pass
 
+
 class NoCoveredDivergence(CoverError):
     pass
+
 
 class ClaimRefused(CoverError):
     pass

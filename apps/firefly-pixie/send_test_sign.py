@@ -4,6 +4,7 @@ the bridge. Leaves the device on Screen 2 (60s) so you can do the button test.
 
 Run with the IDF python env (bundles pyserial).
 """
+
 import hashlib
 import json
 import sys
@@ -27,12 +28,19 @@ DISPLAY = {
 
 
 def expected_match_code() -> str:
-    canonical = "|".join([
-        "XRPL_TREASURY_APPROVAL_V1",
-        DISPLAY["network"], DISPLAY["paymentId"], DISPLAY["owner"], DISPLAY["dest"],
-        DISPLAY["currency"], f"{DISPLAY['amount']:.2f}", str(DISPLAY["escrowSequence"]),
-        DISPLAY["escrowCreateTxHash"],
-    ])
+    canonical = "|".join(
+        [
+            "XRPL_TREASURY_APPROVAL_V1",
+            DISPLAY["network"],
+            DISPLAY["paymentId"],
+            DISPLAY["owner"],
+            DISPLAY["dest"],
+            DISPLAY["currency"],
+            f"{DISPLAY['amount']:.2f}",
+            str(DISPLAY["escrowSequence"]),
+            DISPLAY["escrowCreateTxHash"],
+        ]
+    )
     digest = hashlib.sha256(canonical.encode()).digest()
     return f"{int.from_bytes(digest[:4], 'big') % 10000:04d}"
 
@@ -44,9 +52,13 @@ def log(msg: str) -> None:
 
 def main() -> int:
     code = expected_match_code()
-    log(f"EXPECTED on device -> amount {DISPLAY['amount']:.2f} {DISPLAY['currency']}, MATCH CODE {code[0]} {code[1]} {code[2]} {code[3]}")
+    log(
+        f"EXPECTED on device -> amount {DISPLAY['amount']:.2f} {DISPLAY['currency']}, MATCH CODE {code[0]} {code[1]} {code[2]} {code[3]}"
+    )
 
-    msg = (json.dumps({"cmd": "sign", "display": DISPLAY}, separators=(",", ":")) + "\n").encode()
+    msg = (
+        json.dumps({"cmd": "sign", "display": DISPLAY}, separators=(",", ":")) + "\n"
+    ).encode()
 
     port = serial.Serial(PORT, 115200, timeout=0.2)
     time.sleep(2.5)  # if opening the port reset the chip, let it boot back to standby
@@ -64,7 +76,9 @@ def main() -> int:
                 pass
             time.sleep(0.5)
             port = serial.Serial(PORT, 115200, timeout=0.2)
-    log("sign request sent; reading 5s (silence = device is on Screen 2, waiting for a button)")
+    log(
+        "sign request sent; reading 5s (silence = device is on Screen 2, waiting for a button)"
+    )
 
     start = time.time()
     got = b""
@@ -76,7 +90,9 @@ def main() -> int:
             sys.stdout.flush()
     port.close()
     if not got.strip():
-        log("no reply yet — Screen 2 is up. Press SW2 (refresh) / SW4 (approve) / SW1 (reject).")
+        log(
+            "no reply yet — Screen 2 is up. Press SW2 (refresh) / SW4 (approve) / SW1 (reject)."
+        )
     return 0
 
 

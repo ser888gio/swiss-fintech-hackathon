@@ -114,12 +114,7 @@ class Settings(BaseSettings):
 
     # XRPL address of the treasury wallet that owns the escrows. Included in
     # the approval payload so the device commits to the exact escrow owner.
-    # In mock mode an empty string falls back to "r_TREASURY_MOCK".
     treasury_wallet_address: str = ""
-
-    # When true, XRPL submission is mocked with deterministic fake tx hashes so
-    # the full flow runs offline (demo fallback / local dev without a wallet).
-    use_mock_xrpl: bool = True
 
     # Testnet has no real value, so a genuine $10k+ payment can't be funded in XRP
     # (the faucet gives ~100 XRP, not the ~12,000 a $15k payment routes to). This
@@ -163,18 +158,20 @@ class Settings(BaseSettings):
     # any challenge that requests a currency or facilitator not in these lists.
     # Agent spend scope (G4): caps per single x402 call and rolling 24-hour window.
     x402_enabled: bool = True
-    x402_xrpl_endpoint: str = ""              # empty = main XRPL endpoint
-    x402_network: str = ""                    # empty = main XRPL network id
+    x402_xrpl_endpoint: str = ""  # empty = main XRPL endpoint
+    x402_network: str = ""  # empty = main XRPL network id
     x402_facilitator_url: str = "https://xrpl-facilitator-testnet.t54.ai"
-    x402_allowed_assets: str = "RLUSD"          # comma-separated currency codes
-    x402_allowed_facilitators: str = "https://xrpl-facilitator-testnet.t54.ai"  # comma-sep URLs
-    x402_scope_max_per_tx_usd: float = 50.0     # G4 per-transaction cap
-    x402_scope_max_per_day_usd: float = 500.0   # G4 rolling 24h cap
-    x402_allowed_service_hosts: str = ""        # comma-sep; empty = any host allowed
-    x402_source_tag: int = 20260530             # Starter Kit convention
-    x402_demo_enabled: bool = False             # local/test merchant resource only
-    x402_demo_pay_to: str = ""                  # trust-lined Testnet recipient
-    x402_demo_price: str = "1.000000"           # exact RLUSD amount
+    x402_allowed_assets: str = "RLUSD"  # comma-separated currency codes
+    x402_allowed_facilitators: str = (
+        "https://xrpl-facilitator-testnet.t54.ai"  # comma-sep URLs
+    )
+    x402_scope_max_per_tx_usd: float = 50.0  # G4 per-transaction cap
+    x402_scope_max_per_day_usd: float = 500.0  # G4 rolling 24h cap
+    x402_allowed_service_hosts: str = ""  # comma-sep; empty = any host allowed
+    x402_source_tag: int = 20260530  # Starter Kit convention
+    x402_demo_enabled: bool = False  # local/test merchant resource only
+    x402_demo_pay_to: str = ""  # trust-lined Testnet recipient
+    x402_demo_price: str = "1.000000"  # exact RLUSD amount
     # Distinct trust-lined Testnet merchant accounts for the Maersk fleet demo.
     x402_repair_yard_pay_to: str = ""
     x402_customs_pay_to: str = ""
@@ -229,7 +226,7 @@ class Settings(BaseSettings):
     # False (default) settles premium/payout as direct token Payments, which works
     # on any network (Testnet/Devnet) and yields a standard explorer link.
     insurance_use_vault: bool = False
-    insurance_vault_address: str = ""      # pool account: premium payee / payout source
+    insurance_vault_address: str = ""  # pool account: premium payee / payout source
     insurance_source_tag: int = 20260530
     # When true, an agent must pass G1 KYA (hold an accepted KYC credential) to
     # bind cover. Default false keeps the
@@ -241,11 +238,11 @@ class Settings(BaseSettings):
     # A clean self-contained module on the pure actuarial core (insurance/engine.py).
     # cover_pool_account: premium payee / payout source; falls back to insurance_vault_address.
     cover_enabled: bool = True
-    cover_hallucination_rate: float = 0.03   # static annual rate for hallucination line
-    cover_rate_min: float = 0.02             # floor on any cover line annual rate
-    cover_rate_max: float = 0.10             # cap on any cover line annual rate
+    cover_hallucination_rate: float = 0.03  # static annual rate for hallucination line
+    cover_rate_min: float = 0.02  # floor on any cover line annual rate
+    cover_rate_max: float = 0.10  # cap on any cover line annual rate
     cover_term_days_default: int = 365
-    cover_pool_account: str = ""             # falls back to insurance_vault_address
+    cover_pool_account: str = ""  # falls back to insurance_vault_address
     # Guard for the broken epoch-1 inline-cover path in the orchestrator.
     # False (default) makes it inert; set True only to restore the old behaviour.
     legacy_inline_cover_enabled: bool = False

@@ -52,34 +52,6 @@ function uncompressedNoPrefix(privateKey: Uint8Array): string {
 }
 
 /**
- * Stand-in for the real Firefly hardware during development. Signs with a local
- * secp256k1 key so the full approve→verify→release flow works offline. Replace
- * with SerialFireflyDevice for hardware demos.
- */
-export class MockFireflyDevice implements FireflyDevice {
-  private readonly privateKey: Uint8Array;
-
-  constructor(privateKeyHex: string) {
-    this.privateKey = Buffer.from(strip0x(privateKeyHex), "hex");
-  }
-
-  publicKeyHex(): string {
-    return uncompressedNoPrefix(this.privateKey);
-  }
-
-  async sign(req: BridgeSignRequest): Promise<SignedApproval> {
-    const digestHex = deriveDigest(req);
-    const digest = Buffer.from(digestHex, "hex");
-    const sig = secp256k1.sign(digest, this.privateKey);
-    const signature = Buffer.concat([
-      sig.toCompactRawBytes(),
-      Buffer.from([sig.recovery]),
-    ]).toString("hex");
-    return { signature, publicKey: this.publicKeyHex() };
-  }
-}
-
-/**
  * Real Firefly Pixie hardware via USB serial. The device runs a custom app
  * (apps/firefly-pixie) that displays the payment fields, blocks on the physical
  * OK/Cancel button, and returns a secp256k1 signature over the canonical digest.

@@ -28,17 +28,17 @@ anchored on-chain and cryptographically bound to the counterparty's address.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
-from datetime import date, timezone, datetime
+from dataclasses import dataclass
+from datetime import date
 from enum import Enum
 
 
 class StepStatus(str, Enum):
-    pass_   = "pass"       # step completed, no issues found
-    fail    = "fail"       # step completed, verification failed
-    flagged = "flagged"    # completed, issues found (PEP / adverse media)
-    skip    = "skip"       # step not performed (optional step omitted)
-    pending = "pending"    # not yet completed
+    pass_ = "pass"  # step completed, no issues found
+    fail = "fail"  # step completed, verification failed
+    flagged = "flagged"  # completed, issues found (PEP / adverse media)
+    skip = "skip"  # step not performed (optional step omitted)
+    pending = "pending"  # not yet completed
 
 
 @dataclass
@@ -50,11 +50,12 @@ class VerificationSteps:
     skip differently from fail — a skipped step is unknown, a failed step
     is a risk signal.
     """
-    documentary: StepStatus = StepStatus.skip   # government ID scan
-    selfie: StepStatus      = StepStatus.skip   # liveness / face match
-    kyc: StepStatus         = StepStatus.skip   # name/DOB/address check
-    sanctions: StepStatus   = StepStatus.skip   # sanctions list screening
-    pep: StepStatus         = StepStatus.skip   # PEP check
+
+    documentary: StepStatus = StepStatus.skip  # government ID scan
+    selfie: StepStatus = StepStatus.skip  # liveness / face match
+    kyc: StepStatus = StepStatus.skip  # name/DOB/address check
+    sanctions: StepStatus = StepStatus.skip  # sanctions list screening
+    pep: StepStatus = StepStatus.skip  # PEP check
 
     # Issuer reference (e.g. the KYC provider's case ID or report ID)
     ref: str = ""
@@ -64,10 +65,7 @@ class VerificationSteps:
     @property
     def identity_verified(self) -> bool:
         """True when both documentary and selfie steps passed."""
-        return (
-            self.documentary == StepStatus.pass_
-            and self.selfie == StepStatus.pass_
-        )
+        return self.documentary == StepStatus.pass_ and self.selfie == StepStatus.pass_
 
     @property
     def sanctions_cleared(self) -> bool:
@@ -101,7 +99,9 @@ class VerificationSteps:
         if self.pep == StepStatus.flagged:
             flags.append("credential: counterparty is a PEP (flagged at issuance)")
         if self.documentary == StepStatus.skip:
-            flags.append("credential: documentary step not performed — identity not document-verified")
+            flags.append(
+                "credential: documentary step not performed — identity not document-verified"
+            )
         if self.sanctions == StepStatus.skip:
             flags.append("credential: sanctions screen not recorded in credential")
         return flags
@@ -120,7 +120,7 @@ class VerificationSteps:
             weight -= 5
         if self.sanctions_cleared:
             weight -= 5
-        return max(weight, 0)   # never negative contribution
+        return max(weight, 0)  # never negative contribution
 
 
 # ── URI encoding / decoding ───────────────────────────────────────────────────
@@ -138,8 +138,8 @@ _STATUS_ALIASES = {
     "flagged": StepStatus.flagged,
     "skip": StepStatus.skip,
     "pending": StepStatus.pending,
-    "clear": StepStatus.pass_,      # Plaid uses "clear" for PEP; map to pass
-    "success": StepStatus.pass_,    # Plaid IDV step status alias
+    "clear": StepStatus.pass_,  # Plaid uses "clear" for PEP; map to pass
+    "success": StepStatus.pass_,  # Plaid IDV step status alias
     "failed": StepStatus.fail,
 }
 _URI_VERSION = 1
@@ -226,7 +226,9 @@ def full_pass(ref: str = "") -> VerificationSteps:
     )
 
 
-def sanctions_only(*, sanctioned: bool = False, is_pep: bool = False, ref: str = "") -> VerificationSteps:
+def sanctions_only(
+    *, sanctioned: bool = False, is_pep: bool = False, ref: str = ""
+) -> VerificationSteps:
     """Convenience: only sanctions + PEP steps run (no documentary IDV)."""
     return VerificationSteps(
         sanctions=StepStatus.flagged if sanctioned else StepStatus.pass_,

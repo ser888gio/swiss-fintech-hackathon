@@ -70,7 +70,9 @@ def check_compliance(
     elif settings.opensanctions_api_key:
         try:
             matches = _screen_opensanctions(intent)
-            sanctioned = _has_blocking_match(matches, settings.opensanctions_match_threshold)
+            sanctioned = _has_blocking_match(
+                matches, settings.opensanctions_match_threshold
+            )
             if sanctioned:
                 sanctions_basis.append("OpenSanctions entity match")
         except (httpx.HTTPError, ValueError):
@@ -124,26 +126,34 @@ def check_compliance(
 
     # Promote Plaid PEP / adverse-media signals into the risk model score
     # by injecting synthetic signals so the weight is applied consistently.
-    if is_pep and not any(s.typology == risk_model.AMLTypology.pep_exposure for s in signals):
-        signals = list(signals) + [risk_model.RiskSignal(
-            typology=risk_model.AMLTypology.pep_exposure,
-            weight=25,
-            flag="Plaid Monitor confirmed PEP match",
-            evidence="Plaid Monitor returned a PEP hit for this counterparty.",
-        )]
+    if is_pep and not any(
+        s.typology == risk_model.AMLTypology.pep_exposure for s in signals
+    ):
+        signals = list(signals) + [
+            risk_model.RiskSignal(
+                typology=risk_model.AMLTypology.pep_exposure,
+                weight=25,
+                flag="Plaid Monitor confirmed PEP match",
+                evidence="Plaid Monitor returned a PEP hit for this counterparty.",
+            )
+        ]
     if has_adverse_media:
-        signals = list(signals) + [risk_model.RiskSignal(
-            typology=risk_model.AMLTypology.pep_exposure,
-            weight=15,
-            flag="Plaid Monitor adverse media signal",
-            evidence="Plaid Monitor flagged adverse media associated with this counterparty.",
-        )]
+        signals = list(signals) + [
+            risk_model.RiskSignal(
+                typology=risk_model.AMLTypology.pep_exposure,
+                weight=15,
+                flag="Plaid Monitor adverse media signal",
+                evidence="Plaid Monitor flagged adverse media associated with this counterparty.",
+            )
+        ]
 
     # Public intel flags
     flags.extend(public.flags)
 
     # KYC credential status + per-step signals
-    kyc_missing = credential is not None and credential.checked and not credential.verified
+    kyc_missing = (
+        credential is not None and credential.checked and not credential.verified
+    )
     if kyc_missing:
         flags.append(f"no valid on-chain KYC credential ({credential.reason})")
 
@@ -188,8 +198,13 @@ def check_compliance(
 
 # ── OpenSanctions integration ─────────────────────────────────────────────────
 
+
 def build_opensanctions_request(intent: PaymentIntent) -> dict[str, Any]:
-    schema = "Person" if intent.receiver_entity_type is ReceiverEntityType.individual else "Company"
+    schema = (
+        "Person"
+        if intent.receiver_entity_type is ReceiverEntityType.individual
+        else "Company"
+    )
     properties: dict[str, list[str]] = {
         "name": [intent.receiver_name],
         "country": [intent.receiver_country],
@@ -264,6 +279,7 @@ def is_sanctioned(address: str, name: str | None = None) -> bool:
 
 # ── Plaid Monitor screening ───────────────────────────────────────────────────
 
+
 def _screen_plaid(
     intent: PaymentIntent, settings
 ) -> "plaid_monitor.PlaidScreeningResult | None":
@@ -313,11 +329,13 @@ def _screen_plaid(
     except httpx.HTTPError as exc:
         # Plaid unavailable — caller falls through to OpenSanctions
         import logging
+
         logging.getLogger(__name__).warning("Plaid Monitor unavailable: %s", exc)
         return None
 
 
 # ── Velocity check ────────────────────────────────────────────────────────────
+
 
 def _velocity_check(intent: PaymentIntent) -> tuple[int, float]:
     """Count recent payments to the same receiver from the in-memory store.
@@ -337,7 +355,8 @@ def _velocity_check(intent: PaymentIntent) -> tuple[int, float]:
             PaymentStatus.routing,
         }
         recent = [
-            p for p in store.list_payments()
+            p
+            for p in store.list_payments()
             if p.intent.to == intent.to
             and p.status in non_terminal_statuses
             and p.created_at >= cutoff
@@ -350,6 +369,7 @@ def _velocity_check(intent: PaymentIntent) -> tuple[int, float]:
 
 
 # ── Explanation builder ───────────────────────────────────────────────────────
+
 
 def _explain(
     score: int,
@@ -385,9 +405,11 @@ def _explain(
 
 # ── Credential step helpers ───────────────────────────────────────────────────
 
+
 def _step_flags(vsteps) -> list[str]:
     """Derive compliance flags from credential verification steps."""
     from ..schemas import VerificationStepStatus as S
+
     flags: list[str] = []
     if vsteps.documentary == S.fail:
         flags.append("credential: government ID scan failed at issuance")
@@ -400,7 +422,9 @@ def _step_flags(vsteps) -> list[str]:
     if vsteps.pep == S.flagged:
         flags.append("credential: counterparty confirmed PEP at time of KYC issuance")
     if vsteps.documentary == S.skip:
-        flags.append("credential: documentary step not performed — identity not document-verified")
+        flags.append(
+            "credential: documentary step not performed — identity not document-verified"
+        )
     if vsteps.sanctions == S.skip:
         flags.append("credential: sanctions screen not recorded in credential URI")
     return flags
@@ -409,6 +433,7 @@ def _step_flags(vsteps) -> list[str]:
 def _step_weight(vsteps) -> int:
     """AML score contribution from credential step outcomes."""
     from ..schemas import VerificationStepStatus as S
+
     weight = 0
     if vsteps.pep == S.flagged:
         weight += 20

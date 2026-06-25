@@ -54,8 +54,8 @@ _ADVERSE_MEDIA_TYPES = {
 @dataclass
 class PlaidHit:
     id: str
-    review_status: str   # "confirmed_positive" | "dismissed" | "pending_review"
-    hit_type: str        # "sanction" | "pep" | "adverse_media" | ...
+    review_status: str  # "confirmed_positive" | "dismissed" | "pending_review"
+    hit_type: str  # "sanction" | "pep" | "adverse_media" | ...
     name: str
     source_list: str
 
@@ -63,7 +63,7 @@ class PlaidHit:
 @dataclass
 class PlaidScreeningResult:
     screening_id: str
-    status: str                              # "cleared" | "pending_review" | "rejected"
+    status: str  # "cleared" | "pending_review" | "rejected"
     sanctioned: bool
     is_pep: bool
     has_adverse_media: bool
@@ -95,10 +95,14 @@ def screen_individual(
         "client_user_id": client_user_id,
     }
     # Remove None values — Plaid rejects null optional fields
-    payload["search_terms"] = {k: v for k, v in payload["search_terms"].items() if v is not None}
+    payload["search_terms"] = {
+        k: v for k, v in payload["search_terms"].items() if v is not None
+    }
 
     with httpx.Client(timeout=15.0) as client:
-        response = client.post(f"{base_url}/watchlist_screening/individual/create", json=payload)
+        response = client.post(
+            f"{base_url}/watchlist_screening/individual/create", json=payload
+        )
         response.raise_for_status()
         data = response.json()
 
@@ -127,10 +131,14 @@ def screen_entity(
         },
         "client_user_id": client_user_id,
     }
-    payload["search_terms"] = {k: v for k, v in payload["search_terms"].items() if v is not None}
+    payload["search_terms"] = {
+        k: v for k, v in payload["search_terms"].items() if v is not None
+    }
 
     with httpx.Client(timeout=15.0) as client:
-        response = client.post(f"{base_url}/watchlist_screening/entity/create", json=payload)
+        response = client.post(
+            f"{base_url}/watchlist_screening/entity/create", json=payload
+        )
         response.raise_for_status()
         data = response.json()
 
@@ -155,15 +163,19 @@ def _parse_response(data: dict) -> PlaidScreeningResult:
             f"{listing.get('first_name', '')} {listing.get('last_name', '')}".strip()
         )
         source = listing.get("source", {})
-        source_list = source.get("name", "") if isinstance(source, dict) else str(source)
+        source_list = (
+            source.get("name", "") if isinstance(source, dict) else str(source)
+        )
 
-        hits.append(PlaidHit(
-            id=h.get("id", ""),
-            review_status=review_status,
-            hit_type=hit_type,
-            name=name,
-            source_list=source_list,
-        ))
+        hits.append(
+            PlaidHit(
+                id=h.get("id", ""),
+                review_status=review_status,
+                hit_type=hit_type,
+                name=name,
+                source_list=source_list,
+            )
+        )
 
     sanctioned = any(h.hit_type in _BLOCKING_HIT_TYPES for h in hits)
     is_pep = any(h.hit_type in _PEP_HIT_TYPES for h in hits)
@@ -171,13 +183,17 @@ def _parse_response(data: dict) -> PlaidScreeningResult:
 
     flags: list[str] = []
     if sanctioned:
-        sources = ", ".join({h.source_list for h in hits if h.hit_type in _BLOCKING_HIT_TYPES})
+        sources = ", ".join(
+            {h.source_list for h in hits if h.hit_type in _BLOCKING_HIT_TYPES}
+        )
         flags.append(f"Plaid Monitor: sanctions hit ({sources})")
     if is_pep:
         pep_names = ", ".join({h.name for h in hits if h.hit_type in _PEP_HIT_TYPES})
         flags.append(f"Plaid Monitor: PEP match ({pep_names})")
     if has_adverse_media:
-        media_types = ", ".join({h.hit_type for h in hits if h.hit_type in _ADVERSE_MEDIA_TYPES})
+        media_types = ", ".join(
+            {h.hit_type for h in hits if h.hit_type in _ADVERSE_MEDIA_TYPES}
+        )
         flags.append(f"Plaid Monitor: adverse media ({media_types})")
 
     return PlaidScreeningResult(

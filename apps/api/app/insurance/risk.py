@@ -91,7 +91,9 @@ def from_band(score_band: str | None, now: float | datetime | None = None) -> Ag
     a0 = prior.p0 * prior.n0
     b0 = (1.0 - prior.p0) * prior.n0
     ts = _to_ts(now) if now is not None else _now_ts()
-    return AgentRisk(alpha=a0, beta=b0, n0=prior.n0, a0=a0, b0=b0, last_ts=ts, score_band=band)
+    return AgentRisk(
+        alpha=a0, beta=b0, n0=prior.n0, a0=a0, b0=b0, last_ts=ts, score_band=band
+    )
 
 
 def credibility(r: AgentRisk) -> float:
@@ -116,7 +118,12 @@ def pd_txn(r: AgentRisk, txn: TxnFeatures) -> float:
         * RR_CPTY.get(txn.cpty_band, RR_CPTY["default"])
         * (NOVELTY_FIRST_SEEN if txn.first_seen else NOVELTY_REPEAT)
     )
-    adj = 1.0 + AMOUNT_SLOPE * txn.amount_z + VELOCITY_SLOPE * txn.velocity_z + CONC_SLOPE * txn.concentration_z
+    adj = (
+        1.0
+        + AMOUNT_SLOPE * txn.amount_z
+        + VELOCITY_SLOPE * txn.velocity_z
+        + CONC_SLOPE * txn.concentration_z
+    )
     adj = max(0.1, adj)  # context can never drive PD non-positive
     return _clamp(base * rr * adj, PD_MIN, PD_MAX)
 
@@ -146,4 +153,12 @@ def update(
         a += w
     else:
         b += w
-    return AgentRisk(alpha=a, beta=b, n0=r.n0, a0=r.a0, b0=r.b0, last_ts=now_ts, score_band=r.score_band)
+    return AgentRisk(
+        alpha=a,
+        beta=b,
+        n0=r.n0,
+        a0=r.a0,
+        b0=r.b0,
+        last_ts=now_ts,
+        score_band=r.score_band,
+    )

@@ -587,7 +587,7 @@ export function DashboardPage({ payments, approvingId, resolvingKycId, onApprove
           </div>
           <div className="control-indicator">
             <span className="health-dot online" />
-            <span>Network <strong>{runtimeStatus?.network ?? "…"}{runtimeStatus?.mockMode ? " (mock)" : ""}</strong></span>
+            <span>Network <strong>{runtimeStatus?.network ?? "…"}</strong></span>
           </div>
           <div className="control-indicator">
             <span className="health-dot online" />

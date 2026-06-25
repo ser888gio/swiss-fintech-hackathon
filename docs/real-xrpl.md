@@ -1,8 +1,7 @@
 # Connecting to real XRPL (Testnet / Devnet)
 
-By default the API runs with `USE_MOCK_XRPL=true` — the full workflow
-(auto-settle → lock → approve → release) runs offline with deterministic fake tx
-hashes. This guide flips it to a real network.
+This guide walks through connecting the API to a live XRPL network (Testnet or
+Devnet) for real transaction submission.
 
 > **Run this where the network is open.** Claude Code on the web blocks the XRPL
 > endpoints via its egress allowlist. Run the API/script on your laptop (or
@@ -59,7 +58,6 @@ minutes of quiet and re-run — `provision` is safe to repeat.
 ## 3. Configure the root `.env`
 
 ```bash
-USE_MOCK_XRPL=false
 XRPL_ENDPOINT=wss://s.altnet.rippletest.net:51233
 XRPL_NETWORK=xrpl:1
 TREASURY_WALLET_SEED=sEd...          # the agent's funded wallet
@@ -114,7 +112,6 @@ turning real mode on:
 
 ```bash
 # Root .env (never commit the seed)
-USE_MOCK_XRPL=false
 XRPL_ENDPOINT=wss://s.altnet.rippletest.net:51233
 TOKEN_ISSUER_ADDRESS=rQhWct2fv4Vc4KRjRgMrxa8xPN9Zx9iLKV
 TOKEN_CURRENCY=RLUSD
@@ -198,7 +195,7 @@ UI tab **Credentials**) drives issue → accept → verify and narrates each ste
 Whether a subject may be issued a credential is a **deterministic sanctions
 screen** inside the agent — never the LLM.
 
-To prove it on Testnet (with `USE_MOCK_XRPL=false` and the seeds above):
+To prove it on Testnet (with the seeds above):
 
 ```bash
 # 1. Issue (treasury signs CredentialCreate) — returns a record with txHash

@@ -1,0 +1,12 @@
+[submodule "apps/firefly-pixie/components/firefly-hollows"]
+	path = apps/firefly-pixie/components/firefly-hollows
+	url = https://github.com/ser888gio/component-hollows.git
+[submodule "apps/firefly-pixie/components/firefly-scene"]
+	path = apps/firefly-pixie/components/firefly-scene
+	url = https://github.com/firefly/component-scene.git
+[submodule "apps/firefly-pixie/components/firefly-display"]
+	path = apps/firefly-pixie/components/firefly-display
+	url = https://github.com/firefly/component-display.git
+[submodule "apps/firefly-pixie/components/firefly-ethers"]
+	path = apps/firefly-pixie/components/firefly-ethers
+	url = https://github.com/ser888gio/ethers.c.git

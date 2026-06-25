@@ -24,8 +24,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-import time
-from pathlib import Path
 
 DEVNET_FAUCET = "https://faucet.devnet.rippletest.net/accounts"
 DEVNET_WS = "wss://s.devnet.rippletest.net:51233"
@@ -33,6 +31,7 @@ DEVNET_EXPLORER = "https://devnet.xrpl.org"
 
 
 # ── Faucet ────────────────────────────────────────────────────────────────────
+
 
 async def fund_from_faucet(faucet_url: str, label: str) -> tuple[str, str]:
     """POST to the Devnet faucet, return (address, seed)."""
@@ -57,13 +56,16 @@ async def fund_from_faucet(faucet_url: str, label: str) -> tuple[str, str]:
 
 # ── XRPL helpers ─────────────────────────────────────────────────────────────
 
+
 def _ws_client(endpoint: str):
     from xrpl.asyncio.clients import AsyncWebsocketClient
+
     return AsyncWebsocketClient(endpoint)
 
 
 async def _submit(client, tx, wallet) -> dict:
     from xrpl.asyncio.transaction import autofill_and_sign, submit
+
     signed = await autofill_and_sign(tx, client, wallet)
     result = await submit(signed, client)
     meta = result.result.get("meta") or {}
@@ -76,6 +78,7 @@ async def _submit(client, tx, wallet) -> dict:
 async def wait_for_ledger(client) -> None:
     """Wait one ledger close (~4 s) so the previous tx is confirmed."""
     from xrpl.models.requests import Ledger as LedgerReq
+
     r1 = await client.request(LedgerReq(ledger_index="validated"))
     start = r1.result["ledger_index"]
     while True:
@@ -87,15 +90,16 @@ async def wait_for_ledger(client) -> None:
 
 # ── Main setup flow ───────────────────────────────────────────────────────────
 
+
 async def setup(currency: str, amount: str, endpoint: str) -> None:
     from xrpl.models.amounts import IssuedCurrencyAmount
     from xrpl.models.transactions import Payment, TrustSet
     from xrpl.wallet import Wallet
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  Devnet IOU setup  |  currency={currency}  amount={amount}")
     print(f"  endpoint: {endpoint}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     # 1. Fund wallets
     treasury_addr, treasury_seed = await fund_from_faucet(DEVNET_FAUCET, "treasury")
@@ -105,12 +109,16 @@ async def setup(currency: str, amount: str, endpoint: str) -> None:
     treasury_wallet = Wallet.from_seed(treasury_seed)
     issuer_wallet = Wallet.from_seed(issuer_seed)
 
-    print(f"\n  Waiting for faucet ledger close…")
+    print("\n  Waiting for faucet ledger close…")
     await asyncio.sleep(6)
 
     async with _ws_client(endpoint) as client:
         # 2. Trust line: treasury trusts issuer for `currency` up to `amount`
-        print(f"  Creating trust line {treasury_addr} ->{issuer_addr} for {currency}…", end=" ", flush=True)
+        print(
+            f"  Creating trust line {treasury_addr} ->{issuer_addr} for {currency}…",
+            end=" ",
+            flush=True,
+        )
         trust_limit = IssuedCurrencyAmount(
             currency=currency,
             issuer=issuer_addr,
@@ -145,24 +153,26 @@ async def setup(currency: str, amount: str, endpoint: str) -> None:
 
         # 4. Verify balance
         from xrpl.models.requests import AccountLines
-        r = await client.request(AccountLines(account=treasury_addr, ledger_index="validated"))
+
+        r = await client.request(
+            AccountLines(account=treasury_addr, ledger_index="validated")
+        )
         lines = r.result.get("lines", [])
-        found = next((l for l in lines if l["currency"] == currency), None)
+        found = next((line for line in lines if line["currency"] == currency), None)
         balance = found["balance"] if found else "NOT FOUND"
         print(f"\n  Treasury balance: {balance} {currency}")
 
     # 5. Print .env snippet
     print(f"""
-{'='*60}
+{"=" * 60}
   SUCCESS — copy these into your .env:
-{'='*60}
+{"=" * 60}
 
 XRPL_ENDPOINT={endpoint}
 TREASURY_WALLET_SEED={treasury_seed}
 RELEASE_WALLET_SEED={treasury_seed}
 TOKEN_CURRENCY={currency}
 TOKEN_ISSUER_ADDRESS={issuer_addr}
-USE_MOCK_XRPL=false
 XRPL_NETWORK=xrpl:devnet
 VAULT_XRPL_ENDPOINT={endpoint}
 
@@ -176,21 +186,30 @@ TREASURY_WALLET_ADDRESS={treasury_addr}
 # Explorer links:
 #   Treasury: {DEVNET_EXPLORER}/accounts/{treasury_addr}
 #   Issuer:   {DEVNET_EXPLORER}/accounts/{issuer_addr}
-{'='*60}
+{"=" * 60}
 """)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Set up a self-issued IOU on Devnet")
-    parser.add_argument("--currency", default="RUSD", help="3-char currency code (default: RUSD)")
-    parser.add_argument("--amount", default="100000", help="Tokens to issue (default: 100000)")
-    parser.add_argument("--endpoint", default=DEVNET_WS, help="Devnet WebSocket endpoint")
+    parser.add_argument(
+        "--currency", default="RUSD", help="3-char currency code (default: RUSD)"
+    )
+    parser.add_argument(
+        "--amount", default="100000", help="Tokens to issue (default: 100000)"
+    )
+    parser.add_argument(
+        "--endpoint", default=DEVNET_WS, help="Devnet WebSocket endpoint"
+    )
     args = parser.parse_args()
 
     if len(args.currency) > 3:
-        sys.exit("Currency code must be 3 characters or fewer (e.g. RUSD ->use RSD, or RUSD needs hex encoding).")
+        sys.exit(
+            "Currency code must be 3 characters or fewer (e.g. RUSD ->use RSD, or RUSD needs hex encoding)."
+        )
 
     asyncio.run(setup(args.currency, args.amount, args.endpoint))
 

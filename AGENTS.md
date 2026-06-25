@@ -134,7 +134,7 @@ credential checks, Firefly approval verification, or audit trail.
 |---|---|---|---|
 | **Treasury Orchestrator** | LLM loop | `app/agents/orchestrator.py` | Receives a payment intent, calls tools in order, narrates decisions. Holds **no** policy logic. |
 | **Routing tool** `get_fx_path` | Deterministic | `app/tools/routing.py` | Frankfurter FX quote + XRPL `ripple_path_find`; returns the cheapest path summary. |
-| **Compliance tool** `check_compliance` | Deterministic (mock OK) | `app/tools/compliance.py` | Person/company sanctions matching, configured country sanctions policy, KYC screen, geopolitical review signal, AML score 0–100, and plain-language reason. Folds in credential status. |
+| **Compliance tool** `check_compliance` | Deterministic | `app/tools/compliance.py` | Person/company sanctions matching, configured country sanctions policy, KYC screen, geopolitical review signal, AML score 0–100, and plain-language reason. Folds in credential status. |
 | **Credentials tool** `verify_kyc` / `issue_credential` | Deterministic | `app/tools/credentials.py` | XRPL Credentials (XLS-70): issues KYC credentials and verifies the receiver holds an accepted, non-expired one. Reports status only — escalation is the policy engine's call. |
 | **Public intelligence tool** `assess_public_intel` | Deterministic facade, agent-ready | `app/tools/public_intel.py` | Returns an advisory OSINT risk result. Future AI agents may gather evidence, but code computes the score and policy effect. |
 | **Country risk evaluator** | Deterministic, pure | `app/tools/country_risk.py` | Applies operator-owned country block/review lists. A block feeds G2; geopolitical review raises AML risk but cannot approve or override sanctions. |

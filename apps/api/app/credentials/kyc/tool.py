@@ -9,10 +9,6 @@ configured type from the trusted issuer.
 Determinism boundary: this tool only *reports* credential status. Whether a
 missing credential escalates a payment to hardware approval is decided by
 deterministic policy code, never by the LLM.
-
-In mock mode (settings.use_mock_xrpl) the lookups are deterministic and offline so
-the full workflow runs without a ledger. Real submission/lookup is gated behind
-the mock flag and a configured issuer.
 """
 
 from __future__ import annotations
@@ -25,25 +21,6 @@ from ...ledger import Ledger
 from ...schemas import CredentialStatus, VerificationSteps, VerificationStepStatus
 from . import uri as credential_uri
 
-# Demo subjects treated as un-KYC'd in mock mode, so the credential gate can be
-# demonstrated offline. Everyone else is considered verified in the mock.
-MOCK_UNVERIFIED_SUBJECTS = {"rUNVERIFIED00000000000000000000000"}
-
-# Credentials accepted during this mock session, keyed by (subject, issuer, type).
-# Lets the inline KYC gate work offline: after the agent issues + accepts a
-# credential for an un-KYC'd subject, verify_kyc flips it to verified.
-_MOCK_ACCEPTED: set[tuple[str, str, str]] = set()
-
-# URI strings stored at issue time so mock verify can decode steps.
-# Key: (subject, issuer, credential_type) → (uri_str, VerificationSteps | None)
-_MOCK_URIS: dict[tuple[str, str, str], tuple[str | None, credential_uri.VerificationSteps | None]] = {}
-
-
-def reset_mock_state() -> None:
-    """Clear mock-accepted credentials (used by tests for isolation)."""
-    _MOCK_ACCEPTED.clear()
-    _MOCK_URIS.clear()
-
 
 async def verify_kyc(subject: str) -> CredentialStatus:
     """Verify the subject holds a valid KYC credential from the trusted issuer."""
@@ -53,9 +30,6 @@ async def verify_kyc(subject: str) -> CredentialStatus:
 
     issuer = settings.credential_issuer_address or settings.token_issuer_address
     credential_type = settings.credential_type
-
-    if settings.use_mock_xrpl:
-        return _mock_verify(subject, issuer, credential_type)
 
     try:
         obj = await xrpl_client.lookup_accepted_credential(
@@ -122,21 +96,10 @@ async def issue_credential(
     if steps is not None and uri is None:
         uri = credential_uri.build_uri(steps)
 
-    if settings.use_mock_xrpl:
-        key = (subject, settings.credential_issuer_address, credential_type)
-        decoded = credential_uri.parse_uri(uri) if uri else None
-        _MOCK_URIS[key] = (uri, decoded)
-        return _credential_response(
-            subject=subject,
-            issuer=settings.credential_issuer_address,
-            credential_type=credential_type,
-            tx_hash=xrpl_client.mock_tx_hash("credential", subject),
-            uri=uri,
-            accepted=False,
-        )
-
     if not settings.credential_issuer_seed:
-        raise NotImplementedError("CREDENTIAL_ISSUER_SEED required to issue credentials")
+        raise NotImplementedError(
+            "CREDENTIAL_ISSUER_SEED required to issue credentials"
+        )
 
     from xrpl.models.transactions import CredentialCreate
     from xrpl.utils import str_to_hex
@@ -176,22 +139,10 @@ async def accept_credential(
     seed is read from config (`CREDENTIAL_SUBJECT_SEED`) or passed explicitly.
     """
     settings = get_settings()
-    issuer = issuer or settings.credential_issuer_address or settings.token_issuer_address
+    issuer = (
+        issuer or settings.credential_issuer_address or settings.token_issuer_address
+    )
     credential_type = credential_type or settings.credential_type
-
-    if settings.use_mock_xrpl:
-        key = (subject, issuer, credential_type)
-        _MOCK_ACCEPTED.add(key)
-        # Preserve any URI that was stored at issue time
-        if key not in _MOCK_URIS:
-            _MOCK_URIS[key] = (None, None)
-        return _credential_response(
-            subject=subject,
-            issuer=issuer,
-            credential_type=credential_type,
-            tx_hash=xrpl_client.mock_tx_hash("accept", subject),
-            accepted=True,
-        )
 
     seed = subject_seed or settings.credential_subject_seed
     if not seed:
@@ -208,6 +159,7 @@ async def accept_credential(
             f"but this credential belongs to {subject}."
         )
     from xrpl.models.transactions import CredentialAccept
+
     tx = CredentialAccept(
         account=wallet.address,
         issuer=issuer,
@@ -221,7 +173,7 @@ async def accept_credential(
         # tecDUPLICATE means the credential is already accepted — still valid.
         if "tecDUPLICATE" not in str(exc):
             raise
-        tx_hash = xrpl_client.mock_tx_hash("accept-dup", subject)
+        tx_hash = ""
         explorer_url = None
     return _credential_response(
         subject=wallet.address,
@@ -233,34 +185,16 @@ async def accept_credential(
     )
 
 
-def _mock_verify(subject: str, issuer: str, credential_type: str) -> CredentialStatus:
-    accepted = (subject, issuer, credential_type) in _MOCK_ACCEPTED
-    verified = accepted or subject not in MOCK_UNVERIFIED_SUBJECTS
-    # Decode steps from the mock-accepted URI if one was stored
-    uri, steps = _MOCK_URIS.get((subject, issuer, credential_type), (None, None))
-    return _status(
-        subject,
-        verified=verified,
-        issuer=issuer,
-        credential_type=credential_type,
-        uri=uri,
-        steps=steps,
-        reason=(
-            "mock: accepted KYC credential present"
-            if verified
-            else "mock: no KYC credential on file"
-        ),
-    )
-
-
 def _decode_steps(uri: str | None) -> VerificationSteps | None:
     """Parse verification steps from a credential URI string."""
     parsed = credential_uri.parse_uri(uri)
     if parsed is None:
         return None
+
     # Convert credential_uri.VerificationSteps → schemas.VerificationSteps
     def _s(st: credential_uri.StepStatus) -> VerificationStepStatus:
         return VerificationStepStatus(st.value)
+
     return VerificationSteps(
         documentary=_s(parsed.documentary),
         selfie=_s(parsed.selfie),

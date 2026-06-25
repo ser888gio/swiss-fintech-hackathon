@@ -19,7 +19,7 @@ GLOBAL_AUTO_SETTLE_CEILING_USD = Decimal("500")
 @dataclass(frozen=True)
 class ScopeDecision:
     allowed: bool
-    requires_approval: bool = False   # True = ESCALATE; False + not allowed = BLOCK
+    requires_approval: bool = False  # True = ESCALATE; False + not allowed = BLOCK
     rule_fired: str | None = None
     reasons: list[str] = field(default_factory=list)
 
@@ -37,8 +37,8 @@ class AgentScope:
     - block list overrides allow list
     """
 
-    max_per_transaction: Decimal          # hard cap per single payment
-    max_per_day: Decimal                  # rolling 24h cap (committed + reserved)
+    max_per_transaction: Decimal  # hard cap per single payment
+    max_per_day: Decimal  # rolling 24h cap (committed + reserved)
 
     # Address-level allow/block
     allowed_addresses: list[str] | None = None
@@ -70,13 +70,13 @@ class AgentScope:
     global_ceiling_usd: Decimal = GLOBAL_AUTO_SETTLE_CEILING_USD
 
 
-_QUANTIZE = Decimal("0.000001")   # 6dp — matches RLUSD issued-currency precision
+_QUANTIZE = Decimal("0.000001")  # 6dp — matches RLUSD issued-currency precision
 
 
 def evaluate_scope(
     spend: Decimal,
     scope: AgentScope,
-    spent_today: Decimal,             # committed + reserved, fetched atomically by caller
+    spent_today: Decimal,  # committed + reserved, fetched atomically by caller
     payee_address: str | None = None,
     service_host: str | None = None,
     service_type: str | None = None,
@@ -105,7 +105,11 @@ def evaluate_scope(
     # ── Step 1: blocklist / allowlist / gate checks ────────────────────────────
 
     # 1a: address blocklist (block overrides allow)
-    if payee_address and scope.blocked_addresses and payee_address in scope.blocked_addresses:
+    if (
+        payee_address
+        and scope.blocked_addresses
+        and payee_address in scope.blocked_addresses
+    ):
         return ScopeDecision(
             allowed=False,
             rule_fired="payee_on_blocklist",
@@ -118,7 +122,9 @@ def evaluate_scope(
             return ScopeDecision(
                 allowed=False,
                 rule_fired="payee_not_in_allowlist",
-                reasons=[f"payee {payee_address} is not in the agent allowed-address list"],
+                reasons=[
+                    f"payee {payee_address} is not in the agent allowed-address list"
+                ],
             )
 
     # 1c: unknown merchant gate
@@ -135,7 +141,9 @@ def evaluate_scope(
             return ScopeDecision(
                 allowed=False,
                 rule_fired="asset_not_allowed",
-                reasons=[f"asset '{asset}' not in allowed_assets {scope.allowed_assets}"],
+                reasons=[
+                    f"asset '{asset}' not in allowed_assets {scope.allowed_assets}"
+                ],
             )
 
     # 1e: network check
@@ -144,15 +152,23 @@ def evaluate_scope(
             return ScopeDecision(
                 allowed=False,
                 rule_fired="network_not_allowed",
-                reasons=[f"network '{network}' does not match allowed_network '{scope.allowed_network}'"],
+                reasons=[
+                    f"network '{network}' does not match allowed_network '{scope.allowed_network}'"
+                ],
             )
 
     # 1f: service host blocklist
-    if service_host and scope.blocked_service_hosts and service_host in scope.blocked_service_hosts:
+    if (
+        service_host
+        and scope.blocked_service_hosts
+        and service_host in scope.blocked_service_hosts
+    ):
         return ScopeDecision(
             allowed=False,
             rule_fired="host_on_blocklist",
-            reasons=[f"service host '{service_host}' is on the agent blocked-host list"],
+            reasons=[
+                f"service host '{service_host}' is on the agent blocked-host list"
+            ],
         )
 
     # 1g: service host allowlist (None = any; [] = deny-all)
@@ -179,7 +195,9 @@ def evaluate_scope(
             return ScopeDecision(
                 allowed=False,
                 rule_fired="category_not_allowed",
-                reasons=[f"category '{category}' not in allowed_categories {scope.allowed_categories}"],
+                reasons=[
+                    f"category '{category}' not in allowed_categories {scope.allowed_categories}"
+                ],
             )
 
     # ── Step 2: per-transaction cap ────────────────────────────────────────────

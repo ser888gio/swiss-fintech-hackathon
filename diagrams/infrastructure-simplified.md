@@ -24,7 +24,7 @@ narration.
 
 ### Firefly Bridge (Node/Express — local only)
 **Purpose**: Localhost broker the browser calls to reach the USB hardware signer.
-**Contains**: Express `/sign` on :4747; serial or mock device.
+**Contains**: Express `/sign` on :4747; serial device (`SerialFireflyDevice`).
 
 ### Firefly Pixie (Hardware)
 **Purpose**: Physical secp256k1 signer; releases locked payments only on a button press.

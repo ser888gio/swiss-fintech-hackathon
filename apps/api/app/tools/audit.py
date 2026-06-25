@@ -61,7 +61,9 @@ async def write_audit(
             "blocked": decision.blocked,
             "rule_fired": decision.rule_fired,
             "guardrail_trail": trail_dicts,
-            "blocked_guardrail": blocked_guardrail.model_dump() if blocked_guardrail else None,
+            "blocked_guardrail": blocked_guardrail.model_dump()
+            if blocked_guardrail
+            else None,
             "explanation": explanation,
         },
     )
@@ -81,7 +83,9 @@ async def _generate_explanation(
 
     guardrail_note = ""
     if blocked_guardrail:
-        guardrail_note = f" Guardrail {blocked_guardrail.name} blocked: {blocked_guardrail.reason}."
+        guardrail_note = (
+            f" Guardrail {blocked_guardrail.name} blocked: {blocked_guardrail.reason}."
+        )
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     geo = compliance.geopolitical_risk

@@ -17,6 +17,7 @@ from decimal import Decimal
 
 # ── Band priors (per certified ScoreBand) ─────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class BandPrior:
     """Prior default rate p0 and prior strength n0 (pseudo-count) for a band.
@@ -74,16 +75,16 @@ NOVELTY_REPEAT = 0.95
 
 # ── Context slopes (fast signals, spec §5) ────────────────────────────────────
 
-AMOUNT_SLOPE = 0.05      # premium sensitivity to amount-vs-typical z-score
-VELOCITY_SLOPE = 0.04    # sensitivity to recent transaction velocity
-CONC_SLOPE = 0.06        # sensitivity to counterparty/sector concentration
+AMOUNT_SLOPE = 0.05  # premium sensitivity to amount-vs-typical z-score
+VELOCITY_SLOPE = 0.04  # sensitivity to recent transaction velocity
+CONC_SLOPE = 0.06  # sensitivity to counterparty/sector concentration
 
 
 # ── Loadings (spec §4) ────────────────────────────────────────────────────────
 
-LAMBDA_EXPENSE = 0.05    # operating cost of running the cover
-LAMBDA_CAPITAL = 0.08    # cost of capital backing the exposure
-LAMBDA_RISK_MAX = 0.30   # max uncertainty margin; shrinks to 0 as Z → 1
+LAMBDA_EXPENSE = 0.05  # operating cost of running the cover
+LAMBDA_CAPITAL = 0.08  # cost of capital backing the exposure
+LAMBDA_RISK_MAX = 0.30  # max uncertainty margin; shrinks to 0 as Z → 1
 
 
 # ── Bounds ────────────────────────────────────────────────────────────────────
@@ -93,6 +94,7 @@ PD_MAX = 0.95
 
 
 # ── Per-line parameters (the four covered lines, spec §2) ─────────────────────
+
 
 @dataclass(frozen=True)
 class LineParams:
@@ -122,16 +124,6 @@ LINE_PARAMS: dict[str, LineParams] = {
     # peril: a default would burn the principal's standing — pool absorbs it.
     "principal_score": LineParams(
         lgd=0.20, floor=Decimal("0.25"), limit=Decimal("25000"), recovery_rate=1.0
-    ),
-    # peril: wrong payee / amount / overspend — highest moral-hazard weight.
-    "mandate_breach": LineParams(
-        lgd=0.95, floor=Decimal("1.00"), limit=Decimal("100000"), recovery_rate=0.85
-    ),
-    # peril: FX slippage — delivered amount < intended amount beyond tolerance.
-    # Parametric: loss is read off on-ledger delivered_amount vs route_quote.
-    # LGD=1.0 (the shortfall IS the loss); low floor; limit per cross-border ticket.
-    "fx_slippage": LineParams(
-        lgd=1.0, floor=Decimal("0.25"), limit=Decimal("10000"), recovery_rate=1.0
     ),
     # Cover module peril: agent hallucinated a wrong amount or wrong recipient.
     # Static rate line (not PD-driven); LGD=1.0 so the full loss is covered.
@@ -164,7 +156,13 @@ LINE_PARAMS: dict[str, LineParams] = {
 INSURANCE_PACKAGES: dict[str, list[str]] = {
     "Essential": ["merchant_default"],
     "Standard": ["merchant_default", "fx_slippage", "mandate_breach"],
-    "Full-Stack": ["merchant_default", "fx_slippage", "mandate_breach", "principal_score", "lender_credit"],
+    "Full-Stack": [
+        "merchant_default",
+        "fx_slippage",
+        "mandate_breach",
+        "principal_score",
+        "lender_credit",
+    ],
 }
 
 # Fraction of transaction amount used as the exposure base for principal-score
@@ -174,14 +172,14 @@ PRINCIPAL_SCORE_EXPOSURE_FRACTION = Decimal("0.10")
 
 # ── Solvency / envelope bounds ────────────────────────────────────────────────
 
-CAP = Decimal("5000")            # max total premium per quote (spec §4)
-TICK = Decimal("0.01")           # quote band-rounding tick
-CAPITAL_PER_EXPOSURE = 0.15      # first-loss capital required per unit net exposure
+CAP = Decimal("5000")  # max total premium per quote (spec §4)
+TICK = Decimal("0.01")  # quote band-rounding tick
+CAPITAL_PER_EXPOSURE = 0.15  # first-loss capital required per unit net exposure
 
 
 # ── Experience-rating loop (spec §6) ──────────────────────────────────────────
 
-TAU_DAYS = 120.0                 # recency half-life for posterior decay
-STEP_CAP = 0.35                  # max per-event premium move (±35%)
-EXPOSURE_WEIGHT_MIN = 0.25       # clamp on exposure-weighted updates
+TAU_DAYS = 120.0  # recency half-life for posterior decay
+STEP_CAP = 0.35  # max per-event premium move (±35%)
+EXPOSURE_WEIGHT_MIN = 0.25  # clamp on exposure-weighted updates
 EXPOSURE_WEIGHT_MAX = 4.0

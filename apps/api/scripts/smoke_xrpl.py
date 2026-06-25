@@ -3,7 +3,7 @@
 
 Validates that your real-network setup works *outside* the full agent: it
 connects to XRPL_ENDPOINT with TREASURY_WALLET_SEED, checks the balance, and can
-send a real XRP payment. Use it before flipping the API to USE_MOCK_XRPL=false.
+send a real XRP payment. Use it to validate connectivity before running the full API.
 
 Run from apps/api (after `pip install -r requirements.txt`):
 
@@ -48,7 +48,9 @@ def _treasury_wallet(settings):
 
 def _warn_if_not_test_network(endpoint: str) -> None:
     if not any(token in endpoint for token in ("altnet", "devnet", "rippletest")):
-        print(f"WARNING: {endpoint} does not look like Testnet/Devnet.", file=sys.stderr)
+        print(
+            f"WARNING: {endpoint} does not look like Testnet/Devnet.", file=sys.stderr
+        )
 
 
 async def cmd_status(settings) -> None:
@@ -74,7 +76,9 @@ async def cmd_status(settings) -> None:
                 )
             )
     if not response.is_successful():
-        print(f"account_info failed: {response.result.get('error_message') or response.result}")
+        print(
+            f"account_info failed: {response.result.get('error_message') or response.result}"
+        )
         print("(An unfunded account returns actNotFound - run `fund` or send it XRP.)")
         return
     balance_drops = response.result["account_data"]["Balance"]
@@ -94,7 +98,9 @@ async def cmd_status(settings) -> None:
             ]
             balance = sum(balances, Decimal("0"))
             trust_line = "present" if balances else "missing"
-            print(f"Token    : {balance} {settings.token_currency} (trust line {trust_line})")
+            print(
+                f"Token    : {balance} {settings.token_currency} (trust line {trust_line})"
+            )
     print(f"Explorer : {explorer_account_url(wallet.address)}")
 
 
@@ -109,7 +115,9 @@ async def cmd_fund(settings) -> None:
     root_env = Path(__file__).resolve().parents[3] / ".env"
     root_env.touch(exist_ok=True)
     set_key(str(root_env), "TREASURY_WALLET_SEED", wallet.seed, quote_mode="always")
-    set_key(str(root_env), "TREASURY_WALLET_ADDRESS", wallet.address, quote_mode="never")
+    set_key(
+        str(root_env), "TREASURY_WALLET_ADDRESS", wallet.address, quote_mode="never"
+    )
     print("\nFunded wallet created:")
     print(f"  Address : {wallet.address}")
     print("  Seed    : saved to the ignored root .env (not displayed)")
@@ -153,7 +161,9 @@ async def cmd_trustset(settings, currency: str, issuer: str, limit: str) -> None
     _warn_if_not_test_network(settings.xrpl_endpoint)
     wallet = _treasury_wallet(settings)
     wire_currency = currency_code(currency)
-    print(f"Setting {currency} trust line: {wallet.address} -> issuer {issuer} (limit {limit})")
+    print(
+        f"Setting {currency} trust line: {wallet.address} -> issuer {issuer} (limit {limit})"
+    )
     tx = TrustSet(
         account=wallet.address,
         limit_amount=IssuedCurrencyAmount(
@@ -177,17 +187,23 @@ async def cmd_trustset(settings, currency: str, issuer: str, limit: str) -> None
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="XRPL connectivity / payment smoke test.")
+    parser = argparse.ArgumentParser(
+        description="XRPL connectivity / payment smoke test."
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("status", help="show endpoint + treasury balance")
     sub.add_parser("fund", help="create and fund a faucet wallet (Testnet/Devnet)")
     pay = sub.add_parser("pay", help="send XRP from the treasury wallet")
     pay.add_argument("destination", help="destination r-address")
     pay.add_argument("amount_xrp", help="amount in XRP, e.g. 1")
-    trustset = sub.add_parser("trustset", help="create/update an issued-token trust line")
+    trustset = sub.add_parser(
+        "trustset", help="create/update an issued-token trust line"
+    )
     trustset.add_argument("currency", help="currency code, e.g. RLUSD")
     trustset.add_argument("issuer", help="issuer r-address")
-    trustset.add_argument("limit", nargs="?", default="1000000", help="trust limit (default: 1000000)")
+    trustset.add_argument(
+        "limit", nargs="?", default="1000000", help="trust limit (default: 1000000)"
+    )
     args = parser.parse_args()
 
     settings = get_settings()
@@ -201,7 +217,9 @@ def main() -> None:
         elif args.command == "trustset":
             asyncio.run(cmd_trustset(settings, args.currency, args.issuer, args.limit))
     except Exception as exc:  # noqa: BLE001 - surface a friendly message, not a traceback
-        sys.exit(f"XRPL error: {exc}\n(Check XRPL_ENDPOINT reachability and your seed.)")
+        sys.exit(
+            f"XRPL error: {exc}\n(Check XRPL_ENDPOINT reachability and your seed.)"
+        )
 
 
 if __name__ == "__main__":

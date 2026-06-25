@@ -56,7 +56,7 @@ request │  eligibility → PP per line (PD·LGD·EAD) → loadings → floor/c
 
 The two pure modules have **no I/O** and are unit-tested like `app/policy/`. The
 settlement layer is the only part that touches the ledger, and it reuses the same
-mock/real split, audit log, and explorer helpers as the other ARS tools.
+audit log and explorer helpers as the other ARS tools.
 
 ---
 
@@ -126,8 +126,7 @@ Payment mode is the default because it works on **any** network with a standard
 explorer link and needs no issued-token trust lines. Vault mode demonstrates a
 genuine on-ledger first-loss pool via the XLS-65 Single Asset Vault (Devnet).
 
-Both modes run fully offline in **mock mode** (`USE_MOCK_XRPL=true`) with
-deterministic tx hashes, so the suite and demos are hermetic.
+Both modes submit real transactions; use a funded Testnet or Devnet wallet.
 
 ---
 
@@ -191,9 +190,8 @@ payout, and credential issuance, all linking to `devnet.xrpl.org`.
 
 | Variable | Meaning |
 |---|---|
-| `USE_MOCK_XRPL` | `true` = offline/deterministic; `false` = real submission |
 | `XRPL_ENDPOINT` | network endpoint (drives explorer + network label) |
-| `TREASURY_WALLET_SEED` | funded agent/treasury account (real mode) |
+| `TREASURY_WALLET_SEED` | funded agent/treasury account |
 | `TOKEN_CURRENCY` | settlement asset — **XRP** for the FX-free demo |
 | `TESTNET_SETTLEMENT_SCALE` | scales only the on-ledger amount to a fundable size |
 | `INSURANCE_ENABLED` | master switch for the pillar |
@@ -220,10 +218,7 @@ uvicorn app.main:app --port 8000        # /docs, /health
 # Web (from repo root)
 npm run dev:web                         # http://localhost:5173 → Agent tab → /ars
 
-# Tests (hermetic, mock-forced)
-cd apps/api && pytest
-
-# Real-network smoke (fund + send)
+# Smoke test (fund + send)
 python scripts/smoke_xrpl.py fund       # faucet wallet (Testnet/Devnet)
 ```
 

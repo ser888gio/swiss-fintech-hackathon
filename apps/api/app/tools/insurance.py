@@ -3,15 +3,12 @@
 The deterministic pricing envelope lives in app/insurance/engine.py (pure). This
 tool is the async settlement layer: it builds the quote context from agent risk
 + pool capacity, settles the premium into the Insurance Vault, and runs the
-claim payout waterfall — reusing the same mock/real XRPL split, audit log, and
-spend-reservation idempotency as the other ARS pillars (lending, trade_finance).
+claim payout waterfall — reusing the same audit log and spend-reservation
+idempotency as the other ARS pillars (lending, trade_finance).
 
 Determinism boundary: the LLM never calls this. The premium is decided by
 engine.price(); the payout is gated by policy.engine.evaluate() plus a collusion
 guard before any capital moves.
-
-Mock mode (settings.use_mock_xrpl): in-memory state, deterministic tx hashes, no
-network — the full quote → bind → claim round-trip runs offline.
 """
 
 from __future__ import annotations
@@ -51,34 +48,17 @@ log = logging.getLogger(__name__)
 
 _Q2 = Decimal("0.01")
 
-# ── In-memory state (mock + real-mode cache) ──────────────────────────────────
-_agent_risk: dict[str, AgentRisk] = {}        # agent_address → posterior
-_bands: dict[str, str | None] = {}            # agent_address → score band used
+# ── In-memory state cache ─────────────────────────────────────────────────────
+_agent_risk: dict[str, AgentRisk] = {}  # agent_address → posterior
+_bands: dict[str, str | None] = {}  # agent_address → score band used
 _premiums: list[InsurancePremiumRecord] = []
 _payouts: list[InsurancePayoutRecord] = []
 _pool = {"premiums": Decimal("0"), "payouts": Decimal("0")}
-_payout_pairs: dict[tuple[str, str], int] = {}   # (agent, merchant) → payout count
-
-
-def reset_mock_state() -> None:
-    _agent_risk.clear()
-    _bands.clear()
-    _premiums.clear()
-    _payouts.clear()
-    _payout_pairs.clear()
-    _pool["premiums"] = Decimal("0")
-    _pool["payouts"] = Decimal("0")
-    # Reset the shared XLS-65 vault so the first-loss pool starts clean.
-    vault_tool._state.update({
-        "vault_id": None,
-        "deposited": 0.0,
-        "shares": 0.0,
-        "wallet_balance": 50_000.0,
-        "operations": [],
-    })
+_payout_pairs: dict[tuple[str, str], int] = {}  # (agent, merchant) → payout count
 
 
 # ── Boundary builders (config → pure dataclasses) ─────────────────────────────
+
 
 def _price_policy(settings) -> PricePolicy:
     return PricePolicy(
@@ -93,7 +73,9 @@ def _price_policy(settings) -> PricePolicy:
 def _pool_state(settings) -> PoolState:
     base = Decimal(str(settings.insurance_pool_first_loss_usd))
     first_loss = base + _pool["premiums"] - _pool["payouts"]
-    return PoolState(first_loss=max(Decimal("0"), first_loss), currency=settings.token_currency)
+    return PoolState(
+        first_loss=max(Decimal("0"), first_loss), currency=settings.token_currency
+    )
 
 
 async def _ensure_vault(settings) -> str:
@@ -103,12 +85,16 @@ async def _ensure_vault(settings) -> str:
     so premiums (VaultDeposit) and payouts (VaultWithdraw) are real on-ledger
     operations. insurance_vault_address overrides the auto-provisioned id.
     """
-    vault_id = settings.insurance_vault_address or settings.vault_id or vault_tool.get_vault_state().get("vault_id")
+    vault_id = (
+        settings.insurance_vault_address
+        or settings.vault_id
+        or vault_tool.get_vault_state().get("vault_id")
+    )
     if vault_id:
         return vault_id
     result = await vault_tool.create_vault(
         settings.token_currency,
-        settings.token_issuer_address or "rMOCK_ISSUER",
+        settings.token_issuer_address,
     )
     return result.vault_id
 
@@ -138,6 +124,7 @@ def get_or_seed_risk(agent_address: str, score_band: str | None) -> AgentRisk:
 
 
 # ── Quote (pure pricing, no settlement) ───────────────────────────────────────
+
 
 def _resolve_lines(txn) -> tuple[str, ...]:
     """Expand a named package → line list, or use explicit active_lines."""
@@ -171,6 +158,7 @@ def quote(req: InsuranceQuoteRequest) -> PremiumQuote:
 
 # ── Bind (settle the premium into the Insurance Vault) ────────────────────────
 
+
 async def bind(req: BindRequest) -> InsurancePremiumRecord:
     """Settle the bound quote's premium. Only an OFFER binds; REVIEW/DECLINE raise."""
     settings = get_settings()
@@ -181,7 +169,9 @@ async def bind(req: BindRequest) -> InsurancePremiumRecord:
     # insurance_enforce_kya) and G2 sanctions (always hard) to bind cover.
     trail, blocking = await _party_guardrails(agent_address=req.agent_address)
     if blocking is not None:
-        raise GuardrailRefused(blocking.name, blocking.reason or blocking.rule_fired or "blocked", trail)
+        raise GuardrailRefused(
+            blocking.name, blocking.reason or blocking.rule_fired or "blocked", trail
+        )
 
     # The caller binds the exact quote it was shown (integrity-anchored by its
     # receipt_hash); only an OFFER settles a premium.
@@ -204,7 +194,7 @@ async def bind(req: BindRequest) -> InsurancePremiumRecord:
         job_id=req.job_id,
         agent_address=req.agent_address,
         premium_amount=q.premium,
-        currency=settings.token_currency,   # actual on-ledger settlement asset
+        currency=settings.token_currency,  # actual on-ledger settlement asset
         tx_hash=tx_hash,
         explorer_url=explorer_url,
         score_band=req.score_band,
@@ -230,6 +220,7 @@ async def bind(req: BindRequest) -> InsurancePremiumRecord:
 
 
 # ── Claim (payout waterfall on a covered default) ─────────────────────────────
+
 
 async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
     """Settle a claim: recover collateral → draw first-loss → pay the merchant.
@@ -260,7 +251,9 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
     # Recovery first (collateral), then the pool covers the residual shortfall.
     collateral_recovery = min(collateral, loss).quantize(_Q2, rounding=ROUND_HALF_UP)
     shortfall = max(Decimal("0"), loss - collateral_recovery)
-    payout = min(lp.limit, Decimal(str(lp.recovery_rate)) * shortfall).quantize(_Q2, rounding=ROUND_HALF_UP)
+    payout = min(lp.limit, Decimal(str(lp.recovery_rate)) * shortfall).quantize(
+        _Q2, rounding=ROUND_HALF_UP
+    )
     pool = _pool_state(settings)
     pool_drawn = min(payout, pool.first_loss).quantize(_Q2, rounding=ROUND_HALF_UP)
 
@@ -269,11 +262,15 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
     #   G3_aml, G6_payout, G7_hardware_veto appended explicitly
     #   G2b_collusion as the final guard
     trail, party_block = await _party_guardrails(
-        agent_address=req.agent_address, counterparty=req.merchant, counterparty_name=req.merchant_name
+        agent_address=req.agent_address,
+        counterparty=req.merchant,
+        counterparty_name=req.merchant_name,
     )
 
     # G3: AML enrichment — placeholder slot so the audit record has G3 in its trail
-    trail.append(GuardrailResult(name="G3_aml", passed=True, rule_fired=None, reason="not_wired"))
+    trail.append(
+        GuardrailResult(name="G3_aml", passed=True, rule_fired=None, reason="not_wired")
+    )
 
     # G6: payout policy gate (mirrors payment threshold check; named G6_payout for claim audits)
     decision = policy_engine.evaluate(
@@ -283,35 +280,54 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
         threshold_usd=settings.policy_threshold_usd,
         flag_score=settings.policy_compliance_flag_score,
     )
-    trail.append(GuardrailResult(
-        name="G6_payout",
-        passed=not decision.blocked,
-        rule_fired=decision.rule_fired,
-        reason="; ".join(decision.reasons) if decision.reasons else None,
-    ))
+    trail.append(
+        GuardrailResult(
+            name="G6_payout",
+            passed=not decision.blocked,
+            rule_fired=decision.rule_fired,
+            reason="; ".join(decision.reasons) if decision.reasons else None,
+        )
+    )
 
     # G7: hardware veto is enforced at payment release, not at claim time
-    trail.append(GuardrailResult(name="G7_hardware_veto", passed=True, rule_fired=None, reason="enforced_at_release"))
+    trail.append(
+        GuardrailResult(
+            name="G7_hardware_veto",
+            passed=True,
+            rule_fired=None,
+            reason="enforced_at_release",
+        )
+    )
 
     collusion = _is_collusion(req.agent_address, req.merchant)
-    trail.append(GuardrailResult(
-        name="G2b_collusion",
-        passed=not collusion,
-        rule_fired="collusion" if collusion else None,
-        reason="repeated payouts between agent and counterparty" if collusion else None,
-    ))
+    trail.append(
+        GuardrailResult(
+            name="G2b_collusion",
+            passed=not collusion,
+            rule_fired="collusion" if collusion else None,
+            reason="repeated payouts between agent and counterparty"
+            if collusion
+            else None,
+        )
+    )
 
     if party_block is not None:
-        raise PayoutRefused(party_block.reason or party_block.rule_fired or "payout blocked")
+        raise PayoutRefused(
+            party_block.reason or party_block.rule_fired or "payout blocked"
+        )
     if decision.blocked:
         raise PayoutRefused(decision.block_reason or "payout blocked by policy")
     if collusion:
-        raise PayoutRefused("collusion pattern: repeated payouts between agent and merchant")
+        raise PayoutRefused(
+            "collusion pattern: repeated payouts between agent and merchant"
+        )
 
     # Settle the payout: the pool portion is drawn on-ledger (XLS-65 VaultWithdraw
     # in vault mode, or a token Payment to the merchant in Payment mode). Agent
-    # collateral slashing is an off-vault track (mock hash in mock mode).
-    slash_tx, draw_tx, draw_explorer = await _settle_payout(req, collateral_recovery, pool_drawn, settings)
+    # collateral slashing is an off-vault track (not yet settled on-ledger).
+    slash_tx, draw_tx, draw_explorer = await _settle_payout(
+        req, collateral_recovery, pool_drawn, settings
+    )
 
     now = datetime.now(timezone.utc)
     record = InsurancePayoutRecord(
@@ -321,7 +337,7 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
         collateral_slashed=str(collateral_recovery),
         pool_drawn=str(pool_drawn),
         total_paid=str((collateral_recovery + pool_drawn).quantize(_Q2)),
-        currency=settings.token_currency,   # actual on-ledger settlement asset
+        currency=settings.token_currency,  # actual on-ledger settlement asset
         slash_tx_hash=slash_tx,
         pool_draw_tx_hash=draw_tx,
         explorer_url=draw_explorer,
@@ -331,7 +347,9 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
     )
     _payouts.append(record)
     _pool["payouts"] += pool_drawn
-    _payout_pairs[(req.agent_address, req.merchant)] = _payout_pairs.get((req.agent_address, req.merchant), 0) + 1
+    _payout_pairs[(req.agent_address, req.merchant)] = (
+        _payout_pairs.get((req.agent_address, req.merchant), 0) + 1
+    )
 
     # Reprice: the default moves the posterior up, exposure-weighted by the loss.
     record_outcome(
@@ -360,6 +378,7 @@ async def settle_claim(req: ClaimRequest) -> InsurancePayoutRecord:
 
 # ── Experience-rating outcome (spec §6) ───────────────────────────────────────
 
+
 def record_outcome(
     agent_address: str,
     *,
@@ -382,6 +401,7 @@ def record_outcome(
 
 
 # ── Read models ───────────────────────────────────────────────────────────────
+
 
 def get_agent_risk_state(agent_address: str) -> AgentRiskState | None:
     r = _agent_risk.get(agent_address)
@@ -417,8 +437,12 @@ def get_pool_status() -> PoolStatus:
 
 # ── Per-party compliance guardrails (G1 KYA + G2 sanctions) ───────────────────
 
+
 async def _party_guardrails(
-    *, agent_address: str, counterparty: str | None = None, counterparty_name: str | None = None,
+    *,
+    agent_address: str,
+    counterparty: str | None = None,
+    counterparty_name: str | None = None,
 ) -> tuple[list[GuardrailResult], GuardrailResult | None]:
     """Run G1 KYA + G2 sanctions for a party action.
 
@@ -431,6 +455,7 @@ async def _party_guardrails(
 
     if settings.credential_kyc_enabled:
         from . import credentials
+
         cred = await credentials.verify_kyc(agent_address)
         g1 = GuardrailResult(
             name="G1_kya",
@@ -460,6 +485,7 @@ async def _party_guardrails(
 
 def _sanctions_hit(address: str, name: str | None) -> bool:
     from . import compliance
+
     if address in compliance.SANCTIONED_ACCOUNTS:
         return True
     if name and name.lower() in compliance.SANCTIONED_NAMES:
@@ -475,41 +501,42 @@ def list_payouts() -> list[InsurancePayoutRecord]:
     return sorted(_payouts, key=lambda p: p.created_at, reverse=True)
 
 
-# ── On-ledger settlement (mock / vault / payment) ─────────────────────────────
+# ── On-ledger settlement (vault / payment) ────────────────────────────────────
 
-async def _settle_premium(req: BindRequest, premium: Decimal, settings) -> tuple[str, str | None]:
+
+async def _settle_premium(
+    req: BindRequest, premium: Decimal, settings
+) -> tuple[str, str | None]:
     """Settle the premium into the pool. Returns (tx_hash, explorer_url)."""
-    if settings.use_mock_xrpl:
-        return xrpl_client.mock_tx_hash("insurance_premium", req.job_id), None
     if settings.insurance_use_vault:
         vault_id = await _ensure_vault(settings)
         deposit = await vault_tool.deposit(vault_id, float(premium))
         return deposit.tx_hash, deposit.explorer_url
-    return await _pay(_pool_account(settings), premium, req.job_id, "insurance_premium", settings)
+    return await _pay(
+        _pool_account(settings), premium, req.job_id, "insurance_premium", settings
+    )
 
 
 async def _settle_payout(
     req: ClaimRequest, collateral_recovery: Decimal, pool_drawn: Decimal, settings
 ) -> tuple[str | None, str | None, str | None]:
     """Settle the payout. Returns (slash_tx, pool_draw_tx, pool_draw_explorer)."""
-    slash_tx = (
-        xrpl_client.mock_tx_hash("insurance_slash", req.job_id)
-        if collateral_recovery > 0 and settings.use_mock_xrpl
-        else None
-    )
+    slash_tx = None
     if pool_drawn <= 0:
         return slash_tx, None, None
-    if settings.use_mock_xrpl:
-        return slash_tx, xrpl_client.mock_tx_hash("insurance_payout", req.job_id), None
     if settings.insurance_use_vault:
         vault_id = await _ensure_vault(settings)
         withdrawal = await vault_tool.withdraw(vault_id, float(pool_drawn))
         return None, withdrawal.tx_hash, withdrawal.explorer_url
-    draw_tx, explorer = await _pay(req.merchant, pool_drawn, req.job_id, "insurance_payout", settings)
+    draw_tx, explorer = await _pay(
+        req.merchant, pool_drawn, req.job_id, "insurance_payout", settings
+    )
     return None, draw_tx, explorer
 
 
-async def _pay(destination: str, amount: Decimal, job_id: str, kind: str, settings) -> tuple[str, str | None]:
+async def _pay(
+    destination: str, amount: Decimal, job_id: str, kind: str, settings
+) -> tuple[str, str | None]:
     """Submit a real token Payment for an insurance settlement (Payment mode).
 
     Applies the same testnet settlement scale as the payment path so the
@@ -531,10 +558,12 @@ async def _pay(destination: str, amount: Decimal, job_id: str, kind: str, settin
         destination=destination,
         amount=xrpl_client.token_amount(settings.token_currency, on_ledger, settings),
         source_tag=settings.insurance_source_tag,
-        memos=[Memo(
-            memo_type="insurance/v1".encode().hex().upper(),
-            memo_data=memo_data.encode().hex().upper(),
-        )],
+        memos=[
+            Memo(
+                memo_type="insurance/v1".encode().hex().upper(),
+                memo_data=memo_data.encode().hex().upper(),
+            )
+        ],
     )
     result = await ledger.submit(tx, wallet)
     tx_hash = result["hash"]
@@ -546,6 +575,7 @@ def _pool_account(settings) -> str:
 
 
 # ── Guards & helpers ──────────────────────────────────────────────────────────
+
 
 def _is_collusion(agent_address: str, merchant: str) -> bool:
     """Flag a fabricated-default pattern: repeated payouts on one agent↔merchant pair."""
@@ -573,6 +603,7 @@ def _emit_audit(event_type: str, payload: dict) -> None:
 
 # ── Persistence (write-behind, mirrors store.py) ──────────────────────────────
 
+
 async def load_from_db() -> None:
     """Hydrate insurance state from Postgres on startup. No-op without a DB."""
     if db.session_factory is None:
@@ -587,24 +618,46 @@ async def load_from_db() -> None:
         async with db.session_factory() as session:
             for row in (await session.execute(select(AgentRiskRecord))).scalars().all():
                 _agent_risk[row.agent_address] = AgentRisk(
-                    alpha=row.alpha, beta=row.beta, n0=row.n0, a0=row.a0, b0=row.b0, last_ts=row.last_ts
+                    alpha=row.alpha,
+                    beta=row.beta,
+                    n0=row.n0,
+                    a0=row.a0,
+                    b0=row.b0,
+                    last_ts=row.last_ts,
                 )
                 _bands[row.agent_address] = row.score_band
             for row in (await session.execute(select(PremiumRow))).scalars().all():
-                _premiums.append(InsurancePremiumRecord(
-                    id=row.id, job_id=row.job_id, agent_address=row.agent_address,
-                    premium_amount=row.premium_amount, currency=row.currency, tx_hash=row.tx_hash,
-                    explorer_url=row.explorer_url, score_band=row.score_band, created_at=row.created_at,
-                ))
+                _premiums.append(
+                    InsurancePremiumRecord(
+                        id=row.id,
+                        job_id=row.job_id,
+                        agent_address=row.agent_address,
+                        premium_amount=row.premium_amount,
+                        currency=row.currency,
+                        tx_hash=row.tx_hash,
+                        explorer_url=row.explorer_url,
+                        score_band=row.score_band,
+                        created_at=row.created_at,
+                    )
+                )
                 _pool["premiums"] += Decimal(row.premium_amount)
             for row in (await session.execute(select(PayoutRow))).scalars().all():
-                _payouts.append(InsurancePayoutRecord(
-                    id=row.id, job_id=row.job_id, merchant=row.merchant,
-                    collateral_slashed=row.collateral_slashed, pool_drawn=row.pool_drawn,
-                    total_paid=row.total_paid, currency=row.currency, slash_tx_hash=row.slash_tx_hash,
-                    pool_draw_tx_hash=row.pool_draw_tx_hash, explorer_url=row.explorer_url,
-                    reputation_mpt_protected=row.reputation_mpt_protected, created_at=row.created_at,
-                ))
+                _payouts.append(
+                    InsurancePayoutRecord(
+                        id=row.id,
+                        job_id=row.job_id,
+                        merchant=row.merchant,
+                        collateral_slashed=row.collateral_slashed,
+                        pool_drawn=row.pool_drawn,
+                        total_paid=row.total_paid,
+                        currency=row.currency,
+                        slash_tx_hash=row.slash_tx_hash,
+                        pool_draw_tx_hash=row.pool_draw_tx_hash,
+                        explorer_url=row.explorer_url,
+                        reputation_mpt_protected=row.reputation_mpt_protected,
+                        created_at=row.created_at,
+                    )
+                )
                 _pool["payouts"] += Decimal(row.pool_drawn)
     except Exception as exc:
         log.warning("Failed to load insurance state from DB: %s", exc)
@@ -617,11 +670,19 @@ async def _persist_premium(rec: InsurancePremiumRecord) -> None:
 
     try:
         async with db.session_factory() as session:
-            await session.merge(PremiumRow(
-                id=rec.id, job_id=rec.job_id, agent_address=rec.agent_address,
-                premium_amount=rec.premium_amount, currency=rec.currency, tx_hash=rec.tx_hash,
-                explorer_url=rec.explorer_url, score_band=rec.score_band, created_at=rec.created_at,
-            ))
+            await session.merge(
+                PremiumRow(
+                    id=rec.id,
+                    job_id=rec.job_id,
+                    agent_address=rec.agent_address,
+                    premium_amount=rec.premium_amount,
+                    currency=rec.currency,
+                    tx_hash=rec.tx_hash,
+                    explorer_url=rec.explorer_url,
+                    score_band=rec.score_band,
+                    created_at=rec.created_at,
+                )
+            )
             await session.commit()
     except Exception as exc:
         log.warning("Failed to persist premium %s: %s", rec.id, exc)
@@ -634,29 +695,48 @@ async def _persist_payout(rec: InsurancePayoutRecord) -> None:
 
     try:
         async with db.session_factory() as session:
-            await session.merge(PayoutRow(
-                id=rec.id, job_id=rec.job_id, merchant=rec.merchant,
-                collateral_slashed=rec.collateral_slashed, pool_drawn=rec.pool_drawn,
-                total_paid=rec.total_paid, currency=rec.currency, slash_tx_hash=rec.slash_tx_hash,
-                pool_draw_tx_hash=rec.pool_draw_tx_hash, explorer_url=rec.explorer_url,
-                reputation_mpt_protected=rec.reputation_mpt_protected, created_at=rec.created_at,
-            ))
+            await session.merge(
+                PayoutRow(
+                    id=rec.id,
+                    job_id=rec.job_id,
+                    merchant=rec.merchant,
+                    collateral_slashed=rec.collateral_slashed,
+                    pool_drawn=rec.pool_drawn,
+                    total_paid=rec.total_paid,
+                    currency=rec.currency,
+                    slash_tx_hash=rec.slash_tx_hash,
+                    pool_draw_tx_hash=rec.pool_draw_tx_hash,
+                    explorer_url=rec.explorer_url,
+                    reputation_mpt_protected=rec.reputation_mpt_protected,
+                    created_at=rec.created_at,
+                )
+            )
             await session.commit()
     except Exception as exc:
         log.warning("Failed to persist payout %s: %s", rec.id, exc)
 
 
-async def _persist_risk(agent_address: str, r: AgentRisk, score_band: str | None) -> None:
+async def _persist_risk(
+    agent_address: str, r: AgentRisk, score_band: str | None
+) -> None:
     if db.session_factory is None:
         return
     from ..models import AgentRiskRecord
 
     try:
         async with db.session_factory() as session:
-            await session.merge(AgentRiskRecord(
-                agent_address=agent_address, score_band=score_band,
-                alpha=r.alpha, beta=r.beta, n0=r.n0, a0=r.a0, b0=r.b0, last_ts=r.last_ts,
-            ))
+            await session.merge(
+                AgentRiskRecord(
+                    agent_address=agent_address,
+                    score_band=score_band,
+                    alpha=r.alpha,
+                    beta=r.beta,
+                    n0=r.n0,
+                    a0=r.a0,
+                    b0=r.b0,
+                    last_ts=r.last_ts,
+                )
+            )
             await session.commit()
     except Exception as exc:
         log.warning("Failed to persist agent risk %s: %s", agent_address, exc)
@@ -678,6 +758,7 @@ def _schedule(coro) -> None:
 
 
 # ── Errors ────────────────────────────────────────────────────────────────────
+
 
 class InsuranceError(Exception):
     pass

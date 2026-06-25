@@ -790,10 +790,8 @@ export function TreasuryPage() {
           </button>
           <span title={runtime ? `XRPL ${runtime.network}; Firefly confirmation ${runtime.fireflyConfirmationEnabled ? "enabled" : "disabled"}` : "Runtime status unavailable"} style={{
             fontSize: "0.7rem", padding: "0.2rem 0.6rem", borderRadius: 999,
-            border: runtime?.mockMode
-              ? "1px solid rgba(147,197,253,0.4)"
-              : "1px solid rgba(110,231,183,0.45)",
-            color: runtime?.mockMode ? "#93c5fd" : "#6ee7b7",
+            border: "1px solid rgba(110,231,183,0.45)",
+            color: "#6ee7b7",
           }}>
             {runtime ? `${runtime.network} mode` : "status unavailable"}
           </span>

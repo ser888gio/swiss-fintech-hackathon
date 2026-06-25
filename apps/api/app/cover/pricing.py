@@ -15,7 +15,12 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from ..insurance.engine import band_round
 from ..insurance.risk import AgentRisk, credibility, pd_agent
-from ..insurance.tables import LAMBDA_CAPITAL, LAMBDA_EXPENSE, LAMBDA_RISK_MAX, LINE_PARAMS
+from ..insurance.tables import (
+    LAMBDA_CAPITAL,
+    LAMBDA_EXPENSE,
+    LAMBDA_RISK_MAX,
+    LINE_PARAMS,
+)
 from ..schemas import CoverLineKind, CoverQuote
 
 _Q6 = Decimal("0.000001")
@@ -33,7 +38,9 @@ def _non_delivery_rate(r: AgentRisk, rate_min: float, rate_max: float) -> Decima
     return Decimal(str(round(rate, 6))).quantize(_Q6)
 
 
-def _hallucination_rate(static_rate: float, rate_min: float, rate_max: float) -> Decimal:
+def _hallucination_rate(
+    static_rate: float, rate_min: float, rate_max: float
+) -> Decimal:
     rate = max(rate_min, min(rate_max, static_rate))
     return Decimal(str(round(rate, 6))).quantize(_Q6)
 
@@ -65,8 +72,8 @@ def _receipt_hash(
 def price_cover(
     agent_address: str,
     score_band: str,
-    cover_cap: str,          # Decimal string
-    per_claim_limit: str,    # Decimal string
+    cover_cap: str,  # Decimal string
+    per_claim_limit: str,  # Decimal string
     term_days: int,
     lines: list[CoverLineKind],
     r: AgentRisk,
@@ -108,10 +115,14 @@ def price_cover(
         total_annual_rate += rate
 
     # Prorate: annual_premium × (term_days / 365)
-    prorated_premium = (total_annual_rate * cap_d * Decimal(term_days) / _YEAR).quantize(_Q2, rounding=ROUND_HALF_UP)
+    prorated_premium = (
+        total_annual_rate * cap_d * Decimal(term_days) / _YEAR
+    ).quantize(_Q2, rounding=ROUND_HALF_UP)
     premium = band_round(min(Decimal(str(premium_cap)), prorated_premium), _Q2)
 
-    receipt = _receipt_hash(agent_address, cap_d, pcl_d, term_days, premium, line_rates, pd, cred)
+    receipt = _receipt_hash(
+        agent_address, cap_d, pcl_d, term_days, premium, line_rates, pd, cred
+    )
 
     # Solvency gate: cover_cap must not exceed free pool capacity
     if cap_d > free_capacity:

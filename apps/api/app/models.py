@@ -10,7 +10,17 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -72,7 +82,9 @@ class CredentialRecord(Base):
     issuer: Mapped[str | None] = mapped_column(String, nullable=True)
     credential_type: Mapped[str | None] = mapped_column(String, nullable=True)
     uri: Mapped[str | None] = mapped_column(Text, nullable=True)
-    expiration: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expiration: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     status: Mapped[str] = mapped_column(String, index=True)
     accepted: Mapped[bool] = mapped_column(default=False)
     verified: Mapped[bool] = mapped_column(default=False)
@@ -101,6 +113,7 @@ class CredentialLogRecord(Base):
 
 # ── ARS: Atomic spend reservation (invariant 2) ───────────────────────────────
 
+
 class SpendReservationRecord(Base):
     """Per-agent spend reservation for atomic velocity enforcement.
 
@@ -117,21 +130,28 @@ class SpendReservationRecord(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     agent_address: Mapped[str] = mapped_column(String, index=True)
-    idempotency_key: Mapped[str] = mapped_column(String)    # InvoiceID or payment_id
-    amount: Mapped[str] = mapped_column(String)             # Decimal string
+    idempotency_key: Mapped[str] = mapped_column(String)  # InvoiceID or payment_id
+    amount: Mapped[str] = mapped_column(String)  # Decimal string
     currency: Mapped[str] = mapped_column(String)
-    context_kind: Mapped[str] = mapped_column(String)       # "payment" | "loan" | ...
-    status: Mapped[str] = mapped_column(String, index=True) # "reserved" | "committed" | "released"
+    context_kind: Mapped[str] = mapped_column(String)  # "payment" | "loan" | ...
+    status: Mapped[str] = mapped_column(
+        String, index=True
+    )  # "reserved" | "committed" | "released"
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     __table_args__ = (
-        UniqueConstraint("agent_address", "idempotency_key", name="uq_spend_reservation"),
+        UniqueConstraint(
+            "agent_address", "idempotency_key", name="uq_spend_reservation"
+        ),
         Index("ix_spend_reservations_agent_status", "agent_address", "status"),
     )
 
 
 # ── ARS: Ed25519 audit event log (Pillar 5) ───────────────────────────────────
+
 
 class AuditEventRecord(Base):
     """Persisted ARS audit event (append-only; never updated after insert)."""
@@ -143,7 +163,7 @@ class AuditEventRecord(Base):
     actor: Mapped[str] = mapped_column(String)
     context_kind: Mapped[str] = mapped_column(String, index=True)
     payload: Mapped[dict] = mapped_column(JSON)
-    timestamp: Mapped[str] = mapped_column(String)          # ISO 8601 UTC
+    timestamp: Mapped[str] = mapped_column(String)  # ISO 8601 UTC
     prior_event_hash: Mapped[str] = mapped_column(String)
     event_hash: Mapped[str] = mapped_column(String, unique=True)
     signature: Mapped[str] = mapped_column(Text)
@@ -151,6 +171,7 @@ class AuditEventRecord(Base):
 
 
 # ── ARS: x402 service payment (Pillar 3 / ARS regulated settlement) ──────────
+
 
 class ServicePaymentRecord(Base):
     """Audit record for one x402 service payment."""
@@ -161,10 +182,10 @@ class ServicePaymentRecord(Base):
     agent_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     status: Mapped[str] = mapped_column(String, default="settled", index=True)
     service_host: Mapped[str] = mapped_column(String, index=True)
-    invoice_id: Mapped[str] = mapped_column(String, unique=True)    # anti-replay
+    invoice_id: Mapped[str] = mapped_column(String, unique=True)  # anti-replay
     asset_currency: Mapped[str] = mapped_column(String)
     asset_issuer: Mapped[str] = mapped_column(String)
-    amount: Mapped[str] = mapped_column(String)                     # Decimal string
+    amount: Mapped[str] = mapped_column(String)  # Decimal string
     tx_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     explorer_url: Mapped[str | None] = mapped_column(String, nullable=True)
     guardrail_trail: Mapped[list | None] = mapped_column(JSON, nullable=True)
@@ -178,6 +199,7 @@ class ServicePaymentRecord(Base):
 
 # ── ARS: Delegation grants (Pillar 1 / G5) ───────────────────────────────────
 
+
 class DelegationGrantRecord(Base):
     """A parent agent's budget grant to a sub-agent wallet."""
 
@@ -186,13 +208,15 @@ class DelegationGrantRecord(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     parent_address: Mapped[str] = mapped_column(String, index=True)
     child_address: Mapped[str] = mapped_column(String, index=True)
-    max_total: Mapped[str] = mapped_column(String)          # Decimal string
+    max_total: Mapped[str] = mapped_column(String)  # Decimal string
     max_per_tx: Mapped[str] = mapped_column(String)
     max_per_day: Mapped[str] = mapped_column(String)
     currency: Mapped[str] = mapped_column(String)
     allowed_service_hosts: Mapped[list | None] = mapped_column(JSON, nullable=True)
     allowed_service_types: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     fund_tx_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     fund_explorer_url: Mapped[str | None] = mapped_column(String, nullable=True)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -204,6 +228,7 @@ class DelegationGrantRecord(Base):
 
 # ── ARS: Trade-finance receivable state machine (Pillar 2) ───────────────────
 
+
 class ReceivableRecord(Base):
     """A trade-finance receivable progressing through the early-payment lifecycle."""
 
@@ -213,10 +238,12 @@ class ReceivableRecord(Base):
     invoice_id: Mapped[str] = mapped_column(String, unique=True, index=True)
     buyer: Mapped[str] = mapped_column(String, index=True)
     supplier: Mapped[str] = mapped_column(String, index=True)
-    amount: Mapped[str] = mapped_column(String)             # Decimal string — face value
-    discount_rate: Mapped[str] = mapped_column(String)      # Decimal string
+    amount: Mapped[str] = mapped_column(String)  # Decimal string — face value
+    discount_rate: Mapped[str] = mapped_column(String)  # Decimal string
     due_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    status: Mapped[str] = mapped_column(String, index=True) # ReceivableStatus enum value
+    status: Mapped[str] = mapped_column(
+        String, index=True
+    )  # ReceivableStatus enum value
     # Credit draw (LoanCreate or VaultWithdraw)
     draw_tx_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     draw_explorer_url: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -227,7 +254,9 @@ class ReceivableRecord(Base):
     repayment_tx_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     # Credit settlement (LoanRepay or VaultDeposit)
     settle_tx_hash: Mapped[str | None] = mapped_column(String, nullable=True)
-    loan_id: Mapped[str | None] = mapped_column(String, nullable=True)  # XLS-66 loan seq
+    loan_id: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # XLS-66 loan seq
     guardrail_trail: Mapped[list | None] = mapped_column(JSON, nullable=True)
     audit_event_id: Mapped[str | None] = mapped_column(String, nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String, unique=True)
@@ -239,6 +268,7 @@ class ReceivableRecord(Base):
 
 # ── ARS: Insurance records (Pillar 3) ─────────────────────────────────────────
 
+
 class InsurancePremiumRecord(Base):
     """One per-transaction premium payment into the Insurance Vault."""
 
@@ -247,7 +277,7 @@ class InsurancePremiumRecord(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     job_id: Mapped[str] = mapped_column(String, index=True)
     agent_address: Mapped[str] = mapped_column(String, index=True)
-    premium_amount: Mapped[str] = mapped_column(String)     # Decimal string
+    premium_amount: Mapped[str] = mapped_column(String)  # Decimal string
     currency: Mapped[str] = mapped_column(String)
     tx_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     explorer_url: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -263,7 +293,7 @@ class InsurancePayoutRecord(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     job_id: Mapped[str] = mapped_column(String, index=True)
     merchant: Mapped[str] = mapped_column(String, index=True)
-    collateral_slashed: Mapped[str] = mapped_column(String)     # Decimal string
+    collateral_slashed: Mapped[str] = mapped_column(String)  # Decimal string
     pool_drawn: Mapped[str] = mapped_column(String)
     total_paid: Mapped[str] = mapped_column(String)
     currency: Mapped[str] = mapped_column(String)
@@ -289,19 +319,22 @@ class AgentRiskRecord(Base):
 
 # ── Business-defined payment agents ──────────────────────────────────────────
 
+
 class AgentRecord(Base):
     """Business-defined payment agent with per-agent policy guardrails."""
 
     __tablename__ = "agents"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)   # slug e.g. "supplier-bot"
+    id: Mapped[str] = mapped_column(
+        String, primary_key=True
+    )  # slug e.g. "supplier-bot"
     name: Mapped[str] = mapped_column(String)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, index=True, default="active")
     currency: Mapped[str] = mapped_column(String, default="RLUSD")
-    max_single_payment: Mapped[str] = mapped_column(String)      # Decimal string
-    max_daily_spend: Mapped[str] = mapped_column(String)         # Decimal string
-    requires_approval_above: Mapped[str] = mapped_column(String) # Decimal string
+    max_single_payment: Mapped[str] = mapped_column(String)  # Decimal string
+    max_daily_spend: Mapped[str] = mapped_column(String)  # Decimal string
+    requires_approval_above: Mapped[str] = mapped_column(String)  # Decimal string
     allowed_categories: Mapped[list | None] = mapped_column(JSON, nullable=True)
     allowed_assets: Mapped[list | None] = mapped_column(JSON, nullable=True)
     allowed_network: Mapped[str] = mapped_column(String, default="xrpl:1")
@@ -332,7 +365,9 @@ class AgentSpendReservationRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     __table_args__ = (
-        UniqueConstraint("agent_id", "idempotency_key", name="uq_agent_spend_reservation"),
+        UniqueConstraint(
+            "agent_id", "idempotency_key", name="uq_agent_spend_reservation"
+        ),
         Index("ix_agent_spend_agent_status", "agent_id", "status"),
     )
 
@@ -343,9 +378,13 @@ class TreasuryGoalRecord(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     agent_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     payload: Mapped[dict] = mapped_column(JSON)
-    last_triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_triggered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
 
 
 class TreasuryAgentRunRecord(Base):
@@ -355,4 +394,6 @@ class TreasuryAgentRunRecord(Base):
     agent_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     payload: Mapped[dict] = mapped_column(JSON)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

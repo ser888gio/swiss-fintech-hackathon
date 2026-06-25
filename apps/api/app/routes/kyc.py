@@ -28,7 +28,7 @@ router = APIRouter(prefix="/kyc")
 
 
 class IDVStartRequest(BaseModel):
-    client_user_id: str          # unique sender ID (e.g. wallet address or user ID)
+    client_user_id: str  # unique sender ID (e.g. wallet address or user ID)
     given_name: str | None = None
     family_name: str | None = None
     email: str | None = None
@@ -75,7 +75,9 @@ def start_idv(body: IDVStartRequest) -> IDVStartResponse:
             family_name=body.family_name,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Plaid IDV session creation failed: {exc}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"Plaid IDV session creation failed: {exc}"
+        ) from exc
 
     return IDVStartResponse(
         session_id=session.session_id,
@@ -102,7 +104,9 @@ def get_idv_status(session_id: str) -> IDVStatusResponse:
             session_id=session_id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Plaid IDV lookup failed: {exc}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"Plaid IDV lookup failed: {exc}"
+        ) from exc
 
     return IDVStatusResponse(
         session_id=session.session_id,
@@ -120,6 +124,7 @@ def get_idv_status(session_id: str) -> IDVStatusResponse:
 
 # ── KYA endpoints ─────────────────────────────────────────────────────────────
 
+
 @router.post("/kya/issue", response_model=KYAIssueResponse)
 async def issue_kya(body: KYAIssueRequest) -> KYAIssueResponse:
     """Issue a KYA (Know Your Agent) credential to an AI agent wallet.
@@ -128,9 +133,8 @@ async def issue_kya(body: KYAIssueRequest) -> KYAIssueResponse:
     and authorized scopes into the XRPL Credential URI field using the compact
     JSON format defined in tools/kya_uri.py.
 
-    In mock mode (USE_MOCK_XRPL=true) the credential is stored in memory and
-    the response includes mock=true. In real mode it submits a CredentialCreate
-    to the ledger.
+    Submits a CredentialCreate to the ledger and stores the credential in
+    memory for the session.
 
     This endpoint is called once per agent deployment to bind the agent wallet
     to a declared identity before it can initiate payments or delegate actions.
@@ -161,13 +165,17 @@ async def issue_kya(body: KYAIssueRequest) -> KYAIssueResponse:
             credential_type=body.credential_type,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"KYA issuance failed: {exc}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"KYA issuance failed: {exc}"
+        ) from exc
 
 
 @router.get("/kya/{agent_address}", response_model=KYAVerifyResponse)
 async def verify_kya(
     agent_address: str,
-    scope: str | None = Query(default=None, description="Required scope to check (e.g. 'payment')"),
+    scope: str | None = Query(
+        default=None, description="Required scope to check (e.g. 'payment')"
+    ),
 ) -> KYAVerifyResponse:
     """Verify whether an AI agent wallet holds a valid KYA credential.
 
@@ -184,12 +192,17 @@ async def verify_kya(
         try:
             required_scope = AgentScope(scope)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Unknown scope '{scope}'. Valid scopes: {[s.value for s in AgentScope]}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown scope '{scope}'. Valid scopes: {[s.value for s in AgentScope]}",
+            )
 
     try:
         status = await agent_credentials.verify_agent_kya(agent_address, required_scope)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"KYA verification failed: {exc}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"KYA verification failed: {exc}"
+        ) from exc
 
     return KYAVerifyResponse(
         agent_address=agent_address,

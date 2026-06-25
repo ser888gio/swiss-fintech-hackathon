@@ -39,52 +39,7 @@ async def init_db(database_url: str) -> bool:
         engine = create_async_engine(database_url, echo=False, pool_pre_ping=True)
         async with asyncio.timeout(DB_STARTUP_TIMEOUT_SECONDS):
             async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all, checkfirst=True)
-                if conn.dialect.name == "postgresql":
-                    # create_all does not alter the pre-existing service_payments
-                    # table. Keep this additive upgrade safe for current Railway DBs.
-                    await conn.execute(text(
-                        "ALTER TABLE service_payments "
-                        "ADD COLUMN IF NOT EXISTS agent_id VARCHAR"
-                    ))
-                    await conn.execute(text(
-                        "ALTER TABLE service_payments "
-                        "ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'settled'"
-                    ))
-                    await conn.execute(text(
-                        "ALTER TABLE service_payments "
-                        "ADD COLUMN IF NOT EXISTS cover JSON"
-                    ))
-                    # create_all does not add columns to an existing credentials
-                    # table. Keep the off-ledger user association additive.
-                    await conn.execute(text(
-                        "ALTER TABLE credentials "
-                        "ADD COLUMN IF NOT EXISTS user_id VARCHAR"
-                    ))
-                    await conn.execute(text(
-                        "CREATE INDEX IF NOT EXISTS ix_credentials_user_id "
-                        "ON credentials (user_id)"
-                    ))
-                    await conn.execute(text(
-                        "ALTER TABLE credentials "
-                        "ADD COLUMN IF NOT EXISTS subject_country VARCHAR"
-                    ))
-                    await conn.execute(text(
-                        "ALTER TABLE credentials "
-                        "ADD COLUMN IF NOT EXISTS subject_entity_type VARCHAR"
-                    ))
-                    await conn.execute(text(
-                        "ALTER TABLE agents "
-                        "ADD COLUMN IF NOT EXISTS auto_insure JSON"
-                    ))
-                elif conn.dialect.name == "sqlite":
-                    # SQLite doesn't support IF NOT EXISTS on ALTER TABLE
-                    try:
-                        await conn.execute(text(
-                            "ALTER TABLE agents ADD COLUMN auto_insure JSON"
-                        ))
-                    except Exception:
-                        pass  # column already exists
+                await _prepare_schema(conn)
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
         log.info("Postgres connected; audit store ready.")
         return True
@@ -94,3 +49,35 @@ async def init_db(database_url: str) -> bool:
             await engine.dispose()
         log.warning("DB unavailable — running in-memory only: %s", exc)
         return False
+
+
+async def _prepare_schema(conn) -> None:
+    await conn.run_sync(Base.metadata.create_all, checkfirst=True)
+    if conn.dialect.name == "postgresql":
+        await _run_postgres_migrations(conn)
+    elif conn.dialect.name == "sqlite":
+        await _run_sqlite_migrations(conn)
+
+
+async def _run_postgres_migrations(conn) -> None:
+    """Apply additive migrations that SQLAlchemy create_all will not backfill."""
+    statements = (
+        "ALTER TABLE service_payments ADD COLUMN IF NOT EXISTS agent_id VARCHAR",
+        "ALTER TABLE service_payments ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'settled'",
+        "ALTER TABLE service_payments ADD COLUMN IF NOT EXISTS cover JSON",
+        "ALTER TABLE credentials ADD COLUMN IF NOT EXISTS user_id VARCHAR",
+        "CREATE INDEX IF NOT EXISTS ix_credentials_user_id ON credentials (user_id)",
+        "ALTER TABLE credentials ADD COLUMN IF NOT EXISTS subject_country VARCHAR",
+        "ALTER TABLE credentials ADD COLUMN IF NOT EXISTS subject_entity_type VARCHAR",
+        "ALTER TABLE agents ADD COLUMN IF NOT EXISTS auto_insure JSON",
+    )
+    for statement in statements:
+        await conn.execute(text(statement))
+
+
+async def _run_sqlite_migrations(conn) -> None:
+    """Apply local SQLite-only migrations, tolerating already-existing columns."""
+    try:
+        await conn.execute(text("ALTER TABLE agents ADD COLUMN auto_insure JSON"))
+    except Exception:
+        pass

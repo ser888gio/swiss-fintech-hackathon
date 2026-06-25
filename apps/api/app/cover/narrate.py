@@ -44,11 +44,13 @@ def _template_narrate(event: CoverEvent, policy: CoverPolicy) -> str:
 
 def _llm_narrate(event: CoverEvent, policy: CoverPolicy) -> str:
     import os
+
     api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("no LLM key")
 
     import openai
+
     client = openai.OpenAI(api_key=api_key)
     prompt = (
         f"An AI treasury agent insurance claim has been triggered.\n"

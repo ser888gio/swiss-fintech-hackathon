@@ -11,21 +11,15 @@ Guardrail sequence (in order, short-circuit on first failure):
 
 The LLM never calls this directly. Only orchestrator code does, after all
 guardrails pass.
-
-Mock mode (settings.use_mock_xrpl=True): a deterministic 402 challenge is
-synthesised in-process; no network or real facilitator is called. The mock
-returns a real-shaped X402Settlement so the full flow runs offline.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from decimal import Decimal
 
 import httpx
@@ -39,19 +33,11 @@ log = logging.getLogger(__name__)
 SOURCE_TAG = 20260530  # Starter Kit convention; overridden by config
 
 
-# ── Mock 402 server state ─────────────────────────────────────────────────────
+# ── In-memory merchant invoice registry ──────────────────────────────────────
 
-_mock_invoices: dict[str, dict] = {}
+_invoices: dict[str, dict] = {}
 _demo_invoice_id: str | None = None
 _demo_last_verified: tuple[str, str] | None = None
-
-
-def reset_mock_state() -> None:
-    """Clear in-process mock invoices (test isolation)."""
-    global _demo_invoice_id, _demo_last_verified
-    _mock_invoices.clear()
-    _demo_invoice_id = None
-    _demo_last_verified = None
 
 
 def _demo_pay_to(settings) -> str:
@@ -163,9 +149,11 @@ def _tx_contains_invoice(tx: dict, invoice_id: str) -> bool:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class ServiceResponse:
     """The resource body returned after a successful x402 pay-and-retry."""
+
     body: str
     status_code: int
     payment: X402Settlement
@@ -193,10 +181,6 @@ async def fetch_requirement(service_url: str) -> X402PaymentRequirement:
     settings = get_settings()
     if not settings.x402_enabled:
         raise X402Disabled("x402_enabled is False — enable it in config before calling")
-    if settings.use_mock_xrpl:
-        requirement = _mock_requirement(service_url, settings)
-        _validate_requirement(requirement, settings)
-        return requirement
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.get(service_url)
     if response.status_code != 402:
@@ -213,18 +197,6 @@ async def retry_with_proof(
     settlement: X402Settlement,
 ) -> ServiceResponse:
     """Retry a protected resource and require merchant proof acceptance."""
-    settings = get_settings()
-    if settings.use_mock_xrpl:
-        return ServiceResponse(
-            body=json.dumps({
-                "mock": True,
-                "invoice_id": requirement.invoice_id,
-                "service_url": requirement.service_url,
-                "verified": True,
-            }),
-            status_code=200,
-            payment=settlement,
-        )
     async with httpx.AsyncClient(timeout=30) as client:
         retry = await client.get(
             requirement.service_url,
@@ -234,7 +206,9 @@ async def retry_with_proof(
         raise X402Error(
             f"merchant rejected payment proof with HTTP {retry.status_code}"
         )
-    return ServiceResponse(body=retry.text, status_code=retry.status_code, payment=settlement)
+    return ServiceResponse(
+        body=retry.text, status_code=retry.status_code, payment=settlement
+    )
 
 
 async def settle_x402(
@@ -245,19 +219,16 @@ async def settle_x402(
 ) -> X402Settlement:
     """Build and submit the RLUSD Payment to satisfy a 402 requirement.
 
-    In real mode: submits a direct issued-currency Payment with xrpl-py.
-    In mock mode: deterministic hash chain, no network.
+    Submits a direct issued-currency Payment with xrpl-py.
     """
     settings = get_settings()
     amount = Decimal(requirement.amount)
     invoice_id = requirement.invoice_id
-    if settings.use_mock_xrpl:
-        result = _mock_settle(requirement, settings)
-    else:
-        result = await _real_settle(requirement, settings)
+    result = await _real_settle(requirement, settings)
 
     # Emit an ARS audit event
     from . import audit_log
+
     audit_event = audit_log.append(
         event_type="x402_payment",
         actor="settlement_layer",
@@ -288,7 +259,10 @@ async def settle_x402(
 
 # ── Parsing + validation ──────────────────────────────────────────────────────
 
-def _parse_402(resp: httpx.Response, service_url: str, settings) -> X402PaymentRequirement:
+
+def _parse_402(
+    resp: httpx.Response, service_url: str, settings
+) -> X402PaymentRequirement:
     """Parse a 402 response into an X402PaymentRequirement.
 
     Accepts both the canonical x402 JSON body and the X-Payment-Required header
@@ -301,15 +275,23 @@ def _parse_402(resp: httpx.Response, service_url: str, settings) -> X402PaymentR
 
     pay_to = body.get("payTo") or body.get("pay_to") or body.get("destination", "")
     currency = body.get("currency") or body.get("asset") or settings.token_currency
-    issuer = body.get("issuer") or body.get("assetIssuer") or settings.token_issuer_address
+    issuer = (
+        body.get("issuer") or body.get("assetIssuer") or settings.token_issuer_address
+    )
     network = body.get("network") or settings.xrpl_network
     amount = str(body.get("amount") or body.get("maxAmountRequired") or "0")
-    invoice_id = body.get("invoiceId") or body.get("invoice_id") or body.get("nonce") or str(uuid.uuid4())
+    invoice_id = (
+        body.get("invoiceId")
+        or body.get("invoice_id")
+        or body.get("nonce")
+        or str(uuid.uuid4())
+    )
     source_tag = body.get("sourceTag") or body.get("source_tag")
-    facilitator = body.get("facilitatorUrl") or body.get("facilitator_url") or settings.x402_facilitator_url
-
-    from urllib.parse import urlparse
-    host = urlparse(service_url).netloc
+    facilitator = (
+        body.get("facilitatorUrl")
+        or body.get("facilitator_url")
+        or settings.x402_facilitator_url
+    )
 
     return X402PaymentRequirement(
         service_url=service_url,
@@ -326,18 +308,29 @@ def _parse_402(resp: httpx.Response, service_url: str, settings) -> X402PaymentR
 
 def _validate_requirement(req: X402PaymentRequirement, settings) -> None:
     """Reject any 402 challenge that doesn't match our config allowlists."""
-    allowed_assets = {a.strip() for a in settings.x402_allowed_assets.split(",") if a.strip()}
+    allowed_assets = {
+        a.strip() for a in settings.x402_allowed_assets.split(",") if a.strip()
+    }
     if req.asset_currency not in allowed_assets:
-        raise X402Rejected(f"currency '{req.asset_currency}' not in x402_allowed_assets")
+        raise X402Rejected(
+            f"currency '{req.asset_currency}' not in x402_allowed_assets"
+        )
 
-    allowed_facilitators = {f.strip() for f in settings.x402_allowed_facilitators.split(",") if f.strip()}
+    allowed_facilitators = {
+        f.strip() for f in settings.x402_allowed_facilitators.split(",") if f.strip()
+    }
     if req.facilitator_url not in allowed_facilitators:
-        raise X402Rejected(f"facilitator '{req.facilitator_url}' not in x402_allowed_facilitators")
+        raise X402Rejected(
+            f"facilitator '{req.facilitator_url}' not in x402_allowed_facilitators"
+        )
 
     amount = Decimal(req.amount)
     if amount <= Decimal("0"):
         raise X402Rejected("challenge amount must be positive")
-    if settings.token_issuer_address and req.asset_issuer != settings.token_issuer_address:
+    if (
+        settings.token_issuer_address
+        and req.asset_issuer != settings.token_issuer_address
+    ):
         raise X402Rejected("challenge issuer does not match configured token issuer")
     expected_network = getattr(settings, "x402_network", "") or settings.xrpl_network
     if req.network.lower() != expected_network.lower():
@@ -347,6 +340,7 @@ def _validate_requirement(req: X402PaymentRequirement, settings) -> None:
 
 
 # ── Real-mode settlement ──────────────────────────────────────────────────────
+
 
 @dataclass
 class _SettleResult:
@@ -363,70 +357,31 @@ async def _real_settle(req: X402PaymentRequirement, settings) -> _SettleResult:
     wallet = ledger.treasury_wallet
 
     amount = Decimal(req.amount)
-    memo_data = json.dumps({
-        "x402_invoice": req.invoice_id,
-        "service_url": req.service_url,
-    }, separators=(",", ":"))
+    memo_data = json.dumps(
+        {
+            "x402_invoice": req.invoice_id,
+            "service_url": req.service_url,
+        },
+        separators=(",", ":"),
+    )
 
     tx = Payment(
         account=wallet.address,
         destination=req.pay_to,
         amount=xrpl_client.to_wire_amount(amount, req.asset_currency, settings),
         source_tag=req.source_tag or settings.x402_source_tag,
-        memos=[Memo(
-            memo_type="x402/v1".encode().hex().upper(),
-            memo_data=memo_data.encode().hex().upper(),
-        )],
+        memos=[
+            Memo(
+                memo_type="x402/v1".encode().hex().upper(),
+                memo_data=memo_data.encode().hex().upper(),
+            )
+        ],
     )
     endpoint = getattr(settings, "x402_xrpl_endpoint", "") or settings.xrpl_endpoint
     result = await ledger.submit(tx, wallet, endpoint=endpoint)
     tx_hash = result["hash"]
     explorer_url = xrpl_client.explorer_tx_url_for(tx_hash, endpoint)
     return _SettleResult(tx_hash=tx_hash, explorer_url=explorer_url)
-
-
-# ── Mock settlement ───────────────────────────────────────────────────────────
-
-async def _mock_request_with_payment(
-    service_url: str,
-    *,
-    service_type: str,
-    guardrail_trail: list[GuardrailResult],
-) -> ServiceResponse:
-    settings = get_settings()
-    req = _mock_requirement(service_url, settings)
-    settlement = await settle_x402(req, guardrail_trail=guardrail_trail)
-    body = json.dumps({"mock": True, "invoice_id": req.invoice_id, "service_url": service_url})
-    return ServiceResponse(body=body, status_code=200, payment=settlement)
-
-
-def _mock_requirement(service_url: str, settings) -> X402PaymentRequirement:
-    invoice_id = f"mock-{uuid.uuid4()}"
-    slug = service_url.rstrip("/").split("/")[-1].split("?")[0]
-    prices = {
-        "repair-yard": "2.000000",
-        "customs": "5.000000",
-        "port-authority": "2.500000",
-        "bunker-fuel": "2.750000",
-        "marine-insurance": "3.000000",
-        "repair-yard-over-threshold": "4.000000",
-    }
-    return X402PaymentRequirement(
-        service_url=service_url,
-        facilitator_url=settings.x402_facilitator_url,
-        pay_to=f"rMOCK{hashlib.sha256(slug.encode()).hexdigest()[:29]}",
-        asset_currency="RLUSD",
-        asset_issuer=settings.token_issuer_address
-        or "rQhWct2fv4Vc4KRjRgMrxa8xPN9Zx9iLKV",
-        network=settings.xrpl_network,
-        amount=(
-            "4.000000"
-            if slug == "repair-yard" and "price=4.000000" in service_url
-            else prices.get(slug, "1.000000")
-        ),
-        invoice_id=invoice_id,
-        source_tag=settings.x402_source_tag,
-    )
 
 
 _MERCHANTS = {
@@ -445,16 +400,13 @@ def issue_merchant_requirement(
     *,
     price_override: str | None = None,
 ) -> X402PaymentRequirement:
-    """Issue a fresh challenge for one simulated in-API counterparty."""
+    """Issue a fresh challenge for one in-API counterparty."""
     if slug not in _MERCHANTS:
         raise X402Error(f"unknown merchant '{slug}'")
     setting_name, price, source_tag = _MERCHANTS[slug]
     pay_to = getattr(settings, setting_name, "")
     if not pay_to:
-        if settings.use_mock_xrpl:
-            pay_to = f"rMOCK{hashlib.sha256(slug.encode()).hexdigest()[:29]}"
-        else:
-            raise X402Error(f"{setting_name} is not configured")
+        raise X402Error(f"{setting_name} is not configured")
     invoice_id = f"maersk-{slug}-{uuid.uuid4()}"
     requirement = X402PaymentRequirement(
         service_url=service_url,
@@ -467,7 +419,7 @@ def issue_merchant_requirement(
         invoice_id=invoice_id,
         source_tag=source_tag,
     )
-    _mock_invoices[invoice_id] = {
+    _invoices[invoice_id] = {
         "slug": slug,
         "requirement": requirement,
         "verified_tx_hash": None,
@@ -482,17 +434,15 @@ async def verify_merchant_proof(proof_header: str, slug: str, settings) -> str:
         raise X402Error("invalid x402 proof header")
     tx_hash = match.group(1).upper()
     invoice_id = match.group(2)
-    state = _mock_invoices.get(invoice_id)
+    state = _invoices.get(invoice_id)
     if not state or state["slug"] != slug:
         raise X402Error("unknown or mismatched merchant invoice")
     if state["verified_tx_hash"] == tx_hash:
         return tx_hash
     requirement: X402PaymentRequirement = state["requirement"]
-    if settings.use_mock_xrpl:
-        state["verified_tx_hash"] = tx_hash
-        return tx_hash
 
     from xrpl.models.requests import Tx
+
     async with xrpl_client.async_client(settings.xrpl_endpoint) as client:
         response = await client.request(Tx(transaction=tx_hash))
     if not response.is_successful():
@@ -524,34 +474,35 @@ async def verify_merchant_proof(proof_header: str, slug: str, settings) -> str:
     return tx_hash
 
 
-def _mock_settle(req: X402PaymentRequirement, settings) -> _SettleResult:
-    tx_hash = xrpl_client.mock_tx_hash("x402", req.invoice_id)
-    return _SettleResult(tx_hash=tx_hash, explorer_url=None)
-
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _build_proof_header(tx_hash: str, invoice_id: str) -> str:
     return f"xrpl:{tx_hash}:{invoice_id}"
 
 
 def _agent_address(settings) -> str:
+    if not settings.treasury_wallet_seed:
+        return settings.treasury_wallet_address
     from ..ledger import Ledger
-    if settings.use_mock_xrpl or not settings.treasury_wallet_seed:
-        return settings.treasury_wallet_address or "rMOCK_TREASURY_0000000000000000000"
+
     return Ledger(settings).treasury_wallet.address
 
 
 # ── Errors ────────────────────────────────────────────────────────────────────
 
+
 class X402Error(Exception):
     pass
+
 
 class X402Disabled(X402Error):
     pass
 
+
 class X402ParseError(X402Error):
     pass
+
 
 class X402Rejected(X402Error):
     pass

@@ -7,7 +7,16 @@ from fastapi.responses import JSONResponse
 
 from . import db, store
 from .config import get_settings
-from .routes import credentials, health, kyc, merchants, payments, redteam, treasury, wallet
+from .routes import (
+    credentials,
+    health,
+    kyc,
+    merchants,
+    payments,
+    redteam,
+    treasury,
+    wallet,
+)
 from .routes import cover as cover_routes
 from .routes.agents import router as agents_router, load_agents_from_db
 
@@ -18,9 +27,11 @@ async def lifespan(app: FastAPI):
     if await db.init_db(settings.database_url):
         await store.load_from_db()
         from .tools import insurance as insurance_tool
+
         await insurance_tool.load_from_db()
         await load_agents_from_db()
         from .agents import treasury_agent
+
         await treasury_agent.load_agent_state_from_db()
     yield
 
@@ -28,9 +39,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Treasury Agent API", version="0.1.0", lifespan=lifespan)
 settings = get_settings()
 cors_origins = [
-    origin.strip()
-    for origin in settings.cors_origins.split(",")
-    if origin.strip()
+    origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()
 ]
 if settings.railway_service_web_url:
     web_origin = settings.railway_service_web_url.strip()
@@ -76,7 +85,8 @@ def _cors_headers(request: Request) -> dict[str, str]:
     if not origin:
         return {}
     allowed = origin in cors_origins or (
-        bool(settings.cors_origin_regex) and re.fullmatch(settings.cors_origin_regex, origin) is not None
+        bool(settings.cors_origin_regex)
+        and re.fullmatch(settings.cors_origin_regex, origin) is not None
     )
     if not allowed:
         return {}

@@ -9,8 +9,8 @@ The parent funds the sub-agent wallet via a real RLUSD Payment (same execution
 path as process_payment, so it inherits policy + Firefly approval for large
 funding amounts). The grant record is persisted in Postgres.
 
-Pure guardrail (evaluate_delegation) — no I/O, unit-tested separately.
-Funding path (grant_delegation) — real-mode XRPL Payment; mocked in mock mode.
+Pure guardrail (evaluate_delegation) — no I/O.
+Funding path (grant_delegation) — real XRPL Payment.
 
 Determinism boundary: grant_delegation checks that the funding amount itself
 passes policy (via the existing execute_payment path) before storing the grant.
@@ -19,16 +19,18 @@ The LLM never calls this; only orchestrator code does.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import ROUND_DOWN, Decimal
 
-from .. import db, store, xrpl_client
+from .. import db, xrpl_client
 from ..config import get_settings
-from ..schemas import DelegationGrant, DelegationGrantCreate, GuardrailResult, ScopeDecisionSchema
+from ..schemas import (
+    DelegationGrant,
+    DelegationGrantCreate,
+)
 
 log = logging.getLogger(__name__)
 
@@ -36,16 +38,12 @@ _QUANTIZE = Decimal("0.000001")
 
 # ── In-memory grant store ─────────────────────────────────────────────────────
 # Grants are small and rarely change — full table fits in memory comfortably.
-_grants: dict[str, DelegationGrant] = {}         # grant_id → DelegationGrant
-_grants_by_child: dict[str, list[str]] = {}      # child_address → [grant_id]
-
-
-def reset_mock_state() -> None:
-    _grants.clear()
-    _grants_by_child.clear()
+_grants: dict[str, DelegationGrant] = {}  # grant_id → DelegationGrant
+_grants_by_child: dict[str, list[str]] = {}  # child_address → [grant_id]
 
 
 # ── Pure guardrail (G5) ───────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class DelegationDecision:
@@ -57,7 +55,7 @@ class DelegationDecision:
 def evaluate_delegation(
     spend: Decimal,
     grant: DelegationGrant,
-    spent_so_far: Decimal,    # drawn from this grant so far (caller fetches atomically)
+    spent_so_far: Decimal,  # drawn from this grant so far (caller fetches atomically)
 ) -> DelegationDecision:
     """G5: check a proposed sub-agent draw against the parent's delegation grant.
 
@@ -105,14 +103,18 @@ def evaluate_delegation(
         return DelegationDecision(
             allowed=False,
             rule_fired="delegation_per_day_exceeded",
-            reasons=[f"projected daily draw {projected} exceeds delegated cap {max_day}"],
+            reasons=[
+                f"projected daily draw {projected} exceeds delegated cap {max_day}"
+            ],
         )
 
     if projected > max_total:
         return DelegationDecision(
             allowed=False,
             rule_fired="delegation_total_exceeded",
-            reasons=[f"projected lifetime draw {projected} exceeds delegation total {max_total}"],
+            reasons=[
+                f"projected lifetime draw {projected} exceeds delegation total {max_total}"
+            ],
         )
 
     return DelegationDecision(allowed=True, rule_fired=None, reasons=[])
@@ -120,13 +122,13 @@ def evaluate_delegation(
 
 # ── grant_delegation (orchestrator action) ────────────────────────────────────
 
+
 async def grant_delegation(create: DelegationGrantCreate) -> DelegationGrant:
     """Create a delegation grant and optionally fund the sub-agent wallet.
 
     Steps:
     1. Persist the grant record in memory + DB.
     2. Fund the child wallet with max_total RLUSD via a Payment (inherits policy).
-       In mock mode a deterministic tx hash is used; no real Payment submitted.
 
     Returns the persisted DelegationGrant (with fund_tx_hash populated).
     """
@@ -137,19 +139,13 @@ async def grant_delegation(create: DelegationGrantCreate) -> DelegationGrant:
     grant_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
 
-    fund_tx_hash: str | None = None
-    fund_explorer_url: str | None = None
-
-    if settings.use_mock_xrpl:
-        fund_tx_hash = xrpl_client.mock_tx_hash("delegation_fund", grant_id)
-    else:
-        fund_tx_hash, fund_explorer_url = await _fund_child_wallet(
-            create.child_address,
-            Decimal(create.max_total),
-            create.currency,
-            grant_id,
-            settings,
-        )
+    fund_tx_hash, fund_explorer_url = await _fund_child_wallet(
+        create.child_address,
+        Decimal(create.max_total),
+        create.currency,
+        grant_id,
+        settings,
+    )
 
     grant = DelegationGrant(
         id=grant_id,
@@ -172,6 +168,7 @@ async def grant_delegation(create: DelegationGrantCreate) -> DelegationGrant:
     _schedule_persist(grant)
 
     from . import audit_log
+
     audit_log.append(
         event_type="delegation_grant_created",
         actor="settlement_layer",
@@ -192,7 +189,9 @@ def revoke_delegation(grant_id: str) -> DelegationGrant:
     grant = _grants.get(grant_id)
     if grant is None:
         raise DelegationNotFound(grant_id)
-    revoked = grant.model_copy(update={"revoked": True, "updated_at": datetime.now(timezone.utc)})
+    revoked = grant.model_copy(
+        update={"revoked": True, "updated_at": datetime.now(timezone.utc)}
+    )
     _grants[grant_id] = revoked
     _schedule_persist(revoked)
     return revoked
@@ -209,6 +208,7 @@ def grants_for_child(child_address: str) -> list[DelegationGrant]:
 
 
 # ── Real-mode funding ─────────────────────────────────────────────────────────
+
 
 async def _fund_child_wallet(
     child_address: str,
@@ -229,10 +229,12 @@ async def _fund_child_wallet(
         destination=child_address,
         amount=xrpl_client.to_wire_amount(amount, currency, settings),
         source_tag=settings.delegation_source_tag,
-        memos=[Memo(
-            memo_type="delegation/v1".encode().hex().upper(),
-            memo_data=memo_data.encode().hex().upper(),
-        )],
+        memos=[
+            Memo(
+                memo_type="delegation/v1".encode().hex().upper(),
+                memo_data=memo_data.encode().hex().upper(),
+            )
+        ],
     )
     result = await ledger.submit(tx, wallet)
     tx_hash = result["hash"]
@@ -240,6 +242,7 @@ async def _fund_child_wallet(
 
 
 # ── Persistence ───────────────────────────────────────────────────────────────
+
 
 def _store_grant(grant: DelegationGrant) -> None:
     _grants[grant.id] = grant
@@ -250,6 +253,7 @@ def _store_grant(grant: DelegationGrant) -> None:
 
 def _schedule_persist(grant: DelegationGrant) -> None:
     import asyncio
+
     try:
         asyncio.get_running_loop()
         asyncio.create_task(_persist_grant(grant))
@@ -262,6 +266,7 @@ async def _persist_grant(grant: DelegationGrant) -> None:
     if db.session_factory is None:
         return
     from ..models import DelegationGrantRecord
+
     try:
         async with db.session_factory() as session:
             row = DelegationGrantRecord(
@@ -289,11 +294,14 @@ async def _persist_grant(grant: DelegationGrant) -> None:
 
 # ── Errors ────────────────────────────────────────────────────────────────────
 
+
 class DelegationError(Exception):
     pass
 
+
 class DelegationDisabled(DelegationError):
     pass
+
 
 class DelegationNotFound(DelegationError):
     pass

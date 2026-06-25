@@ -67,8 +67,15 @@ class Network:
 
 
 NETWORKS = [
-    Network("testnet", "wss://s.altnet.rippletest.net:51233", "https://testnet.xrpl.org", True),
-    Network("devnet", "wss://s.devnet.rippletest.net:51233", "https://devnet.xrpl.org", True),
+    Network(
+        "testnet",
+        "wss://s.altnet.rippletest.net:51233",
+        "https://testnet.xrpl.org",
+        True,
+    ),
+    Network(
+        "devnet", "wss://s.devnet.rippletest.net:51233", "https://devnet.xrpl.org", True
+    ),
 ]
 
 
@@ -109,7 +116,9 @@ def _agent_wallets(settings):
 def _memo(text: str):
     from xrpl.models.transactions import Memo
 
-    return Memo(memo_type=b"agent/v1".hex().upper(), memo_data=text.encode().hex().upper())
+    return Memo(
+        memo_type=b"agent/v1".hex().upper(), memo_data=text.encode().hex().upper()
+    )
 
 
 async def _balance_xrp(client, address: str):
@@ -117,7 +126,9 @@ async def _balance_xrp(client, address: str):
     from xrpl.models.requests import AccountInfo
     from xrpl.utils import drops_to_xrp
 
-    response = await client.request(AccountInfo(account=address, ledger_index="validated"))
+    response = await client.request(
+        AccountInfo(account=address, ledger_index="validated")
+    )
     if response.result.get("error"):
         return None
     return float(drops_to_xrp(response.result["account_data"]["Balance"]))
@@ -126,7 +137,9 @@ async def _balance_xrp(client, address: str):
 async def _has_trust_line(client, address: str, currency_hex: str, issuer: str) -> bool:
     from xrpl.models.requests import AccountLines
 
-    response = await client.request(AccountLines(account=address, peer=issuer, ledger_index="validated"))
+    response = await client.request(
+        AccountLines(account=address, peer=issuer, ledger_index="validated")
+    )
     if response.result.get("error"):
         return False
     return any(
@@ -136,6 +149,7 @@ async def _has_trust_line(client, address: str, currency_hex: str, issuer: str) 
 
 
 # ── status ──────────────────────────────────────────────────────────────────
+
 
 async def cmd_status(settings, _args) -> None:
     wallets = _agent_wallets(settings)
@@ -157,6 +171,7 @@ async def cmd_status(settings, _args) -> None:
 
 # ── provision ───────────────────────────────────────────────────────────────
 
+
 async def _fund_existing(client, wallet, net: Network, *, attempts: int = 5) -> float:
     """Fund an existing wallet from the network faucet. Returns the new balance.
 
@@ -174,7 +189,9 @@ async def _fund_existing(client, wallet, net: Network, *, attempts: int = 5) -> 
         except Exception as exc:  # noqa: BLE001 - inspect for the rate-limit case only
             if "429" in str(exc) and attempt < attempts:
                 wait = 15 * attempt
-                print(f"    faucet rate-limited (429); retry {attempt}/{attempts - 1} in {wait}s ...")
+                print(
+                    f"    faucet rate-limited (429); retry {attempt}/{attempts - 1} in {wait}s ..."
+                )
                 await asyncio.sleep(wait)
                 continue
             raise
@@ -186,14 +203,20 @@ async def _ensure_rlusd_trust_line(client, wallet, net: Network) -> None:
     from xrpl.models.transactions import TrustSet
 
     currency_hex = currency_code("RLUSD")
-    if await _has_trust_line(client, wallet.classic_address, currency_hex, RLUSD_TESTNET_ISSUER):
+    if await _has_trust_line(
+        client, wallet.classic_address, currency_hex, RLUSD_TESTNET_ISSUER
+    ):
         print(f"    RLUSD trust line already present on {net.name}.")
         return
-    print(f"    Setting RLUSD trust line {wallet.classic_address} -> {RLUSD_TESTNET_ISSUER} ...")
+    print(
+        f"    Setting RLUSD trust line {wallet.classic_address} -> {RLUSD_TESTNET_ISSUER} ..."
+    )
     tx = TrustSet(
         account=wallet.classic_address,
         source_tag=AGENT_SOURCE_TAG,
-        limit_amount=IssuedCurrencyAmount(currency=currency_hex, issuer=RLUSD_TESTNET_ISSUER, value="1000000"),
+        limit_amount=IssuedCurrencyAmount(
+            currency=currency_hex, issuer=RLUSD_TESTNET_ISSUER, value="1000000"
+        ),
         memos=[_memo("rlusd-trustline")],
     )
     response = await submit_and_wait(tx, client, wallet)
@@ -206,23 +229,15 @@ async def _ensure_rlusd_trust_line(client, wallet, net: Network) -> None:
 
 async def cmd_provision(settings, args) -> None:
     wallets = _agent_wallets(settings)
-    print(f"Provisioning {len(wallets)} wallet(s) across {len(NETWORKS)} network(s). "
-          f"Floor = {MIN_FUNDED_XRP} XRP.\n")
+    print(
+        f"Provisioning {len(wallets)} wallet(s) across {len(NETWORKS)} network(s). "
+        f"Floor = {MIN_FUNDED_XRP} XRP.\n"
+    )
     for net in NETWORKS:
         print(f"== {net.name} ({net.endpoint}) ==")
         async with _client(net.endpoint) as client:
             for label, wallet in wallets.items():
-                balance = await _balance_xrp(client, wallet.classic_address)
-                if balance is None:
-                    print(f"  {label}: not funded — requesting from faucet ...")
-                    balance = await _fund_existing(client, wallet, net)
-                    print(f"  {label}: funded -> {balance:.6f} XRP")
-                elif balance < MIN_FUNDED_XRP:
-                    print(f"  {label}: {balance:.6f} XRP < floor — topping up ...")
-                    balance = await _fund_existing(client, wallet, net)
-                    print(f"  {label}: topped up -> {balance:.6f} XRP")
-                else:
-                    print(f"  {label}: already funded ({balance:.6f} XRP) — skipping")
+                await _ensure_wallet_funded(client, wallet, label, net)
             # RLUSD trust line is a Testnet-only service (issuer is Testnet-only).
             if args.rlusd and net.name == "testnet":
                 await _ensure_rlusd_trust_line(client, wallets["treasury"], net)
@@ -231,6 +246,22 @@ async def cmd_provision(settings, args) -> None:
 
 
 # ── verify ──────────────────────────────────────────────────────────────────
+
+
+async def _ensure_wallet_funded(client, wallet, label: str, net) -> None:
+    balance = await _balance_xrp(client, wallet.classic_address)
+    if balance is None:
+        print(f"  {label}: not funded - requesting from faucet ...")
+        balance = await _fund_existing(client, wallet, net)
+        print(f"  {label}: funded -> {balance:.6f} XRP")
+        return
+    if balance < MIN_FUNDED_XRP:
+        print(f"  {label}: {balance:.6f} XRP < floor - topping up ...")
+        balance = await _fund_existing(client, wallet, net)
+        print(f"  {label}: topped up -> {balance:.6f} XRP")
+        return
+    print(f"  {label}: already funded ({balance:.6f} XRP) - skipping")
+
 
 async def cmd_verify(settings, args) -> None:
     """Submit a small SourceTag-tagged XRP payment on each network as live proof."""
@@ -245,11 +276,15 @@ async def cmd_verify(settings, args) -> None:
     amount_xrp = args.amount
 
     for net in NETWORKS:
-        print(f"== {net.name}: {amount_xrp} XRP  {sender.classic_address} -> {recipient} ==")
+        print(
+            f"== {net.name}: {amount_xrp} XRP  {sender.classic_address} -> {recipient} =="
+        )
         async with _client(net.endpoint) as client:
             balance = await _balance_xrp(client, sender.classic_address)
             if balance is None:
-                print(f"  SKIP: treasury not funded on {net.name}. Run `provision` first.\n")
+                print(
+                    f"  SKIP: treasury not funded on {net.name}. Run `provision` first.\n"
+                )
                 continue
             tx = Payment(
                 account=sender.classic_address,
@@ -273,13 +308,22 @@ async def cmd_verify(settings, args) -> None:
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Provision agent XRPL wallets/services on Testnet + Devnet.")
+    parser = argparse.ArgumentParser(
+        description="Provision agent XRPL wallets/services on Testnet + Devnet."
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("status", help="read-only funding/trust-line matrix")
-    prov = sub.add_parser("provision", help="fund existing wallets on both networks (idempotent)")
-    prov.add_argument("--rlusd", action="store_true", help="also set the Testnet RLUSD trust line")
-    ver = sub.add_parser("verify", help="submit a live tagged XRP payment on each network")
+    prov = sub.add_parser(
+        "provision", help="fund existing wallets on both networks (idempotent)"
+    )
+    prov.add_argument(
+        "--rlusd", action="store_true", help="also set the Testnet RLUSD trust line"
+    )
+    ver = sub.add_parser(
+        "verify", help="submit a live tagged XRP payment on each network"
+    )
     ver.add_argument("--amount", default="1", help="amount in XRP (default: 1)")
     args = parser.parse_args()
 
@@ -290,7 +334,9 @@ def main() -> None:
     except SystemExit:
         raise
     except Exception as exc:  # noqa: BLE001 - friendly message, never dump a seed-bearing traceback
-        sys.exit(f"XRPL error: {exc}\n(Check endpoint reachability and that seeds are set in .env.)")
+        sys.exit(
+            f"XRPL error: {exc}\n(Check endpoint reachability and that seeds are set in .env.)"
+        )
 
 
 if __name__ == "__main__":

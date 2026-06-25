@@ -44,8 +44,8 @@ routine. The human controls what matters."*
   by the agent. Only after the hour-32 gate; likely requires Devnet.
 
 Prepare the 30-second mainnet answer (viability = 40% of score): production swaps
-testnet for mainnet, mock compliance for a real screening provider, self-issued
-IOU for real RLUSD, the local Firefly bridge for an HSM/custody signer. The
+testnet for mainnet, OpenSanctions fallback for an enterprise screening provider,
+self-issued IOU for real RLUSD, the local Firefly bridge for an HSM/custody signer. The
 architecture is unchanged.
 
 ---
@@ -55,7 +55,7 @@ architecture is unchanged.
 1. Hardware veto mechanism: conditional escrow vs. XRPL multisig vs.
    Firefly-signed approval payload verified by backend?
 2. Fallback if Firefly integration stalls (deadline hour 22 — see risk plan).
-3. Real RLUSD vs. mock issued USD token on testnet?
+3. Real RLUSD vs. self-issued USD IOU on testnet?
 4. Postgres audit schema: minimum = payment intent, route quote, compliance
    result + score, policy decision + rule fired, approval payload + signature,
    tx hash, timestamps.
@@ -68,7 +68,7 @@ architecture is unchanged.
   **Caveat:** the token's *issuer* must have enabled escrow —
   `asfAllowTrustLineLocking` (AccountSet SetFlag 17) for IOUs, or
   `tfMPTCanEscrow` for MPTs. If the testnet RLUSD issuer hasn't set this,
-  fallback: issue our own mock USD IOU and set the flag ourselves.
+  fallback: issue our own USD IOU and set the flag ourselves.
 - ✅ **XLS-65 (Single Asset Vault) and XLS-66 (Lending)** are available on Devnet
   and were in validator voting for mainnet as of spring 2026. Testing UI at
   tests.xrpl-commons.org/lending.
@@ -97,7 +97,7 @@ architecture is unchanged.
 |---|---|---|
 | **Treasury Orchestrator** | LLM loop | Receives payment intent, calls tools, narrates decisions |
 | **Routing Tool** (`get_fx_path`) | Deterministic | Frankfurter FX quote + `ripple_path_find`, cheapest path summary |
-| **Compliance Tool** (`check_compliance`) | Deterministic (mock OK) | Sanctions/KYC screen + AML score 0–100 + explanation |
+| **Compliance Tool** (`check_compliance`) | Deterministic | Sanctions/KYC screen + AML score 0–100 + explanation |
 | **Policy Engine** | Deterministic, code-enforced | Threshold + risk-score decision: auto vs. escalate. NOT the LLM's call |
 | **Execution Tool** | Deterministic | Direct RLUSD Payment or escrow/locked tx |
 | **Firefly Approval Tool** | Deterministic | Generates approval payload, verifies Firefly signature, triggers release |
@@ -149,9 +149,9 @@ presented honestly, or demo Firefly signing the challenge standalone.
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| Testnet RLUSD issuer hasn't enabled escrow flag | Medium | XLS-85 live; if RLUSD lacks `asfAllowTrustLineLocking`, self-issue mock USD IOU with SetFlag 17 |
+| Testnet RLUSD issuer hasn't enabled escrow flag | Medium | XLS-85 live; if RLUSD lacks `asfAllowTrustLineLocking`, self-issue USD IOU with SetFlag 17 |
 | Firefly integration takes too long | Medium | Hard deadline hour 22; fallback above |
-| RLUSD testnet issuer unclear / no faucet | Medium | Self-issued mock USD IOU from a wallet we control |
+| RLUSD testnet issuer unclear / no faucet | Medium | Self-issued USD IOU from a wallet we control |
 | Testnet flaky during demo | Low–medium | Record a backup screencap; cache a successful run's explorer links |
 | LLM orchestrator misbehaves live | Medium | Policy in code → worst case is bad narration; pre-can demo prompts |
 | Demo WiFi issues | Always | Phone hotspot; local fallback for dashboard |
@@ -199,7 +199,7 @@ device in my hand."
 - [ ] Frankfurter API call tested
 - [ ] Firefly: confirm what it can sign (curve, payload format); bridge spike
 - [ ] EscrowCreate/EscrowFinish tested with XRP (escrow plumbing known-good)
-- [ ] Mock sanctions list + AML scoring function drafted
+- [ ] OpenSanctions integration + AML scoring function drafted
 - [ ] Dashboard skeleton (React) with fake data, deployable
 - [ ] Pitch deck skeleton: problem → demo → architecture → why XRPL
 - [ ] Public GitHub documentation and demo video ready

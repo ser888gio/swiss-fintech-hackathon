@@ -101,7 +101,11 @@ _JURISDICTION_DB: dict[str, dict] = {
     "RU": {
         "tier": "review",
         "rationale": "Russia is subject to broad EU, UK, and US sectoral sanctions following the 2022 invasion of Ukraine; enhanced due diligence required.",
-        "sources": ["EU Restrictive Measures", "OFAC Russia-related Sanctions", "UK Sanctions"],
+        "sources": [
+            "EU Restrictive Measures",
+            "OFAC Russia-related Sanctions",
+            "UK Sanctions",
+        ],
     },
     "BY": {
         "tier": "review",

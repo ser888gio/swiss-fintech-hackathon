@@ -71,7 +71,7 @@ TypeScript contracts via `@treasury/shared` (mirrored by hand into Pydantic
 
 ### Firefly bridge (`apps/firefly-bridge`)
 - **Purpose**: Local broker between the browser and the USB hardware device.
-- **Technology**: Node 20, Express, `serialport` (or `MockFireflyDevice`).
+- **Technology**: Node 20, Express, `serialport`.
 - **Entry Points**: `src/index.ts` (`/health`, `/sign` on :4747); `src/device.ts`
   (`deriveDigest` mirrors the Python canonical payload byte-for-byte);
   `src/keygen.ts`.

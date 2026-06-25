@@ -140,10 +140,11 @@ class GeopoliticalRiskResult(CamelModel):
 
 class VerificationStepStatus(str, Enum):
     """Outcome of a single KYC verification step — mirrors Plaid IDV step statuses."""
-    pass_   = "pass"
-    fail    = "fail"
-    flagged = "flagged"   # issue found (e.g. PEP match, adverse media)
-    skip    = "skip"      # step not performed
+
+    pass_ = "pass"
+    fail = "fail"
+    flagged = "flagged"  # issue found (e.g. PEP match, adverse media)
+    skip = "skip"  # step not performed
     pending = "pending"
 
 
@@ -157,11 +158,12 @@ class VerificationSteps(CamelModel):
       sanctions    →  screened against OFAC / EU / UN lists
       pep          →  politically exposed person check
     """
+
     documentary: VerificationStepStatus = VerificationStepStatus.skip
-    selfie: VerificationStepStatus      = VerificationStepStatus.skip
-    kyc: VerificationStepStatus         = VerificationStepStatus.skip
-    sanctions: VerificationStepStatus   = VerificationStepStatus.skip
-    pep: VerificationStepStatus         = VerificationStepStatus.skip
+    selfie: VerificationStepStatus = VerificationStepStatus.skip
+    kyc: VerificationStepStatus = VerificationStepStatus.skip
+    sanctions: VerificationStepStatus = VerificationStepStatus.skip
+    pep: VerificationStepStatus = VerificationStepStatus.skip
     ref: str = ""
     issued_on: str = ""
 
@@ -191,6 +193,7 @@ class CredentialStatus(CamelModel):
 
 
 # ── KYA (Know Your Agent) schemas ────────────────────────────────────────────
+
 
 class AgentIdentityStatus(CamelModel):
     """Result of a KYA credential lookup for an AI agent wallet.
@@ -229,8 +232,8 @@ class KYAIssueRequest(CamelModel):
     """Request to issue a KYA credential to an AI agent wallet."""
 
     agent_address: str
-    agent_type: str = "orchestrator"   # orchestrator | sub_agent | monitor | api_gateway
-    principal: str = ""                # controlling XRPL address
+    agent_type: str = "orchestrator"  # orchestrator | sub_agent | monitor | api_gateway
+    principal: str = ""  # controlling XRPL address
     scopes: list[str] = Field(default_factory=list)
     ref: str = ""
     credential_type: str = "KYA"
@@ -244,7 +247,6 @@ class KYAIssueResponse(CamelModel):
     credential_type: str
     uri: str
     identity: dict
-    mock: bool = False
     status: str
 
 
@@ -299,8 +301,8 @@ class CredentialIssueRequest(CamelModel):
     expiration: datetime | None = None
     note: str | None = None
     # When true, the agent also runs the subject-side CredentialAccept so the
-    # credential is immediately usable. Used by the inline KYC gate (mock, or
-    # Testnet when CREDENTIAL_SUBJECT_SEED is configured).
+    # credential is immediately usable. Used by the inline KYC gate when
+    # CREDENTIAL_SUBJECT_SEED is configured.
     auto_accept: bool = False
 
 
@@ -414,13 +416,14 @@ class Payment(CamelModel):
     audit_explanation: str | None = None
     receipt_hash: str | None = None
     coverage: PaymentCoverage = Field(default_factory=lambda: PaymentCoverage())
-    agent_id: str | None = None    # set when initiated by a business agent
+    agent_id: str | None = None  # set when initiated by a business agent
     guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
 
 # ── XLS-65 Single Asset Vault ─────────────────────────────────────────────────
+
 
 class VaultOpRecord(CamelModel):
     """One vault operation (create / deposit / withdraw) from the audit trail."""
@@ -438,7 +441,7 @@ class VaultStatus(CamelModel):
 
     vault_id: str | None = None
     enabled: bool
-    network: str  # "mock" | "devnet" | "testnet"
+    network: str  # "devnet" | "testnet" | "mainnet"
     deposited: float
     shares: float
     wallet_balance: float
@@ -459,6 +462,7 @@ class VaultWithdrawRequest(CamelModel):
 
 # ── XLS-33 MPTokens ───────────────────────────────────────────────────────────
 
+
 class MPTAttestationRecord(CamelModel):
     """One compliance attestation minted as a COMPLY MPToken."""
 
@@ -477,18 +481,19 @@ class MPTStatus(CamelModel):
 
     issuance_id: str | None = None
     enabled: bool
-    network: str             # "mock" | "testnet" | "devnet"
-    metadata_hex: str        # hex-encoded "COMPLY" metadata
+    network: str  # "testnet" | "devnet" | "mainnet"
+    metadata_hex: str  # hex-encoded "COMPLY" metadata
     total_minted: int
     authorized_count: int
     recent_attestations: list[MPTAttestationRecord] = Field(default_factory=list)
 
 
 class MPTAuthorizeRequest(CamelModel):
-    holder: str              # XRPL address to authorize
+    holder: str  # XRPL address to authorize
 
 
 # ── Business-defined payment agents ───────────────────────────────────────────
+
 
 class AgentStatus(str, Enum):
     active = "active"
@@ -506,17 +511,17 @@ class AutoInsureConfig(CamelModel):
 class AgentCreate(CamelModel):
     """Request body for creating a business-defined payment agent."""
 
-    id: str                                            # slug e.g. "supplier-bot"
+    id: str  # slug e.g. "supplier-bot"
     name: str
-    description: str | None = None                     # free-text context for this agent
-    max_single_payment: str                            # Decimal string
-    max_daily_spend: str                               # Decimal string
-    requires_approval_above: str                       # Decimal string, ≤ max_single_payment
+    description: str | None = None  # free-text context for this agent
+    max_single_payment: str  # Decimal string
+    max_daily_spend: str  # Decimal string
+    requires_approval_above: str  # Decimal string, ≤ max_single_payment
     currency: str = "RLUSD"
-    allowed_categories: list[str] | None = None        # None=any, []=deny-all
+    allowed_categories: list[str] | None = None  # None=any, []=deny-all
     allowed_assets: list[str] = Field(default_factory=lambda: ["RLUSD"])
     allowed_network: str = "xrpl:1"
-    allowed_addresses: list[str] | None = None         # None=any, []=deny-all
+    allowed_addresses: list[str] | None = None  # None=any, []=deny-all
     blocked_addresses: list[str] = Field(default_factory=list)
     allowed_hosts: list[str] | None = None
     blocked_hosts: list[str] = Field(default_factory=list)
@@ -559,7 +564,7 @@ class AgentDashboardStats(CamelModel):
 
     agent_id: str
     payments_today: int
-    amount_spent_today: str           # Decimal string (USD)
+    amount_spent_today: str  # Decimal string (USD)
     pending_approvals: int
     last_run_at: datetime | None
     last_run_status: str | None
@@ -569,6 +574,7 @@ class AgentDashboardStats(CamelModel):
 
 
 # ── Autonomous Treasury Agent ──────────────────────────────────────────────────
+
 
 class TreasuryGoal(CamelModel):
     """A recurring/conditional payment goal for the autonomous treasury agent.
@@ -594,7 +600,7 @@ class TreasuryGoal(CamelModel):
     # Trigger: fire at most once per interval
     trigger_interval_hours: float = 24.0
     last_triggered_at: datetime | None = None
-    agent_id: str | None = None   # set for goals owned by a business agent
+    agent_id: str | None = None  # set for goals owned by a business agent
     service_url: str | None = None
     service_type: str | None = None
     category: str | None = None
@@ -628,7 +634,7 @@ class TreasuryAgentRun(CamelModel):
     goals_evaluated: int
     goals_triggered: int
     payments_initiated: list[str]  # payment IDs produced by orchestrator
-    payments_skipped: list[str]    # goal IDs whose trigger condition was not met
+    payments_skipped: list[str]  # goal IDs whose trigger condition was not met
     # Per-goal human-readable decision trail (deterministic; never LLM).
     trigger_log: list[str]
     # LLM narration of the run — explains outcomes, never decides anything.
@@ -639,6 +645,7 @@ class TreasuryAgentRun(CamelModel):
 
 # ── ARS Guardrails & Audit (Pillar 5) ─────────────────────────────────────────
 
+
 class GuardrailResult(CamelModel):
     """Outcome of one guardrail check in the constraint engine evaluation.
 
@@ -647,7 +654,7 @@ class GuardrailResult(CamelModel):
     Money values are str to preserve Decimal precision across JSON.
     """
 
-    name: str               # e.g. "G1_kya", "G4_scope", "G7_hardware_veto"
+    name: str  # e.g. "G1_kya", "G4_scope", "G7_hardware_veto"
     passed: bool
     rule_fired: str | None = None
     reason: str | None = None
@@ -657,7 +664,7 @@ class ConstraintResult(CamelModel):
     """Full output of the ARS constraint engine for one evaluation."""
 
     allowed: bool
-    action: str             # "allow" | "review" | "block"
+    action: str  # "allow" | "review" | "block"
     rule_fired: str | None = None
     reasons: list[str] = Field(default_factory=list)
     guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
@@ -665,14 +672,15 @@ class ConstraintResult(CamelModel):
 
 # ── ARS Scope Policy (G4) ─────────────────────────────────────────────────────
 
+
 class AgentScopeSchema(CamelModel):
     """Agent spending policy configuration (mirrors policy/scope.AgentScope).
 
     String fields for monetary values preserve Decimal precision in JSON.
     """
 
-    max_per_transaction: str    # Decimal string, e.g. "500.000000"
-    max_per_day: str            # Decimal string
+    max_per_transaction: str  # Decimal string, e.g. "500.000000"
+    max_per_day: str  # Decimal string
     allowed_service_hosts: list[str] | None = None
     allowed_service_types: list[str] | None = None
 
@@ -687,15 +695,16 @@ class ScopeDecisionSchema(CamelModel):
 
 # ── ARS Delegation (G5) ───────────────────────────────────────────────────────
 
+
 class DelegationGrant(CamelModel):
     """A parent agent's grant of a scoped budget to a sub-agent."""
 
     id: str
     parent_address: str
     child_address: str
-    max_total: str              # Decimal string
-    max_per_tx: str             # Decimal string
-    max_per_day: str            # Decimal string
+    max_total: str  # Decimal string
+    max_per_tx: str  # Decimal string
+    max_per_day: str  # Decimal string
     currency: str
     allowed_service_hosts: list[str] | None = None
     allowed_service_types: list[str] | None = None
@@ -721,6 +730,7 @@ class DelegationGrantCreate(CamelModel):
 
 # ── ARS x402 Service Payment ──────────────────────────────────────────────────
 
+
 class X402PaymentRequirement(CamelModel):
     """Fields extracted from an HTTP 402 challenge response.
 
@@ -728,13 +738,13 @@ class X402PaymentRequirement(CamelModel):
     """
 
     service_url: str
-    facilitator_url: str        # must be in x402_allowed_facilitators
-    pay_to: str                 # destination XRPL address
-    asset_currency: str         # must match x402_allowed_assets
+    facilitator_url: str  # must be in x402_allowed_facilitators
+    pay_to: str  # destination XRPL address
+    asset_currency: str  # must match x402_allowed_assets
     asset_issuer: str
-    network: str                # must match configured network
-    amount: str                 # Decimal string from the challenge
-    invoice_id: str             # anti-replay nonce
+    network: str  # must match configured network
+    amount: str  # Decimal string from the challenge
+    invoice_id: str  # anti-replay nonce
     source_tag: int | None = None
     expires_at: datetime | None = None
 
@@ -745,8 +755,8 @@ class X402Settlement(CamelModel):
     invoice_id: str
     tx_hash: str
     explorer_url: str | None = None
-    proof_header: str           # X-PAYMENT or equivalent sent on retry
-    amount: str                 # Decimal string
+    proof_header: str  # X-PAYMENT or equivalent sent on retry
+    amount: str  # Decimal string
     currency: str
     guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
     audit_event_id: str | None = None
@@ -758,12 +768,12 @@ class ServicePaymentRecord(CamelModel):
 
     id: str
     agent_id: str | None = None
-    status: str = "settled"       # "settled" | "blocked"
+    status: str = "settled"  # "settled" | "blocked"
     service_host: str
     invoice_id: str
     asset_currency: str
     asset_issuer: str
-    amount: str                 # Decimal string
+    amount: str  # Decimal string
     tx_hash: str | None = None
     explorer_url: str | None = None
     guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
@@ -774,6 +784,7 @@ class ServicePaymentRecord(CamelModel):
 
 
 # ── ARS Trade Finance / Credit (Pillar 2) ─────────────────────────────────────
+
 
 class ReceivableStatus(str, Enum):
     registered = "registered"
@@ -794,8 +805,8 @@ class Receivable(CamelModel):
     invoice_id: str
     buyer: str
     supplier: str
-    amount: str                 # Decimal string — face value
-    discount_rate: str          # Decimal string — e.g. "0.020000" = 2%
+    amount: str  # Decimal string — face value
+    discount_rate: str  # Decimal string — e.g. "0.020000" = 2%
     due_date: datetime
     status: ReceivableStatus
     draw_tx_hash: str | None = None
@@ -815,12 +826,13 @@ class ReceivableCreate(CamelModel):
     invoice_id: str
     buyer: str
     supplier: str
-    amount: str         # Decimal string
+    amount: str  # Decimal string
     discount_rate: str  # Decimal string
     due_date: datetime
 
 
 # ── ARS Insurance (Pillar 3) ──────────────────────────────────────────────────
+
 
 class InsurancePremiumRecord(CamelModel):
     """One per-transaction premium payment into the Insurance Vault."""
@@ -828,11 +840,11 @@ class InsurancePremiumRecord(CamelModel):
     id: str
     job_id: str
     agent_address: str
-    premium_amount: str         # Decimal string
+    premium_amount: str  # Decimal string
     currency: str
     tx_hash: str | None = None
     explorer_url: str | None = None
-    score_band: str | None = None   # score band that determined the rate
+    score_band: str | None = None  # score band that determined the rate
     guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
     created_at: datetime
 
@@ -843,14 +855,16 @@ class InsurancePayoutRecord(CamelModel):
     id: str
     job_id: str
     merchant: str
-    collateral_slashed: str     # Decimal string — from agent collateral
-    pool_drawn: str             # Decimal string — from Insurance Vault first-loss
-    total_paid: str             # Decimal string — to merchant
+    collateral_slashed: str  # Decimal string — from agent collateral
+    pool_drawn: str  # Decimal string — from Insurance Vault first-loss
+    total_paid: str  # Decimal string — to merchant
     currency: str
     slash_tx_hash: str | None = None
     pool_draw_tx_hash: str | None = None
-    explorer_url: str | None = None         # on-ledger explorer link for the pool draw
-    reputation_mpt_protected: bool = True   # principal score NOT burned on insured default
+    explorer_url: str | None = None  # on-ledger explorer link for the pool draw
+    reputation_mpt_protected: bool = (
+        True  # principal score NOT burned on insured default
+    )
     guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
     created_at: datetime
 
@@ -879,7 +893,9 @@ class TxnContext(CamelModel):
     velocity_z: float = 0.0
     concentration_z: float = 0.0
     active_lines: list[CoverLine] = Field(default_factory=list)
-    package: str | None = None   # expand to active_lines server-side (Essential/Standard/Full-Stack)
+    package: str | None = (
+        None  # expand to active_lines server-side (Essential/Standard/Full-Stack)
+    )
 
 
 class AgentRiskState(CamelModel):
@@ -946,22 +962,27 @@ class ClaimRequest(CamelModel):
     aml_score: int = 0
     sanctioned: bool = False
     receipt_hash: str | None = None
-    line: CoverLine = CoverLine.merchant_default  # which peril is being claimed; defaults for back-compat
-    intended_amount: str | None = None            # for fx_slippage: the amount the agent intended to deliver
+    line: CoverLine = (
+        CoverLine.merchant_default
+    )  # which peril is being claimed; defaults for back-compat
+    intended_amount: str | None = (
+        None  # for fx_slippage: the amount the agent intended to deliver
+    )
 
 
 class PoolStatus(CamelModel):
     """Insurance Vault capacity summary (first-loss capital + flows)."""
 
-    first_loss: str                              # Decimal string — available capital
+    first_loss: str  # Decimal string — available capital
     currency: str = "RLUSD"
-    premiums_collected: str = "0"                # Decimal string
-    payouts_made: str = "0"                      # Decimal string
-    capacity_ratio: float = 0.0                  # first_loss / base capital
-    vault_balance: str = "0"                     # Decimal string — on-ledger XLS-65 vault balance
+    premiums_collected: str = "0"  # Decimal string
+    payouts_made: str = "0"  # Decimal string
+    capacity_ratio: float = 0.0  # first_loss / base capital
+    vault_balance: str = "0"  # Decimal string — on-ledger XLS-65 vault balance
 
 
 # ── Agent Cover (annual policy — hallucination + non-delivery) ────────────────
+
 
 class CoverLineKind(str, Enum):
     hallucination = "hallucination"
@@ -986,16 +1007,18 @@ class CoverLossBearerKind(str, Enum):
 class CoverQuoteRequest(CamelModel):
     agent_address: str
     score_band: str = "STANDARD"
-    cover_cap: str                      # Decimal string — max pool payout over the period
-    per_claim_limit: str                # Decimal string — max payout per single claim
+    cover_cap: str  # Decimal string — max pool payout over the period
+    per_claim_limit: str  # Decimal string — max payout per single claim
     term_days: int = 365
-    lines: list[CoverLineKind] = Field(default_factory=lambda: [CoverLineKind.hallucination])
+    lines: list[CoverLineKind] = Field(
+        default_factory=lambda: [CoverLineKind.hallucination]
+    )
 
 
 class CoverQuote(CamelModel):
-    decision: str                       # "OFFER" | "REVIEW" | "DECLINE"
-    premium: str                        # Decimal string — prorated premium (not always annual)
-    line_rates: dict[str, str]          # line → annual rate e.g. {"hallucination": "0.030000"}
+    decision: str  # "OFFER" | "REVIEW" | "DECLINE"
+    premium: str  # Decimal string — prorated premium (not always annual)
+    line_rates: dict[str, str]  # line → annual rate e.g. {"hallucination": "0.030000"}
     pd: float
     credibility: float
     score_band: str
@@ -1009,10 +1032,12 @@ class CoverQuote(CamelModel):
 class CoverBindRequest(CamelModel):
     agent_address: str
     score_band: str = "STANDARD"
-    cover_cap: str                      # Decimal string — must match quote
-    per_claim_limit: str                # Decimal string — must match quote
+    cover_cap: str  # Decimal string — must match quote
+    per_claim_limit: str  # Decimal string — must match quote
     term_days: int = 365
-    lines: list[CoverLineKind] = Field(default_factory=lambda: [CoverLineKind.hallucination])
+    lines: list[CoverLineKind] = Field(
+        default_factory=lambda: [CoverLineKind.hallucination]
+    )
     quote: CoverQuote
 
 
@@ -1022,11 +1047,11 @@ class CoverPolicy(CamelModel):
     period_start: datetime
     period_end: datetime
     lines: list[CoverLineKind]
-    cover_cap: str                      # Decimal string — total pool capacity for this policy
-    per_claim_limit: str                # Decimal string
-    premium: str                        # Decimal string — what was paid
-    cover_used: str                     # Decimal string — cumulative payouts
-    cover_remaining: str                # Decimal string — cover_cap - cover_used
+    cover_cap: str  # Decimal string — total pool capacity for this policy
+    per_claim_limit: str  # Decimal string
+    premium: str  # Decimal string — what was paid
+    cover_used: str  # Decimal string — cumulative payouts
+    cover_remaining: str  # Decimal string — cover_cap - cover_used
     score_band: str
     status: CoverPolicyStatus
     premium_tx_hash: str | None = None
@@ -1049,7 +1074,7 @@ class CoverClaimEvidence(CamelModel):
     from the immutable settled payment record — never trusted from the client."""
 
     policy_id: str
-    payment_id: str                     # must be a settled payment in the store
+    payment_id: str  # must be a settled payment in the store
 
 
 class CoverDemoUnderpaymentRequest(CamelModel):
@@ -1064,10 +1089,10 @@ class CoverPayout(CamelModel):
     payment_id: str
     line: CoverLineKind
     loss_bearer: CoverLossBearerKind
-    destination: str                    # XRPL address that received the payout
-    amount_paid: str                    # Decimal string
-    pool_drawn: str                     # Decimal string
-    classification: str                 # "underpayment" | "wrong_recipient"
+    destination: str  # XRPL address that received the payout
+    amount_paid: str  # Decimal string
+    pool_drawn: str  # Decimal string
+    classification: str  # "underpayment" | "wrong_recipient"
     narration: str | None = None
     guardrail_trail: list[GuardrailResult] = Field(default_factory=list)
     tx_hash: str | None = None
@@ -1077,18 +1102,19 @@ class CoverPayout(CamelModel):
 
 
 class CoverPoolStatus(CamelModel):
-    first_loss: str                     # Decimal string — available first-loss capital
-    reserved: str                       # Decimal string — capacity reserved by active policies
-    free_capacity: str                  # first_loss - reserved
+    first_loss: str  # Decimal string — available first-loss capital
+    reserved: str  # Decimal string — capacity reserved by active policies
+    free_capacity: str  # first_loss - reserved
     currency: str
     premiums_collected: str
     claims_paid: str
-    capacity_ratio: float               # free_capacity / first_loss
+    capacity_ratio: float  # free_capacity / first_loss
     policies_active: int
-    cover_in_force: str                 # sum of active cover_caps
+    cover_in_force: str  # sum of active cover_caps
 
 
 # ── ARS Audit Log Event ───────────────────────────────────────────────────────
+
 
 class AuditEventSchema(CamelModel):
     """Read-model of one Ed25519-signed audit event for API responses."""
@@ -1106,13 +1132,17 @@ class AuditEventSchema(CamelModel):
 
 # ── Treasury summary (aggregated position for the operator dashboard) ─────────
 
+
 class TreasurySummary(CamelModel):
     """Blended treasury position in USD for the operator dashboard hero row."""
-    total_usd: str            # stableUsd + xrpUsd + vaultUsd (Decimal string)
-    stable_usd: str           # sum of RLUSD/USD token balances at 1:1 (Decimal string)
-    xrp_native: str           # raw XRP balance across active networks (Decimal string)
-    xrp_usd: str              # XRP converted to USD via live rate / fallback (Decimal string)
-    vault_usd: str            # XLS-65 vault wallet balance if RLUSD (Decimal string)
-    reserved_usd: str         # sum of intent.amount for pending_approval payments (Decimal string)
-    networks: list[str]       # active network labels
+
+    total_usd: str  # stableUsd + xrpUsd + vaultUsd (Decimal string)
+    stable_usd: str  # sum of RLUSD/USD token balances at 1:1 (Decimal string)
+    xrp_native: str  # raw XRP balance across active networks (Decimal string)
+    xrp_usd: str  # XRP converted to USD via live rate / fallback (Decimal string)
+    vault_usd: str  # XLS-65 vault wallet balance if RLUSD (Decimal string)
+    reserved_usd: (
+        str  # sum of intent.amount for pending_approval payments (Decimal string)
+    )
+    networks: list[str]  # active network labels
     fetched_at: datetime
